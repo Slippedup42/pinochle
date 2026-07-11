@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Card, Suit } from './card'
-import { chooseLeadCard, PlayTracker } from './tracker'
+import type { TrickPlay } from './trick'
+import { chooseFollowCard, chooseLeadCard, PlayTracker } from './tracker'
 
 describe('PlayTracker', () => {
   it('starts with nothing played', () => {
@@ -130,5 +131,130 @@ describe('chooseLeadCard', () => {
     const led = chooseLeadCard(hand, Suit.Spades, tracker)
     expect(led.suit).toBe(Suit.Spades)
     expect(led.rank).toBe('K')
+  })
+})
+
+describe('chooseFollowCard', () => {
+  it('plays the only legal move without consulting any other context', () => {
+    const onlyCard = new Card(Suit.Hearts, '9', 1)
+    const played = chooseFollowCard([onlyCard], [onlyCard], [], Suit.Spades, [])
+    expect(played).toBe(onlyCard)
+  })
+
+  it('forced beat: every legal card already beats the winner - plays the lowest one that still wins', () => {
+    // Opponent (player 1) is winning with a weak 9 of the lead suit; both
+    // legal cards outrank it, so this is a forced beat regardless of who's
+    // winning - the cheapest winner is played to save bigger cards.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
+    const legalMoves = [new Card(Suit.Hearts, '10', 1), new Card(Suit.Hearts, 'A', 1)]
+    const hand = legalMoves
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('10')
+  })
+
+  it('feeds partner the highest King/10 when partner is winning and not every card is a forced beat', () => {
+    // Partner (player 0) is winning with a Queen; the 9 doesn't beat it, so
+    // this isn't a forced beat - falls through to the feed-partner tier.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const legalMoves = [
+      new Card(Suit.Hearts, '9', 1),
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Hearts, '10', 1),
+    ]
+    const hand = legalMoves
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('10') // 10 outranks King, so it's the bigger feed
+  })
+
+  it('feeding partner with no King/10 available plays the lowest card instead (avoid donating a live Ace)', () => {
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const legalMoves = [new Card(Suit.Hearts, '9', 1), new Card(Suit.Hearts, 'J', 1)]
+    const hand = legalMoves
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('9')
+  })
+
+  it('opponent winning: plays the lowest non-point card rather than feeding them a point', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'K', 1) }]
+    const legalMoves = [
+      new Card(Suit.Hearts, 'J', 1), // non-point
+      new Card(Suit.Hearts, 'Q', 1), // non-point
+      new Card(Suit.Hearts, 'A', 1), // point, beats the King, but not forced (Q/J don't)
+    ]
+    const hand = legalMoves
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('J')
+  })
+
+  it('opponent winning with only point cards available: plays the lowest legal card', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'A', 1) }]
+    const legalMoves = [new Card(Suit.Hearts, '10', 1), new Card(Suit.Hearts, 'K', 1)]
+    const hand = legalMoves
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('K')
+  })
+
+  it('void in the lead suit, forced to trump, no tracker supplied: defaults to trump-secure and conserves the lowest trump', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'K', 1) }]
+    const legalMoves = [new Card(Suit.Spades, '9', 1), new Card(Suit.Spades, 'A', 1)]
+    const hand = legalMoves
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('9')
+  })
+
+  it('forced to trump, trump secure per tracker (all 12 copies accounted for): plays the lowest trump', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'K', 1) }]
+    const hand = [new Card(Suit.Spades, '9', 1), new Card(Suit.Spades, 'A', 1)]
+    const legalMoves = hand
+    const tracker = new PlayTracker()
+    for (const rank of ['J', 'Q', 'K', '10'] as const) {
+      tracker.record(new Card(Suit.Spades, rank, 1))
+      tracker.record(new Card(Suit.Spades, rank, 2))
+    }
+    tracker.record(new Card(Suit.Spades, '9', 2))
+    tracker.record(new Card(Suit.Spades, 'A', 2))
+    // 8 (J/Q/K/10 both copies) + 2 (spare 9/A copies) played, + 2 in hand = 12: fully accounted for.
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2], tracker)
+    expect(played.rank).toBe('9')
+  })
+
+  it('forced to trump, not secure per tracker, has a point trump available: surrenders the lowest point trump', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
+    const hand = [new Card(Suit.Spades, 'J', 1), new Card(Suit.Spades, 'K', 1)]
+    const legalMoves = hand
+    const tracker = new PlayTracker() // nothing played -> nowhere near 12 accounted for
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2], tracker)
+    expect(played.rank).toBe('K')
+  })
+
+  it('forced to trump, not secure, no point trump available: plays the lowest trump', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
+    const hand = [new Card(Suit.Spades, 'J', 1), new Card(Suit.Spades, '9', 1)]
+    const legalMoves = hand
+    const tracker = new PlayTracker()
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2], tracker)
+    expect(played.rank).toBe('9')
+  })
+
+  it('sluff (void in lead suit and trump): plays from the shortest suit', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'K', 1) }]
+    const hand = [
+      new Card(Suit.Clubs, '9', 1),
+      new Card(Suit.Clubs, '10', 1), // Clubs length 2
+      new Card(Suit.Diamonds, '9', 1), // Diamonds length 1 - shortest
+    ]
+    const legalMoves = hand
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.suit).toBe(Suit.Diamonds)
+    expect(played.rank).toBe('9')
+  })
+
+  it('sluff: when suit lengths tie, plays the lowest rank', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'K', 1) }]
+    const hand = [new Card(Suit.Clubs, '9', 1), new Card(Suit.Diamonds, 'A', 1)] // both suits length 1
+    const legalMoves = hand
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.suit).toBe(Suit.Clubs)
+    expect(played.rank).toBe('9')
   })
 })

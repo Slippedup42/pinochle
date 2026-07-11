@@ -1,14 +1,14 @@
-// Card-counting tracker + lead-card AI — ported from pinochle_engine.py's
-// PlayTracker class and choose_lead_card function (frozen Python
-// reference).
+// Card-counting tracker + lead-card/follow-card AI — ported from
+// pinochle_engine.py's PlayTracker class, choose_lead_card, and
+// choose_follow_card functions (frozen Python reference).
 //
 // PlayTracker accumulates played-card counts across a round; both the
-// lead-card strategy here and the follow-card strategy (#32, not yet
-// ported) consume the same tracker instance. Its public shape is kept
-// deliberately small - `record` / `playedCount` are all either strategy
-// currently needs.
+// lead-card strategy and the follow-card strategy here consume the same
+// tracker instance. Its public shape is kept deliberately small -
+// `record` / `playedCount` are all either strategy currently needs.
 
 import { type Card, RANK_VALUE, RANKS, type Rank, type Suit } from './card'
+import type { PlayerIndex, TrickPlay } from './trick'
 
 const POINT_RANKS = new Set(['A', '10', 'K'])
 
@@ -109,4 +109,108 @@ export function chooseLeadCard(hand: readonly Card[], trump: Suit, tracker: Play
   }
 
   return hand.reduce((lowest, c) => (RANK_VALUE[c.rank] < RANK_VALUE[lowest.rank] ? c : lowest))
+}
+
+function minByRank(cards: readonly Card[]): Card {
+  return cards.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
+}
+
+function maxByRank(cards: readonly Card[]): Card {
+  return cards.reduce((highest, c) => (c.rankValue > highest.rankValue ? c : highest))
+}
+
+/**
+ * Who's currently winning the trick-in-progress: highest trump if any
+ * trump has been played, else highest card of the lead suit. Ties go to
+ * whichever copy was played first (`reduce` only replaces the running
+ * winner on a strictly-greater rank), matching `Trick.winner`'s
+ * first-copy-wins behavior for the same reason.
+ */
+function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay {
+  const trumpPlays = trickPlays.filter((p) => p.card.suit === trump)
+  const pool = trumpPlays.length > 0
+    ? trumpPlays
+    : trickPlays.filter((p) => p.card.suit === trickPlays[0].card.suit)
+  return pool.reduce((best, p) => (p.card.rankValue > best.card.rankValue ? p : best))
+}
+
+/**
+ * Choose which legal card to play when following (not leading).
+ * `legalMoves` already has the mandatory beat-if-possible / trump-if-void
+ * rules applied by `Trick.legalMoves` - this only picks which one to use.
+ *
+ * `legalMoves` is always restricted to exactly one of three shapes by the
+ * rules, and each gets its own tiered strategy:
+ *   - Forced to follow a non-trump lead suit:
+ *       1. Forced beat (every legal card already beats the current
+ *          winner) - play the lowest one that still wins, saving bigger
+ *          cards for later.
+ *       2. Partner is currently winning - feed them points: the highest
+ *          King/10 available, or (if none) the lowest card, to avoid
+ *          donating a live Ace unless forced.
+ *       3. Otherwise - play the lowest non-point card, falling back to
+ *          the lowest legal card if only point cards are available.
+ *   - Forced to play trump (void in the lead suit):
+ *       1. Trump is secure (every copy - in hand plus already played -
+ *          is accounted for, i.e. no trump left unseen) - play the
+ *          lowest trump, conserving high trump for later control.
+ *       2. Not secure - surrender the lowest point trump if there is
+ *          one (get a liability out before it's trapped), else the
+ *          lowest trump.
+ *   - Sluff (void in both lead suit and trump): free choice across
+ *     suits - work toward voiding the shortest suit, lowest rank within
+ *     it.
+ */
+export function chooseFollowCard(
+  hand: readonly Card[],
+  legalMoves: readonly Card[],
+  trickPlays: readonly TrickPlay[],
+  trump: Suit,
+  myTeamPlayers: readonly PlayerIndex[],
+  tracker?: PlayTracker,
+): Card {
+  if (legalMoves.length === 1) return legalMoves[0]
+
+  const leadSuit = trickPlays.length > 0 ? trickPlays[0].card.suit : undefined
+  const winner = trickPlays.length > 0 ? currentWinner(trickPlays, trump) : undefined
+  const partnerWinning = winner !== undefined && myTeamPlayers.includes(winner.player)
+
+  const allLeadSuit = leadSuit !== undefined && legalMoves.every((c) => c.suit === leadSuit)
+  const allTrump = legalMoves.every((c) => c.suit === trump)
+
+  if (allLeadSuit && leadSuit !== trump) {
+    const forcedBeat = winner !== undefined && legalMoves.every((c) => c.rankValue > winner.card.rankValue)
+    if (forcedBeat) return minByRank(legalMoves)
+
+    if (partnerWinning) {
+      const feedCards = legalMoves.filter((c) => c.rank === 'K' || c.rank === '10')
+      if (feedCards.length > 0) return maxByRank(feedCards)
+      return minByRank(legalMoves) // avoid donating a live Ace unless forced
+    }
+
+    const nonPoints = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
+    if (nonPoints.length > 0) return minByRank(nonPoints)
+    return minByRank(legalMoves)
+  }
+
+  if (allTrump) {
+    let trumpSecure = true
+    if (tracker !== undefined) {
+      const playedTrump = RANKS.reduce((sum, r) => sum + tracker.playedCount(trump, r), 0)
+      const handTrump = suitLength(hand, trump)
+      trumpSecure = playedTrump + handTrump >= 12
+    }
+    if (trumpSecure) return minByRank(legalMoves)
+
+    const points = legalMoves.filter((c) => POINT_RANKS.has(c.rank))
+    if (points.length > 0) return minByRank(points)
+    return minByRank(legalMoves)
+  }
+
+  // sluff - free choice across suits, work toward a void in the shortest suit
+  const legalSorted = [...legalMoves].sort((a, b) => {
+    const bySuitLength = suitLength(hand, a.suit) - suitLength(hand, b.suit)
+    return bySuitLength !== 0 ? bySuitLength : a.rankValue - b.rankValue
+  })
+  return legalSorted[0]
 }
