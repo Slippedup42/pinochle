@@ -1,16 +1,5 @@
-import { type Rank, Suit } from '../engine/card'
-
-// Code-drawn, not image assets — see issue #24. The four suit symbols
-// (♠♥♦♣) have solid cross-platform font coverage; the Unicode "Playing
-// Cards" block (🂡 etc.) does not and is deliberately not used here.
-const SUIT_GLYPH: Record<Suit, string> = {
-  [Suit.Spades]: '♠',
-  [Suit.Hearts]: '♥',
-  [Suit.Diamonds]: '♦',
-  [Suit.Clubs]: '♣',
-}
-
-const RED_SUITS: readonly Suit[] = [Suit.Hearts, Suit.Diamonds]
+import { type Rank, type Suit } from '../engine/card'
+import { RED_SUITS, SUIT_GLYPH } from './suitGlyphs'
 
 export interface PlayingCardProps {
   suit: Suit

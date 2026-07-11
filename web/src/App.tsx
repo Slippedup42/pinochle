@@ -1,9 +1,12 @@
+import { Table } from './components/Table'
+import { buildMockTableState } from './mock/tableState'
+
+// buildMockTableState() is called once per module load (not per render) so
+// the demo table doesn't reshuffle every time App re-renders.
+const mockState = buildMockTableState()
+
 function App() {
-  return (
-    <div className="min-h-svh flex items-center justify-center bg-green-900 text-white">
-      <h1 className="text-3xl font-semibold">Pinochle</h1>
-    </div>
-  )
+  return <Table state={mockState} />
 }
 
 export default App
