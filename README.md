@@ -18,6 +18,8 @@ not yet implemented — see the strategy doc below.
 
 - [`ROADMAP.md`](ROADMAP.md) — phased plan from current state through
   Expert AI, the web/mobile client, and PWA distribution.
+- [`TEAM.md`](TEAM.md) — team-lead agent roster, issue-label
+  conventions, and the `/standup` / `/work-queue` workflow.
 - [`pinochle_rules.md`](pinochle_rules.md) — the rule set this engine
   implements, including house rules (3-card pass, ±1000 game
   thresholds).
