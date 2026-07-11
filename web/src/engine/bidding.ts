@@ -1,11 +1,16 @@
-// Bid valuation — ported from pinochle_engine.py (frozen Python reference).
+// Bidding — ported from pinochle_engine.py (frozen Python reference).
 //
-// Layered: computeBaseBid (guaranteed + speculative hand value) ->
-// computeCompetitiveAdjustment (score-context) -> the 400-cap /
+// Two layers. Valuation: computeBaseBid (guaranteed + speculative hand
+// value) -> computeCompetitiveAdjustment (score-context) -> the 400-cap /
 // >300-meld-uncap rule (maxBid / cappedBid). bestBaseBid searches all 4
 // trump candidates and applies the cap to find the winning trump + ceiling.
+// Decision: chooseBid/chooseTrump wrap that valuation with the stateful
+// auction rules (dealer protection, 3rd-bidder-opens-cheap, when to raise
+// vs. pass) - ported from Player.choose_bid / Player.choose_trump. This
+// module only decides; it does not run an auction loop (that's a future
+// Round orchestrator, see round.ts's module docstring).
 
-import { type Card, GAME_WIN_SCORE, type Rank, Suit, SUITS } from './card'
+import { type Card, GAME_WIN_SCORE, OPENING_BID, type Rank, Suit, SUITS } from './card'
 import {
   AROUND_DOUBLE_MULTIPLIER,
   AROUND_VALUES,
@@ -19,6 +24,8 @@ import {
   RUN_VALUE,
   scoreMelds,
 } from './melds'
+import { partnerOf, type TeamId, teamOf } from './round'
+import type { PlayerIndex } from './trick'
 
 // -- Base Bid — the hand-strength number bidding decisions are built on.
 // Distinct from scoreMelds: this is a *speculative* valuation (near-run,
@@ -294,4 +301,138 @@ export function bestBaseBid(hand: readonly Card[], myScore = 0, oppScore = 0): B
   }
   // SUITS always has 4 entries, so best is always assigned above.
   return best as BestBidResult
+}
+
+// -- Auction decision wrapper — given the current bid, the minimum legal
+// raise, and the auction's running state, decide whether to open/raise/
+// pass. Sits on top of bestBaseBid/maxBid above: those answer "what's this
+// hand worth," this answers "given what's happened in the auction so far,
+// do I act on that valuation." --------------------------------------------
+
+export interface BidRecord {
+  readonly player: PlayerIndex
+  readonly amount: number
+}
+
+/**
+ * Running state of the current auction, assembled by whatever drives the
+ * bidding loop (see pinochle_engine.py's `Round._bidding_loop` for the
+ * reference shape) and handed to chooseBid on each active player's turn.
+ */
+export interface AuctionContext {
+  /** Has anyone bid yet this auction (as opposed to only passes so far)? */
+  readonly everBid: boolean
+  /** Passes seen so far, before this player's turn. */
+  readonly passesSoFar: number
+  /** Every bid placed this auction, in order. */
+  readonly bidHistory: readonly BidRecord[]
+  readonly dealer: PlayerIndex
+  /** Cumulative game score per team, going into this round. */
+  readonly scores: Record<TeamId, number>
+}
+
+/**
+ * Proficient bidding logic, built on Base Bid plus positional and
+ * score-context rules. Falls back to the old coin-flip placeholder if
+ * called without a context (keeps old call sites/tests working).
+ *
+ * Decision tiers:
+ *   - No one has bid yet this auction:
+ *     1. Dealer-protection: my partner is dealer and my score makes them
+ *        a target for a "pass out and stick them with FORCED_BID" play -
+ *        always open regardless of hand.
+ *     2. 3rd bidder (2 passes already, no one's bid) - always open to
+ *        deny the last player a cheap contract, unless my score is high
+ *        enough (>800) that I'd rather play it safe and only open if my
+ *        ceiling clears OPENER_THRESHOLD.
+ *     3. Otherwise, open only if my ceiling clears OPENER_THRESHOLD.
+ *   - My team currently holds the bid:
+ *     - Partner has already bid twice this auction - back off, they're
+ *       carrying it.
+ *     - Partner just raised over my own earlier bid - match it if my
+ *       ceiling supports at least 340, otherwise back off.
+ *     - Otherwise my own (or partner's) bid already stands - no need to
+ *       raise myself.
+ *   - The opponents currently hold the bid: raise to current + minIncrement
+ *     if that's within my ceiling (relaxed to at least 330 once my partner
+ *     has bid, since a partner bid is a signal worth backing), else pass.
+ */
+export function chooseBid(
+  player: PlayerIndex,
+  hand: readonly Card[],
+  currentBid: number,
+  minIncrement: number,
+  context?: AuctionContext,
+): number | null {
+  if (context === undefined) {
+    return Math.random() < 0.6 ? null : currentBid + minIncrement
+  }
+
+  const myTeam = teamOf(player)
+  const opponentTeam = (1 - myTeam) as TeamId
+  const myScore = context.scores[myTeam]
+  const oppScore = context.scores[opponentTeam]
+
+  const { trump, total: baseBid } = bestBaseBid(hand, myScore, oppScore)
+  const cap = maxBid(hand, trump)
+  const ceiling = cap === null ? baseBid : Math.min(baseBid, cap)
+
+  const partner = partnerOf(player)
+  const partnerIsDealer = partner === context.dealer
+
+  if (!context.everBid) {
+    // Dealer-protection.
+    if (partnerIsDealer && myScore >= 850 && oppScore < 500) {
+      return OPENING_BID
+    }
+
+    // 3rd bidder opens cheap.
+    if (context.passesSoFar === 2) {
+      if (myScore > 800) {
+        return ceiling >= OPENER_THRESHOLD ? OPENING_BID : null
+      }
+      return OPENING_BID
+    }
+
+    // Normal opener threshold.
+    return ceiling >= OPENER_THRESHOLD ? OPENING_BID : null
+  }
+
+  // Someone has already bid this auction.
+  const lastBidder = context.bidHistory[context.bidHistory.length - 1].player
+  const bidIsOurs = teamOf(lastBidder) === myTeam
+
+  if (bidIsOurs) {
+    const partnerBidCount = context.bidHistory.filter((b) => b.player === partner).length
+    const myOwnBids = context.bidHistory.filter((b) => b.player === player).map((b) => b.amount)
+
+    if (partnerBidCount >= 2) return null // partner's carrying it, back off
+
+    if (lastBidder === partner && myOwnBids.length > 0 && currentBid > myOwnBids[myOwnBids.length - 1]) {
+      // partner raised over my own earlier bid
+      return ceiling < 340 ? null : currentBid + minIncrement
+    }
+
+    return null // our own bid already stands, no need to raise ourselves
+  }
+
+  // Opponent currently holds the bid.
+  const partnerHasBid = context.bidHistory.some((b) => b.player === partner)
+  let effectiveCeiling = partnerHasBid ? Math.max(ceiling, 330) : ceiling
+  if (cap !== null) {
+    effectiveCeiling = Math.min(effectiveCeiling, cap)
+  }
+
+  const nextBid = currentBid + minIncrement
+  return nextBid <= effectiveCeiling ? nextBid : null
+}
+
+/**
+ * Uses the same per-suit Base Bid comparison as chooseBid, so trump
+ * selection reflects real speculative hand strength rather than raw card
+ * count.
+ */
+export function chooseTrump(hand: readonly Card[]): Suit {
+  const { trump } = bestBaseBid(hand)
+  return trump
 }
