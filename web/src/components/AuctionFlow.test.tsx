@@ -81,6 +81,26 @@ describe('auctionReducer', () => {
     expect(unchanged).toBe(afterAuction)
   })
 
+  it('ignores a stale PASS_BID for a player whose turn has already passed (React StrictMode double-invoke guard)', () => {
+    const state = baseState(3) // left of dealer is seat 0
+    const afterFirstPass = auctionReducer(state, { type: 'PASS_BID', player: 0 })
+    expect(afterFirstPass.bidding.passes).toBe(1)
+    expect(afterFirstPass.bidding.turn).toBe(1)
+    // A duplicate dispatch for seat 0 (e.g. StrictMode re-firing an AI
+    // decision effect against a stale closure) must not double-count the
+    // pass or log it twice, now that seat 1 is up.
+    const stale = auctionReducer(afterFirstPass, { type: 'PASS_BID', player: 0 })
+    expect(stale).toBe(afterFirstPass)
+  })
+
+  it('ignores a stale BID for a player whose turn has already passed', () => {
+    const state = baseState(3)
+    const afterFirstBid = auctionReducer(state, { type: 'BID', player: 0, amount: 300 })
+    expect(afterFirstBid.bidding.turn).toBe(1)
+    const stale = auctionReducer(afterFirstBid, { type: 'BID', player: 0, amount: 310 })
+    expect(stale).toBe(afterFirstBid)
+  })
+
   it('records a trump call and moves to the partner-to-bidder pass step', () => {
     let state = baseState(3)
     state = auctionReducer(state, { type: 'PASS_BID', player: 0 })
