@@ -73,6 +73,21 @@ export class Card {
   }
 }
 
+/**
+ * Sort a hand for human display only: grouped by suit (Spades, Diamonds,
+ * Clubs, Hearts — `SUITS` order), highest rank to lowest within each suit
+ * (A, 10, K, Q, J, 9). Purely a UI convenience — game logic never depends
+ * on hand order, so this is safe to apply anywhere a human's own hand
+ * renders without touching gameplay state.
+ */
+export function sortHandForDisplay(hand: readonly Card[]): Card[] {
+  return [...hand].sort((a, b) => {
+    if (a.suit !== b.suit) return SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit)
+    if (a.rankValue !== b.rankValue) return b.rankValue - a.rankValue
+    return a.copyId - b.copyId
+  })
+}
+
 export class Deck {
   cards: Card[]
 

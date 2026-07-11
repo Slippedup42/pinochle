@@ -1,5 +1,5 @@
 import type { Card } from '../engine/card'
-import { type Rank, Suit } from '../engine/card'
+import { type Rank, sortHandForDisplay, Suit } from '../engine/card'
 import { PlayingCard } from './PlayingCard'
 import type { SeatPosition, SeatState } from './tableTypes'
 
@@ -51,7 +51,7 @@ export function Seat({ seat, position, isHuman, isBidWinner, playable }: SeatPro
       </div>
       {isHuman ? (
         <div className="flex flex-wrap justify-center gap-1 overflow-x-auto">
-          {seat.hand.map((card) => {
+          {sortHandForDisplay(seat.hand).map((card) => {
             const cardFace = <PlayingCard suit={card.suit} rank={card.rank} />
             if (!playable) {
               return (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Card, Deck, RANKS, Suit } from './card'
+import { Card, Deck, RANKS, sortHandForDisplay, Suit } from './card'
 
 describe('Deck', () => {
   it('builds 48 unique cards, two copies of each suit/rank', () => {
@@ -51,5 +51,37 @@ describe('Card.beats', () => {
     const clubNine = new Card(Suit.Clubs, '9', 1)
     expect(spadeAce.beats(clubNine, Suit.Hearts)).toBe(false)
     expect(clubNine.beats(spadeAce, Suit.Hearts)).toBe(false)
+  })
+})
+
+describe('sortHandForDisplay', () => {
+  it('groups by suit (Spades, Diamonds, Clubs, Hearts) then ranks A high to 9 low within each suit', () => {
+    const hand = [
+      new Card(Suit.Hearts, '9', 1),
+      new Card(Suit.Clubs, 'A', 1),
+      new Card(Suit.Spades, 'J', 1),
+      new Card(Suit.Diamonds, '10', 1),
+      new Card(Suit.Hearts, 'A', 1),
+      new Card(Suit.Spades, 'A', 1),
+    ]
+    const sorted = sortHandForDisplay(hand)
+    expect(sorted.map((c) => `${c.rank}${c.suit}`)).toEqual([
+      'AS', 'JS', '10D', 'AC', 'AH', '9H',
+    ])
+  })
+
+  it('does not mutate the input array', () => {
+    const hand = [new Card(Suit.Hearts, '9', 1), new Card(Suit.Spades, 'A', 1)]
+    const original = [...hand]
+    sortHandForDisplay(hand)
+    expect(hand).toEqual(original)
+  })
+
+  it('orders duplicate copies of the same suit/rank deterministically by copyId', () => {
+    const hand = [
+      new Card(Suit.Spades, 'A', 2),
+      new Card(Suit.Spades, 'A', 1),
+    ]
+    expect(sortHandForDisplay(hand).map((c) => c.copyId)).toEqual([1, 2])
   })
 })
