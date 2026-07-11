@@ -20,6 +20,9 @@ not yet implemented — see the strategy doc below.
   Expert AI, the web/mobile client, and PWA distribution.
 - [`TEAM.md`](TEAM.md) — team-lead agent roster, issue-label
   conventions, and the `/standup` / `/work-queue` workflow.
+- [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — naming, module
+  layout, docstring style, and other implementation patterns already
+  in use, documented so new code stays consistent with them.
 - [`pinochle_rules.md`](pinochle_rules.md) — the rule set this engine
   implements, including house rules (3-card pass, ±1000 game
   thresholds).
