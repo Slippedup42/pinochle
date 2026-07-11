@@ -59,9 +59,14 @@ meld type — a second instance of a meld needs a second copy of the card.
 | Meld | Requirement | Points |
 |---|---|---|
 | Run | A, 10, K, Q, J of TrumpSuit | 150 |
+| Double Run | Both copies of A, 10, K, Q, J of TrumpSuit | 1500 |
 | Royal Marriage | K + Q of TrumpSuit | 40 |
 | Common Marriage | K + Q of a non-trump suit | 20 |
 | Dix | 9 of TrumpSuit | 10 |
+
+Double Run **replaces** the single Run — it is not 2 × 150 = 300. If you
+hold both copies of A, 10, K, Q, and J of TrumpSuit, you score 1500, not
+300 (same convention as Double Pinochle and the Arounds doubles below).
 
 ### Class B — Pinochle Melds
 
