@@ -932,6 +932,185 @@ class Player:
         return choose_follow_card(self.hand, legal_moves, trick.plays, trump, team_set, tracker)
 
 
+# ---------------------------------------------------------------------------
+# AI difficulty tiers (issue #53). Player above is the "Proficient" tier and
+# is the tournament control group - its choose_bid/choose_trump/
+# choose_pass_cards/choose_card are NOT touched by anything below. Random and
+# Easy are new, additive-only subclasses so a future ExpertPlayer (see
+# pinochle_expert_ai_strategy.md) can plug into the same pattern.
+# ---------------------------------------------------------------------------
+
+class RandomPlayer(Player):
+    """
+    Floor tier: uniformly-random *legal* choice at every decision point.
+    No hand evaluation at all - this exists purely as a tournament-sim
+    baseline (e.g. "does Easy actually beat Random," per issue #53), not as
+    a plausible human skill level.
+    """
+
+    def choose_bid(self, current_bid, min_increment, context=None):
+        # Bid amounts are technically unbounded above the legal minimum (any
+        # +10 raise is legal), so there's no finite action set to sample
+        # uniformly from. "Uniformly random legal choice" is instead modeled
+        # as a coin flip between the two atomic actions available here: pass,
+        # or raise by exactly the minimum legal increment. `current_bid` is
+        # already the correct base to raise off of either way (Round passes
+        # OPENING_BID - min_increment before anyone has bid, and the running
+        # current_bid otherwise), so `current_bid + min_increment` is always
+        # a legal bid.
+        if random.random() < 0.5:
+            return None
+        return current_bid + min_increment
+
+    def choose_trump(self):
+        return random.choice(list(Suit))
+
+    def choose_pass_cards(self, count, trump_suit=None, is_bid_winner=None):
+        # No Tier 0/1 chase logic, no protecting existing meld - every card
+        # in hand is an equally likely pick.
+        return random.sample(self.hand, count)
+
+    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
+        # `legal_moves` already has follow-suit/beat-if-possible/trump-if-void
+        # applied by Trick.legal_moves (or is the full hand when leading) -
+        # picking uniformly from it is exactly "random legal move".
+        return random.choice(legal_moves)
+
+
+# Static constants for EasyPlayer's bidding formula. Kept as module-level
+# names (like OPENING_BID etc. above) rather than buried in the method, per
+# the file's existing convention for tunable numbers.
+EASY_FLAT_TRICK_ESTIMATE = 60  # flat, non-hand-shape-aware stand-in for "some trick points" -
+                                # doc §8 says Easy's hand worth is "meld only, no trick-potential
+                                # estimate", so this can't scale with hand contents the way
+                                # Player's Base Bid does; it's just enough of a constant that a
+                                # decent-meld hand can clear OPENING_BID at all.
+EASY_BID_NOISE = 30            # +/- uniform noise added to the ceiling, giving "static formula
+                                # + noise" (doc §8) rather than a deterministic cutoff every time.
+
+
+def _easy_card_worth(card, trump):
+    """
+    Cheap, single-pass "how much do I want to keep this card" score used by
+    EasyPlayer's passing logic. Deliberately flat and context-free (no
+    marriage/around-breaking checks, no trump-category/role-specific tiers
+    like Player's _bidder_pass_selection/_partner_pass_selection) - Easy
+    reasons about cards individually, not about hand-wide meld shape.
+    """
+    worth = 0
+    if card.suit == trump:
+        worth += 5  # trump is the scarcest, most valuable resource
+    if card.rank in ("A", "10", "K"):
+        worth += 2  # count cards - costly to give away even with no meld tie
+    if card.rank in ("Q", "J"):
+        worth += 1  # cheap acknowledgement that these are the marriage/pinochle ranks
+    return worth
+
+
+class EasyPlayer(Player):
+    """
+    Weak-but-sane tier, per pinochle_expert_ai_strategy.md §8's "Easy" row:
+    meld-only hand valuation (no Base Bid speculative-value machinery),
+    static-formula-plus-noise bidding, no risk assessment, no deception.
+    Judgment calls the doc doesn't pin down exactly are commented inline
+    below.
+    """
+
+    def choose_bid(self, current_bid, min_increment, context=None):
+        if context is None:
+            # Fallback for isolated/old-style calls, matching Player's own
+            # fallback shape so EasyPlayer stays usable outside a full Round.
+            if random.random() < 0.6:
+                return None
+            return current_bid + min_increment
+
+        # Hand worth: meld ONLY (doc §8) - the actual guaranteed meld from
+        # score_melds() under the best of the 4 candidate trump suits, not
+        # Player's speculative Base Bid (near-run bonuses, flat Ace value,
+        # 3-Aces-bonus, competitive/score-context adjustment). This is the
+        # single biggest behavioral difference from Proficient.
+        best_meld_value = max(score_melds(self.hand, t)[0] for t in Suit)
+
+        # Static formula + noise (doc §8): a flat trick-point constant (not
+        # derived from this hand at all) plus the meld value, then uniform
+        # noise. No dealer-protection, no partner-bid-count tracking, no
+        # score-differential awareness, no "opponent already bid" reasoning
+        # - all the positional/score-context machinery in Player.choose_bid
+        # is exactly what "no risk assessment" (doc §8) rules out here.
+        noise = random.uniform(-EASY_BID_NOISE, EASY_BID_NOISE)
+        ceiling = best_meld_value + EASY_FLAT_TRICK_ESTIMATE + noise
+
+        next_bid = current_bid + min_increment
+        if not context["ever_bid"]:
+            return OPENING_BID if ceiling >= OPENING_BID else None
+        return next_bid if next_bid <= ceiling else None
+
+    def choose_trump(self):
+        # Judgment call: trump choice mirrors the bidding valuation - pick
+        # the suit with the highest actual score_melds() value, not
+        # Player's speculative best_base_bid() search. Ties keep whichever
+        # Suit is encountered first in enum order; Easy has no tie-break
+        # reasoning beyond raw meld value.
+        best_trump, best_value = None, -1
+        for t in Suit:
+            value, _ = score_melds(self.hand, t)
+            if value > best_value:
+                best_trump, best_value = t, value
+        return best_trump
+
+    def choose_pass_cards(self, count, trump_suit=None, is_bid_winner=None):
+        if trump_suit is None or is_bid_winner is None:
+            return random.sample(self.hand, count)
+
+        if not is_bid_winner:
+            # Partner, sending to the bidder: judgment call - ship the
+            # `count` lowest-worth cards by the flat _easy_card_worth scale.
+            # No Tier 0 "always chase toward a missing meld piece" logic
+            # (doc §2) - that speculative chasing is exactly the kind of
+            # machinery Easy's meld-only philosophy excludes. Easy only
+            # avoids obviously overpaying, it doesn't actively build melds.
+            ranked = sorted(self.hand, key=lambda c: _easy_card_worth(c, trump_suit))
+            return ranked[:count]
+
+        # Bidder, sending back to partner: judgment call - non-trump 10s
+        # are shipped first. This isn't Expert-only sophistication; doc §3
+        # states plainly that a non-trump 10 has zero meld value and is a
+        # pure count-card liability regardless of tier, so it's a safe,
+        # tier-agnostic default even for Easy's otherwise-flat logic.
+        # Remaining slots fall back to lowest-worth filler, same as the
+        # partner branch above.
+        pool = list(self.hand)
+        chosen = [c for c in pool if c.suit != trump_suit and c.rank == "10"][:count]
+        for c in chosen:
+            pool.remove(c)
+        if len(chosen) < count:
+            ranked = sorted(pool, key=lambda c: _easy_card_worth(c, trump_suit))
+            chosen += ranked[:count - len(chosen)]
+        return chosen[:count]
+
+    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
+        if trick is None or trump is None:
+            return legal_moves[0]
+
+        if not trick.plays:
+            # Leading, judgment call: prefer a low, non-trump, non-count
+            # card - "don't obviously hand opponents free points" is as far
+            # as Easy's leading logic goes. This is not Player's safe-card
+            # cascade (no tracking of which copies are still live, no
+            # unsecured-Ace handling) - just a single cheap filter.
+            safe_leads = [c for c in legal_moves if c.suit != trump and c.rank not in ("A", "10", "K")]
+            pool = safe_leads if safe_leads else legal_moves
+            return min(pool, key=lambda c: RANK_VALUE[c.rank])
+
+        # Following, judgment call: `legal_moves` already has the mandatory
+        # beat-if-possible / trump-if-void rules applied by
+        # Trick.legal_moves, so always playing the lowest legal card is
+        # legal by construction and spends the least - no
+        # feed-partner/duck/protect-count-card reasoning like Player's
+        # choose_follow_card (that's the "no risk assessment" difference).
+        return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+
+
 class Team:
     def __init__(self, name, players):
         self.name = name
@@ -1103,7 +1282,28 @@ class Round:
 
 class Game:
     def __init__(self, player_names):
-        p = [Player(name, None) for name in player_names]
+        players = [Player(name, None) for name in player_names]
+        self._init_from_players(players)
+
+    @classmethod
+    def from_players(cls, players):
+        """
+        Build a Game from 4 already-constructed player objects (any mix of
+        Player/RandomPlayer/EasyPlayer/HumanPlayer/etc.) instead of just
+        names - added for issue #53 so tournament-sim harnesses can wire up
+        mixed AI tiers per seat. Seating/teams are wired identically to
+        __init__ (seats 0&2 = Team A, seats 1&3 = Team B, per
+        pinochle_rules.md), so existing callers of Game(player_names) are
+        unaffected.
+        """
+        assert len(players) == 4
+        game = cls.__new__(cls)
+        game._init_from_players(list(players))
+        return game
+
+    def _init_from_players(self, p):
+        """Shared team-wiring logic used by both __init__ and from_players."""
+        assert len(p) == 4
         team_a = Team("Team A", [p[0], p[2]])
         team_b = Team("Team B", [p[1], p[3]])
         p[0].team = p[2].team = team_a
@@ -1162,3 +1362,22 @@ if __name__ == "__main__":
         loser = next(t for t in game.teams if t is not winner)
         assert winner.score >= GAME_WIN_SCORE or loser.score <= GAME_LOSE_SCORE
     print("10/10 full games completed cleanly with Double Run scoring active.")
+
+    # AI tier sanity checks (issue #53) - RandomPlayer/EasyPlayer only ever
+    # produce legal moves, and Game.from_players() supports mixed tiers
+    # across the 4 seats. See test_ai_tiers.py for the full test suite.
+    tier_mixes = [
+        [RandomPlayer, RandomPlayer, RandomPlayer, RandomPlayer],
+        [EasyPlayer, EasyPlayer, EasyPlayer, EasyPlayer],
+        [EasyPlayer, Player, EasyPlayer, Player],
+        [RandomPlayer, EasyPlayer, RandomPlayer, EasyPlayer],
+        [Player, RandomPlayer, Player, RandomPlayer],
+    ]
+    for i, classes in enumerate(tier_mixes):
+        names = ["N", "E", "S", "W"]
+        players = [cls(name, None) for cls, name in zip(classes, names)]
+        game = Game.from_players(players)
+        winner = game.play()
+        loser = next(t for t in game.teams if t is not winner)
+        assert winner.score >= GAME_WIN_SCORE or loser.score <= GAME_LOSE_SCORE
+    print(f"{len(tier_mixes)}/{len(tier_mixes)} mixed-tier games (Random/Easy/Proficient) completed cleanly via Game.from_players().")
