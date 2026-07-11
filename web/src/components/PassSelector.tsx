@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Card } from '../engine/card'
+import { sortHandForDisplay } from '../engine/card'
 import { PlayingCard } from './PlayingCard'
 
 export interface PassSelectorProps {
@@ -33,7 +34,7 @@ export function PassSelector({ hand, count, onConfirm }: PassSelectorProps) {
         Choose {count} cards to pass ({selected.length}/{count} selected)
       </h3>
       <div className="mt-3 flex flex-wrap justify-center gap-1">
-        {hand.map((card) => {
+        {sortHandForDisplay(hand).map((card) => {
           const isSelected = selected.includes(card)
           return (
             <button
