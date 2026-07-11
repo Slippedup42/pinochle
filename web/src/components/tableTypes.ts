@@ -23,9 +23,11 @@ export interface TableState {
   readonly humanPlayer: PlayerIndex
   /** Cards played so far in the current trick, in play order. */
   readonly trick: readonly TrickPlay[]
-  readonly trumpSuit: Suit
+  /** null before the auction (#34) has settled on a trump suit. */
+  readonly trumpSuit: Suit | null
   readonly currentBid: number
-  readonly bidWinner: PlayerIndex
+  /** null before the auction (#34) has a winner. */
+  readonly bidWinner: PlayerIndex | null
   readonly scoresByTeam: Record<TeamId, number>
 }
 
