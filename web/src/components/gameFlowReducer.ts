@@ -21,6 +21,7 @@ import { scoreRound, teamOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
 import type { AuctionResult } from './auctionTypes'
 import type { GameOverData, RoundSummaryData } from './scoreTypes'
+import type { TrickPlayState } from './trickPlayReducer'
 import type { TrickPlayResult } from './trickPlayTypes'
 
 export type GameFlowPhase =
@@ -44,6 +45,14 @@ export interface GameFlowState {
   readonly auctionResult: AuctionResult | null
   readonly roundSummary: RoundSummaryData | null
   readonly gameOverData: GameOverData | null
+  /** Local autosave (#54): a snapshot of TrickPlayFlow's internal state,
+   * taken after each completed trick (never mid-trick/mid-AI-delay — see
+   * TrickPlayFlow.tsx's onCheckpoint). null outside the trick-play phase.
+   * On resume, GameFlow.tsx passes this to TrickPlayFlow as its
+   * `initialState`, bypassing the normal from-scratch deal-based init so a
+   * reload lands back on the exact trick in progress rather than the start
+   * of the round. */
+  readonly trickPlayCheckpoint: TrickPlayState | null
 }
 
 export type GameFlowAction =
@@ -54,6 +63,14 @@ export type GameFlowAction =
   | { readonly type: 'TRICK_COMPLETE'; readonly result: TrickPlayResult }
   | { readonly type: 'CONTINUE_ROUND' }
   | { readonly type: 'NEW_GAME'; readonly dealer: PlayerIndex }
+  /** Local autosave (#54): records a trick-play checkpoint (see
+   * GameFlowState.trickPlayCheckpoint) as trick-play progresses. */
+  | { readonly type: 'TRICK_CHECKPOINT'; readonly snapshot: TrickPlayState }
+  /** Local autosave (#54): replaces the whole state with a previously
+   * saved one (the main menu's "Continue"). A plain assignment rather than
+   * a merge — resuming should reproduce the saved game exactly, not layer
+   * onto whatever the reducer happened to be initialized with. */
+  | { readonly type: 'LOAD_SAVE'; readonly state: GameFlowState }
 
 // Static table config GameFlow.tsx renders with — split out here (rather
 // than exported alongside the component) so GameFlow.tsx only exports the
@@ -81,6 +98,7 @@ export function initGameFlowState(dealer: PlayerIndex): GameFlowState {
     auctionResult: null,
     roundSummary: null,
     gameOverData: null,
+    trickPlayCheckpoint: null,
   }
 }
 
@@ -110,6 +128,7 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         phase: 'misdeal-check',
         auctionResult: null,
         roundSummary: null,
+        trickPlayCheckpoint: null,
       }
     }
     case 'MISDEAL_ADVANCE': {
@@ -126,7 +145,11 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
     }
     case 'AUCTION_COMPLETE': {
       if (state.phase !== 'auction') return state
-      return { ...state, phase: 'trick-play', auctionResult: action.result }
+      // trickPlayCheckpoint is cleared (not carried over) here: this is a
+      // genuinely fresh trick-play phase driven by a real auction just
+      // finishing, not a resume-from-save — TrickPlayFlow.tsx will mount
+      // and re-checkpoint at trick 0 on its own once it does.
+      return { ...state, phase: 'trick-play', auctionResult: action.result, trickPlayCheckpoint: null }
     }
     case 'TRICK_COMPLETE': {
       if (state.phase !== 'trick-play' || state.auctionResult === null) return state
@@ -151,7 +174,13 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         bid,
         cumulativeScoresByTeam,
       }
-      return { ...state, phase: 'round-summary', roundSummary, scoresByTeam: cumulativeScoresByTeam }
+      return {
+        ...state,
+        phase: 'round-summary',
+        roundSummary,
+        scoresByTeam: cumulativeScoresByTeam,
+        trickPlayCheckpoint: null,
+      }
     }
     case 'CONTINUE_ROUND': {
       if (state.phase !== 'round-summary' || state.roundSummary === null) return state
@@ -180,7 +209,15 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         auctionResult: null,
         roundSummary: null,
         gameOverData: null,
+        trickPlayCheckpoint: null,
       }
+    }
+    case 'TRICK_CHECKPOINT': {
+      if (state.phase !== 'trick-play') return state
+      return { ...state, trickPlayCheckpoint: action.snapshot }
+    }
+    case 'LOAD_SAVE': {
+      return action.state
     }
     default:
       return state

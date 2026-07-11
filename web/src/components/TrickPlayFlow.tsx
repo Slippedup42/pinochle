@@ -3,10 +3,17 @@ import type { Card, Suit } from '../engine/card'
 import type { Hands, TeamId } from '../engine/round'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
 import type { PlayerIndex } from '../engine/trick'
+import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
 import { TrickLog } from './TrickLog'
-import { buildTrick, initTrickPlayState, teammatesOf, trickPlayReducer } from './trickPlayReducer'
+import {
+  buildTrick,
+  initTrickPlayState,
+  teammatesOf,
+  trickPlayReducer,
+  type TrickPlayState,
+} from './trickPlayReducer'
 import type { TrickPlayResult } from './trickPlayTypes'
 
 export interface TrickPlayFlowProps {
@@ -19,6 +26,22 @@ export interface TrickPlayFlowProps {
   seatNames: Record<PlayerIndex, string>
   humanPlayer: PlayerIndex
   scoresByTeam: Record<TeamId, number>
+  /** Local autosave (#54): resume from a saved trick-play checkpoint
+   * (GameFlowState.trickPlayCheckpoint) instead of dealing out `hands`
+   * fresh via initTrickPlayState. Only ever set by GameFlow.tsx's "Continue"
+   * path — a normal auction-to-trick-play handoff omits this. */
+  initialState?: TrickPlayState
+  /** Local autosave (#54): fired after each completed trick (never
+   * mid-trick or mid-AI-delay) with the current TrickPlayState, so
+   * GameFlow.tsx can checkpoint it — see GameFlowState.trickPlayCheckpoint. */
+  onCheckpoint?: (state: TrickPlayState) => void
+  /** Opens the persistent mid-game menu (#54: New Game / Continue /
+   * Options) — rendered by Table.tsx as a small corner button. Omit to
+   * render without one (e.g. existing tests that don't exercise it). */
+  onOpenMenu?: () => void
+  /** Options toggles (#54) affecting rendering. Defaults to
+   * DEFAULT_OPTIONS (current pre-#54 behavior) when omitted. */
+  options?: GameOptions
   /** Fired once, when all 12 tricks have been played, with the trick-point
    * contribution each team makes to a live Round orchestrator's (#47)
    * `scoreRound` call. */
@@ -57,12 +80,16 @@ export function TrickPlayFlow({
   seatNames,
   humanPlayer,
   scoresByTeam,
+  initialState,
+  onCheckpoint,
+  onOpenMenu,
+  options = DEFAULT_OPTIONS,
   onComplete,
 }: TrickPlayFlowProps) {
   const [state, dispatch] = useReducer(
     trickPlayReducer,
     undefined,
-    () => initTrickPlayState(hands, trumpSuit, bidWinner, seatNames),
+    () => initialState ?? initTrickPlayState(hands, trumpSuit, bidWinner, seatNames),
   )
   // Accumulates every card played so far this round (tracker.ts's
   // PlayTracker) — mutated directly alongside each PLAY_CARD dispatch
@@ -106,6 +133,16 @@ export function TrickPlayFlow({
     onComplete?.({ trickPointsByTeam: state.trickPointsByTeam, trickWinners: state.trickWinners })
   }, [state, onComplete])
 
+  // Local autosave (#54): checkpoint after each completed trick — i.e.
+  // whenever currentTrick is empty (a fresh trick just started, or all 12
+  // are done). Deliberately excludes mid-trick states (1-3 cards played)
+  // and the 'trick-complete' settle pause (currentTrick still has all 4
+  // cards until CLEAR_TRICK fires) — "not mid-animation", per #54.
+  useEffect(() => {
+    if (state.currentTrick.length > 0) return
+    onCheckpoint?.(state)
+  }, [state, onCheckpoint])
+
   const legalMovesForHuman = useMemo(() => {
     if (state.phase !== 'playing' || state.turn !== humanPlayer) return null
     const trick = buildTrick(state.trumpSuit, state.currentTrick)
@@ -138,5 +175,12 @@ export function TrickPlayFlow({
     }
   }, [state, seatNames, humanPlayer, bid, scoresByTeam, legalMovesForHuman])
 
-  return <Table state={tableState} logPanel={<TrickLog entries={state.log} />} />
+  return (
+    <Table
+      state={tableState}
+      logPanel={<TrickLog entries={state.log} />}
+      onOpenMenu={onOpenMenu}
+      hideOpponentCards={options.hideOpponentCards}
+    />
+  )
 }

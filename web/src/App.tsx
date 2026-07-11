@@ -1,7 +1,7 @@
-import { GameFlow } from './components/GameFlow'
+import { GameShell } from './components/GameShell'
 
 function App() {
-  return <GameFlow />
+  return <GameShell />
 }
 
 export default App

@@ -13,6 +13,16 @@ export interface TableProps {
   /** Corner slot for a non-blocking feed (the auction/pass event log, #34)
    * that should stay visible alongside the table rather than covering it. */
   logPanel?: ReactNode
+  /** Local autosave (#54): opens the persistent mid-game menu (New Game /
+   * Continue / Options) so a player is never stranded once a round has
+   * started. Rendered as a small corner button; omitted entirely (no
+   * button) when not provided. */
+  onOpenMenu?: () => void
+  /** Options toggle (#54): when true, don't render the West/Partner/East
+   * face-down card fans at all — just the seat label and board, to save
+   * screen space. UI-only preference, not game state, so it lives here
+   * rather than on TableState. */
+  hideOpponentCards?: boolean
 }
 
 const POSITION_GRID_CLASS: Record<SeatPosition, string> = {
@@ -28,13 +38,23 @@ const POSITION_GRID_CLASS: Record<SeatPosition, string> = {
  * and trick-play controls (separate issues) will mount into this shell,
  * most likely inside/near the human seat and the TrickArea respectively.
  */
-export function Table({ state, overlay, logPanel }: TableProps) {
+export function Table({ state, overlay, logPanel, onOpenMenu, hideOpponentCards }: TableProps) {
   const { seats, humanPlayer, trick, trumpSuit, currentBid, bidWinner, scoresByTeam, humanPlayable, trickWinner } =
     state
   const bidWinnerSeat = bidWinner === null ? undefined : seats.find((seat) => seat.player === bidWinner)
 
   return (
     <div className="relative flex min-h-svh flex-col bg-green-900 text-white">
+      {onOpenMenu && (
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          aria-label="Open menu"
+          className="absolute top-2 left-2 z-10 rounded bg-black/40 px-2 py-1 text-xs font-semibold text-white hover:bg-black/60"
+        >
+          ☰ Menu
+        </button>
+      )}
       <Scoreboard
         scoresByTeam={scoresByTeam}
         currentBid={currentBid}
@@ -53,6 +73,7 @@ export function Table({ state, overlay, logPanel }: TableProps) {
               isHuman={seat.player === humanPlayer}
               isBidWinner={seat.player === bidWinner}
               playable={seat.player === humanPlayer ? humanPlayable : undefined}
+              hideOpponentHand={hideOpponentCards}
             />
           </div>
         ))}
