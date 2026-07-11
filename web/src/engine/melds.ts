@@ -27,7 +27,7 @@ export const AROUND_VALUES: Record<'A' | 'K' | 'Q' | 'J', number> = {
 }
 export const AROUND_DOUBLE_MULTIPLIER = 10
 
-const RUN_RANKS: readonly Rank[] = ['A', '10', 'K', 'Q', 'J']
+export const RUN_RANKS: readonly Rank[] = ['A', '10', 'K', 'Q', 'J']
 
 export interface MeldResult {
   total: number
