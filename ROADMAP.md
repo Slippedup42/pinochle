@@ -62,18 +62,16 @@ AI strategy) live in their own docs and are linked from here.
 
 ## Tooling & process (parallel track, not phase-gated)
 
-- GitHub issue workflow: `ready-for-human` / `ready-for-agent` labels,
-  auto-triage, epic breakdown (`[epic]` issues with linked children,
-  auto-close on all-children-merged).
-- Team-lead agent roster (architect + others TBD) with a standup
-  command that reports status per-lens and opens new issues.
-- Coding standards, design specs, dev specs — locations TBD as they're
-  written.
+See [TEAM.md](TEAM.md) for the full roster, label conventions, and
+workflow — team-lead agents (architect, design, engineering, QA), the
+`/standup` and `/work-queue` commands, and epic lifecycle rules are all
+live as of this phase.
+
+- Coding standards, design specs, dev specs — owned by the relevant
+  lead per `TEAM.md`; locations TBD as they're written.
 
 ## Open questions
 
 - Python-vs-JS engine: keep both long-term (Python for AI research
   velocity) or eventually retire the Python engine once the JS port has
   full parity?
-- Full team-lead roster and responsibilities beyond architect — not yet
-  defined.
