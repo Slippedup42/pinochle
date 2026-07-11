@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useReducer, useRef } from 'react'
-import { bestBaseBid } from '../engine/bidding'
+import { bestBaseBid, chooseBid, chooseTrump, type AuctionContext } from '../engine/bidding'
 import { OPENING_BID } from '../engine/card'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import { teamOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
-import { aiChooseTrump, aiDecideBid } from '../mock/aiDecisions'
 import { AuctionLog } from './AuctionLog'
 import { auctionReducer, initAuctionState } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
@@ -14,6 +13,11 @@ import { PassSelector } from './PassSelector'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
 import { TrumpSelector } from './TrumpSelector'
+
+// Min raise over the current bid once someone has opened — mirrors
+// pinochle_engine.py's Round._bidding_loop, which always calls
+// choose_bid(current_bid, 10, ...).
+const MIN_INCREMENT = 10
 
 export interface AuctionFlowProps {
   initialHands: Hands
@@ -31,9 +35,9 @@ export interface AuctionFlowProps {
  * 3-card pass, mounted into the Table scaffold (#33) so the human always
  * sees seats/hands/scoreboard behind whichever control is active. Human
  * turns wait for input via BiddingControls/TrumpSelector/PassSelector; AI
- * turns resolve automatically (bidding.ts valuation + mock/aiDecisions.ts
- * stand-ins for #29, passing.ts's real choosePassCards) and always log a
- * visible AuctionLog entry — no AI decision happens silently.
+ * turns resolve automatically (bidding.ts's real chooseBid/chooseTrump
+ * (#29), passing.ts's real choosePassCards) and always log a visible
+ * AuctionLog entry — no AI decision happens silently.
  */
 export function AuctionFlow({ initialHands, seatNames, humanPlayer, dealer, scoresByTeam, onComplete }: AuctionFlowProps) {
   const [state, dispatch] = useReducer(
@@ -51,14 +55,14 @@ export function AuctionFlow({ initialHands, seatNames, humanPlayer, dealer, scor
     if (state.phase === 'bidding') {
       const turn = state.bidding.turn
       if (turn === humanPlayer) return
-      const decision = aiDecideBid(
-        turn,
-        state.hands[turn],
-        state.bidding.currentBid,
-        state.bidding.everBid,
-        state.bidding.lastBidder,
-        state.scoresByTeam,
-      )
+      const context: AuctionContext = {
+        everBid: state.bidding.everBid,
+        passesSoFar: state.bidding.passes,
+        bidHistory: state.bidding.bidHistory,
+        dealer: state.dealer,
+        scores: state.scoresByTeam,
+      }
+      const decision = chooseBid(turn, state.hands[turn], state.bidding.currentBid, MIN_INCREMENT, context)
       if (decision === null) dispatch({ type: 'PASS_BID', player: turn })
       else dispatch({ type: 'BID', player: turn, amount: decision })
       return
@@ -66,7 +70,7 @@ export function AuctionFlow({ initialHands, seatNames, humanPlayer, dealer, scor
 
     if (state.phase === 'trump') {
       if (state.bidWinner === null || state.bidWinner === humanPlayer) return
-      const suit = aiChooseTrump(state.hands[state.bidWinner])
+      const suit = chooseTrump(state.hands[state.bidWinner])
       dispatch({ type: 'CHOOSE_TRUMP', player: state.bidWinner, suit })
       return
     }

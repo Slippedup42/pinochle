@@ -12,6 +12,7 @@
 // someone has actually bid. If nobody ever bids, the dealer is forced to
 // take it at FORCED_BID (card.ts).
 
+import type { BidRecord } from '../engine/bidding'
 import { FORCED_BID, type Card, type Suit } from '../engine/card'
 import type { Hands, TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
@@ -25,6 +26,8 @@ interface BiddingSubstate {
   readonly passes: number
   readonly bidWinner: PlayerIndex | null
   readonly lastBidder: PlayerIndex | null
+  /** Every bid placed this auction, in order — feeds chooseBid's AuctionContext. */
+  readonly bidHistory: readonly BidRecord[]
 }
 
 export type AuctionPhase =
@@ -72,6 +75,7 @@ export function initAuctionState(
       passes: 0,
       bidWinner: null,
       lastBidder: null,
+      bidHistory: [],
     },
     bidWinner: null,
     bid: 0,
@@ -127,6 +131,7 @@ export function auctionReducer(state: AuctionState, action: AuctionAction): Auct
         bidWinner: player,
         lastBidder: player,
         turn: ((player + 1) % 4) as PlayerIndex,
+        bidHistory: [...state.bidding.bidHistory, { player, amount }],
       }
       const log: AuctionLogEntry[] = [
         ...state.log,
