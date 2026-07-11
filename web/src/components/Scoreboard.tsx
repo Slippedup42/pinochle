@@ -20,6 +20,12 @@ export function Scoreboard({ scoresByTeam, currentBid, bidWinnerName, trumpSuit 
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 bg-green-950 px-4 py-2 text-sm text-white shadow-md">
       <span>
+        Trump:{' '}
+        <span className={`text-lg font-semibold ${trumpColor}`}>
+          {trumpSuit ? SUIT_GLYPH[trumpSuit] : '—'}
+        </span>
+      </span>
+      <span>
         Team A: <span className="font-semibold">{scoresByTeam[0]}</span>
       </span>
       <span>
@@ -28,12 +34,6 @@ export function Scoreboard({ scoresByTeam, currentBid, bidWinnerName, trumpSuit 
       <span>
         Bid: <span className="font-semibold">{currentBid || '—'}</span>
         {bidWinnerName ? ` (${bidWinnerName})` : ''}
-      </span>
-      <span>
-        Trump:{' '}
-        <span className={`text-lg font-semibold ${trumpColor}`}>
-          {trumpSuit ? SUIT_GLYPH[trumpSuit] : '—'}
-        </span>
       </span>
     </div>
   )
