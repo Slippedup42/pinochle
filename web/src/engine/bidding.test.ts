@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { Card, Suit } from './card'
+import { describe, expect, it, vi } from 'vitest'
+import { Card, OPENING_BID, Suit } from './card'
 import {
   ACE_VALUE,
+  type AuctionContext,
   bestBaseBid,
   cappedBid,
+  chooseBid,
+  chooseTrump,
   computeBaseBid,
   computeCompetitiveAdjustment,
   computeMaxBid,
@@ -171,5 +174,173 @@ describe('bestBaseBid', () => {
     const { trump: bestTrump, total } = bestBaseBid(hand, 100, 50)
     const { total: rawTotal } = computeMaxBid(hand, bestTrump, 100, 50)
     expect(total).toBe(cappedBid(hand, bestTrump, rawTotal))
+  })
+})
+
+describe('chooseTrump', () => {
+  it('picks the same trump bestBaseBid would', () => {
+    const hand = [
+      ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
+      new Card(Suit.Spades, '9', 1),
+      new Card(Suit.Diamonds, '9', 1),
+    ]
+    expect(chooseTrump(hand)).toBe(Suit.Hearts)
+  })
+})
+
+describe('chooseBid', () => {
+  // Weak hand: a lone off-trump 9. Ceiling stays well under
+  // OPENER_THRESHOLD no matter which suit bestBaseBid picks as trump.
+  const weakHand = [new Card(Suit.Hearts, '9', 1)]
+
+  // Base Bid 170 (Run 150 + 1 Ace worth 20) -> ceiling 300 at the default
+  // 0/0 score adjustment (+130 baseline). Below OPENER_THRESHOLD (320).
+  const runOnlyHand = RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1))
+
+  // Base Bid 210 (Run 150 + extra Royal Marriage 40 + Ace 20) -> ceiling
+  // 340 at the default 0/0 adjustment (+130 baseline). Clears both
+  // OPENER_THRESHOLD (320) and the 340 raise-support gate.
+  const strongHand = [
+    ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
+    new Card(Suit.Hearts, 'K', 2),
+    new Card(Suit.Hearts, 'Q', 2),
+  ]
+
+  const baseContext = (overrides: Partial<AuctionContext> = {}): AuctionContext => ({
+    everBid: false,
+    passesSoFar: 0,
+    bidHistory: [],
+    dealer: 2,
+    scores: { 0: 0, 1: 0 },
+    ...overrides,
+  })
+
+  describe('without a context (fallback)', () => {
+    it('passes when the coin flip lands under 0.6', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.1)
+      expect(chooseBid(0, weakHand, 300, 10)).toBeNull()
+      vi.restoreAllMocks()
+    })
+
+    it('raises by minIncrement when the coin flip lands at/over 0.6', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9)
+      expect(chooseBid(0, weakHand, 300, 10)).toBe(310)
+      vi.restoreAllMocks()
+    })
+  })
+
+  describe('no one has bid yet', () => {
+    it('opens when the ceiling clears OPENER_THRESHOLD', () => {
+      // Player 0's partner is player 2 (0<->2 seating); use dealer 1 so
+      // dealer-protection (which keys off the partner being dealer)
+      // doesn't fire here.
+      const context = baseContext({ dealer: 1 })
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
+    })
+
+    it('passes when the ceiling does not clear OPENER_THRESHOLD', () => {
+      const context = baseContext({ dealer: 1 })
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context)).toBeNull()
+    })
+
+    it('always opens (dealer-protection) when partner is dealer and my score is >= 850 with opponent under 500', () => {
+      // Player 0's partner is player 2 (0<->2 seating).
+      const context = baseContext({ dealer: 2, scores: { 0: 850, 1: 400 } })
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
+    })
+
+    it('does not trigger dealer-protection when the opponent score is not under 500', () => {
+      const context = baseContext({ dealer: 2, scores: { 0: 850, 1: 500 } })
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
+    })
+
+    it('3rd bidder (2 passes so far) always opens cheap when my score is not above 800', () => {
+      const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
+    })
+
+    it('3rd bidder falls back to the normal threshold once my score is above 800', () => {
+      // oppScore kept above 500 so the "closing out the game" competitive
+      // adjustment bucket (+100) doesn't kick in and change the ceiling -
+      // this test is purely about the passes_so_far===2 threshold gate.
+      const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 850, 1: 600 } })
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
+    })
+  })
+
+  describe('my team currently holds the bid', () => {
+    it('backs off once my partner has bid twice this auction', () => {
+      const context = baseContext({
+        everBid: true,
+        bidHistory: [
+          { player: 2, amount: 300 },
+          { player: 1, amount: 310 },
+          { player: 2, amount: 320 },
+        ],
+      })
+      expect(chooseBid(0, strongHand, 320, 10, context)).toBeNull()
+    })
+
+    it('matches a partner raise over my own earlier bid when the ceiling supports it', () => {
+      const context = baseContext({
+        everBid: true,
+        bidHistory: [
+          { player: 0, amount: 300 },
+          { player: 1, amount: 310 },
+          { player: 2, amount: 320 },
+        ],
+      })
+      expect(chooseBid(0, strongHand, 320, 10, context)).toBe(330)
+    })
+
+    it('backs off a partner raise over my own earlier bid when the ceiling does not support it', () => {
+      const context = baseContext({
+        everBid: true,
+        bidHistory: [
+          { player: 0, amount: 300 },
+          { player: 1, amount: 310 },
+          { player: 2, amount: 320 },
+        ],
+      })
+      expect(chooseBid(0, weakHand, 320, 10, context)).toBeNull()
+    })
+
+    it('leaves its own standing bid alone (last bidder was me, not partner)', () => {
+      const context = baseContext({
+        everBid: true,
+        bidHistory: [
+          { player: 1, amount: 300 },
+          { player: 0, amount: 310 },
+        ],
+      })
+      expect(chooseBid(0, strongHand, 310, 10, context)).toBeNull()
+    })
+  })
+
+  describe('the opponents currently hold the bid', () => {
+    it('raises when the next bid is within my ceiling', () => {
+      const context = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 300 }] })
+      expect(chooseBid(0, strongHand, 300, 10, context)).toBe(310)
+    })
+
+    it('passes when the next bid exceeds my ceiling', () => {
+      const context = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 300 }] })
+      expect(chooseBid(0, runOnlyHand, 300, 10, context)).toBeNull()
+    })
+
+    it('relaxes the ceiling to at least 330 once my partner has bid', () => {
+      const withoutPartnerBid = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 320 }] })
+      expect(chooseBid(0, runOnlyHand, 320, 10, withoutPartnerBid)).toBeNull()
+
+      const withPartnerBid = baseContext({
+        everBid: true,
+        bidHistory: [
+          { player: 2, amount: 300 },
+          { player: 1, amount: 320 },
+        ],
+      })
+      expect(chooseBid(0, runOnlyHand, 320, 10, withPartnerBid)).toBe(330)
+    })
   })
 })

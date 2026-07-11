@@ -22,6 +22,11 @@ export function teamOf(player: PlayerIndex): TeamId {
   return (player % 2) as TeamId
 }
 
+/** The other player on the same team, per the fixed seating (0<->2, 1<->3). */
+export function partnerOf(player: PlayerIndex): PlayerIndex {
+  return ((player + 2) % 4) as PlayerIndex
+}
+
 export type Hands = [Card[], Card[], Card[], Card[]]
 
 /**
