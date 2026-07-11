@@ -1,0 +1,188 @@
+// Round/game state machine backing GameFlow.tsx (#47). Split into its own
+// module (rather than living in GameFlow.tsx) so the component file only
+// exports the component — oxlint's react/only-export-components rule flags
+// mixed component+logic exports since it breaks fast refresh (same reason
+// auctionReducer.ts/trickPlayReducer.ts are split out from their
+// components).
+//
+// This is the phase *above* AuctionFlow (#34)/TrickPlayFlow (#35): it
+// doesn't reimplement bidding or trick-taking, it decides which of those
+// phase components is mounted and carries their results (AuctionResult,
+// TrickPlayResult) into round scoring (melds.ts/round.ts's scoreRound) and
+// game-over detection (game.ts's checkGameOutcome), then loops into the
+// next round or ends the game. Dealing and the misdeal/reshuffle house rule
+// (pinochle_rules.md) live here too, since a reshuffle has to happen before
+// the auction even starts — the phase components below only ever receive
+// an already-finalized hand.
+
+import { checkGameOutcome } from '../engine/game'
+import { scoreMelds } from '../engine/melds'
+import { scoreRound, teamOf, type Hands, type TeamId } from '../engine/round'
+import type { PlayerIndex } from '../engine/trick'
+import type { AuctionResult } from './auctionTypes'
+import type { GameOverData, RoundSummaryData } from './scoreTypes'
+import type { TrickPlayResult } from './trickPlayTypes'
+
+export type GameFlowPhase =
+  | 'dealing'
+  | 'misdeal-check'
+  | 'auction'
+  | 'trick-play'
+  | 'round-summary'
+  | 'game-over'
+
+export interface GameFlowState {
+  readonly phase: GameFlowPhase
+  readonly hands: Hands
+  readonly dealer: PlayerIndex
+  /** Cumulative game score per team, carried across rounds. */
+  readonly scoresByTeam: Record<TeamId, number>
+  /** Seat (0..3) the misdeal check has reached; 4 once every seat has been
+   * cleared without a reshuffle, per human_play.py's `_check_misdeal` loop
+   * over `self.players` in fixed seat order. */
+  readonly misdealCheckIndex: number
+  readonly auctionResult: AuctionResult | null
+  readonly roundSummary: RoundSummaryData | null
+  readonly gameOverData: GameOverData | null
+}
+
+export type GameFlowAction =
+  | { readonly type: 'HANDS_DEALT'; readonly hands: Hands }
+  | { readonly type: 'MISDEAL_ADVANCE' }
+  | { readonly type: 'MISDEAL_RESHUFFLE' }
+  | { readonly type: 'AUCTION_COMPLETE'; readonly result: AuctionResult }
+  | { readonly type: 'TRICK_COMPLETE'; readonly result: TrickPlayResult }
+  | { readonly type: 'CONTINUE_ROUND' }
+  | { readonly type: 'NEW_GAME'; readonly dealer: PlayerIndex }
+
+// Static table config GameFlow.tsx renders with — split out here (rather
+// than exported alongside the component) so GameFlow.tsx only exports the
+// component itself; oxlint's react/only-export-components rule flags mixed
+// component+value exports since it breaks fast refresh (same reason these
+// don't live in AuctionFlow.tsx/TrickPlayFlow.tsx either).
+export const SEAT_NAMES: Record<PlayerIndex, string> = {
+  0: 'You',
+  1: 'West',
+  2: 'Partner',
+  3: 'East',
+}
+export const HUMAN_PLAYER: PlayerIndex = 0
+export const INITIAL_DEALER: PlayerIndex = 3
+
+const TEAM_IDS: readonly TeamId[] = [0, 1]
+
+export function initGameFlowState(dealer: PlayerIndex): GameFlowState {
+  return {
+    phase: 'dealing',
+    hands: [[], [], [], []] as Hands,
+    dealer,
+    scoresByTeam: { 0: 0, 1: 0 },
+    misdealCheckIndex: 0,
+    auctionResult: null,
+    roundSummary: null,
+    gameOverData: null,
+  }
+}
+
+/** Melds each hand (post-pass, pre-trick, i.e. still the full 12 cards)
+ * under trump, summed per team — the missing ingredient (alongside
+ * TrickPlayResult's trick points) `scoreRound` needs. */
+function meldPointsByTeam(
+  hands: AuctionResult['hands'],
+  trumpSuit: AuctionResult['trumpSuit'],
+): Record<TeamId, number> {
+  const totals: Record<TeamId, number> = { 0: 0, 1: 0 }
+  for (let i = 0; i < 4; i++) {
+    const player = i as PlayerIndex
+    const { total } = scoreMelds(hands[player], trumpSuit)
+    totals[teamOf(player)] += total
+  }
+  return totals
+}
+
+export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): GameFlowState {
+  switch (action.type) {
+    case 'HANDS_DEALT': {
+      return {
+        ...state,
+        hands: action.hands,
+        misdealCheckIndex: 0,
+        phase: 'misdeal-check',
+        auctionResult: null,
+        roundSummary: null,
+      }
+    }
+    case 'MISDEAL_ADVANCE': {
+      if (state.phase !== 'misdeal-check') return state
+      const nextIndex = state.misdealCheckIndex + 1
+      if (nextIndex >= 4) return { ...state, phase: 'auction', misdealCheckIndex: nextIndex }
+      return { ...state, misdealCheckIndex: nextIndex }
+    }
+    case 'MISDEAL_RESHUFFLE': {
+      if (state.phase !== 'misdeal-check') return state
+      // Redeal and recheck from scratch — a fresh deal could hand 5+ nines
+      // to someone else, or the same player again (pinochle_rules.md).
+      return { ...state, phase: 'dealing' }
+    }
+    case 'AUCTION_COMPLETE': {
+      if (state.phase !== 'auction') return state
+      return { ...state, phase: 'trick-play', auctionResult: action.result }
+    }
+    case 'TRICK_COMPLETE': {
+      if (state.phase !== 'trick-play' || state.auctionResult === null) return state
+      const { hands, trumpSuit, bidWinner, bid } = state.auctionResult
+      const meldPoints = meldPointsByTeam(hands, trumpSuit)
+      const bidWinnerTeam = teamOf(bidWinner)
+      const roundScoreByTeam = scoreRound({
+        meldPointsByTeam: meldPoints,
+        trickPointsByTeam: action.result.trickPointsByTeam,
+        bidWinnerTeam,
+        bid,
+      })
+      const cumulativeScoresByTeam: Record<TeamId, number> = { 0: 0, 1: 0 }
+      for (const team of TEAM_IDS) {
+        cumulativeScoresByTeam[team] = state.scoresByTeam[team] + roundScoreByTeam[team]
+      }
+      const roundSummary: RoundSummaryData = {
+        meldPointsByTeam: meldPoints,
+        trickPointsByTeam: action.result.trickPointsByTeam,
+        roundScoreByTeam,
+        bidWinnerTeam,
+        bid,
+        cumulativeScoresByTeam,
+      }
+      return { ...state, phase: 'round-summary', roundSummary, scoresByTeam: cumulativeScoresByTeam }
+    }
+    case 'CONTINUE_ROUND': {
+      if (state.phase !== 'round-summary' || state.roundSummary === null) return state
+      const winner = checkGameOutcome(state.scoresByTeam, state.roundSummary.bidWinnerTeam)
+      if (winner !== null) {
+        return {
+          ...state,
+          phase: 'game-over',
+          gameOverData: { winningTeam: winner, finalScoresByTeam: state.scoresByTeam },
+        }
+      }
+      return {
+        ...state,
+        phase: 'dealing',
+        dealer: ((state.dealer + 1) % 4) as PlayerIndex,
+        auctionResult: null,
+        roundSummary: null,
+      }
+    }
+    case 'NEW_GAME': {
+      return {
+        ...state,
+        phase: 'dealing',
+        dealer: action.dealer,
+        scoresByTeam: { 0: 0, 1: 0 },
+        auctionResult: null,
+        roundSummary: null,
+        gameOverData: null,
+      }
+    }
+    default:
+      return state
+  }
+}

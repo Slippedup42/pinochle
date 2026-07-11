@@ -119,10 +119,20 @@ function resolveBiddingOutcome(state: AuctionState): AuctionState {
   return { ...state, phase: 'trump', bidWinner: state.dealer, bid: FORCED_BID, log }
 }
 
+// BID/PASS_BID both require action.player === state.bidding.turn (unlike
+// CHOOSE_TRUMP/PASS_CARDS below, which are adequately guarded by their
+// phase check alone, since only one player can ever act in those phases at
+// a time). Bidding cycles through several players within the same
+// 'bidding' phase, so a phase-only guard would let a stale/duplicate
+// dispatch for a player who isn't up re-apply itself once turn has already
+// moved on — e.g. React StrictMode's dev-mode double effect invocation
+// firing an AI seat's decision twice on mount, which without this guard
+// double-counted that seat's pass and logged it twice. Mirrors
+// trickPlayReducer.ts's PLAY_CARD guard (`action.player !== state.turn`).
 export function auctionReducer(state: AuctionState, action: AuctionAction): AuctionState {
   switch (action.type) {
     case 'BID': {
-      if (state.phase !== 'bidding') return state
+      if (state.phase !== 'bidding' || action.player !== state.bidding.turn) return state
       const { player, amount } = action
       const bidding: BiddingSubstate = {
         ...state.bidding,
@@ -140,7 +150,7 @@ export function auctionReducer(state: AuctionState, action: AuctionAction): Auct
       return resolveBiddingOutcome({ ...state, bidding, log })
     }
     case 'PASS_BID': {
-      if (state.phase !== 'bidding') return state
+      if (state.phase !== 'bidding' || action.player !== state.bidding.turn) return state
       const { player } = action
       const active = [...state.bidding.active] as [boolean, boolean, boolean, boolean]
       active[player] = false
