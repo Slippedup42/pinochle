@@ -25,6 +25,23 @@ Ace → 10 → King → Queen → Jack → 9
 Note the 10 outranks the King — this is the one place Pinochle diverges
 from standard card-game rank order.
 
+## Misdeal / Reshuffle (House Rule)
+
+- House rule, not part of the original historical ruleset — added for
+  this project.
+- After the deal, any player holding **5 or more nines** may request a
+  reshuffle, checked at that player's own first bid turn (before they'd
+  otherwise act in the auction).
+- AI players always take the reshuffle when eligible: a hand that heavy
+  in the lowest-value rank statistically plays like ~5 losing tricks
+  with little meld, and a fresh deal is almost always better
+  statistically. Human players are asked and may decline.
+- Taking the reshuffle means a full redeal; the misdeal check restarts
+  from scratch afterward (a new deal could hand 5+ nines to someone
+  else, or the same player again).
+- Applies uniformly across every game mode (human and AI-only alike) —
+  it's a rule of the deal itself, not a UI-only convenience.
+
 ## Phase 1: Bidding
 
 - Opening bid: **300**. Minimum raise: **10**.
@@ -153,3 +170,12 @@ Legal-move rules, applied in order:
   most-cards-held trump choice, random passing, first-legal-move play).
   These are the seams where real strategy (or human input) gets added
   next — the rules engine itself doesn't need to change for that.
+- The misdeal/reshuffle house rule above is only implemented in
+  `human_play.py`'s `InteractiveRound._check_misdeal` — the core
+  `Round.run()` used by AI-only games never calls it, so AI-vs-AI games
+  and tournament-sim runs currently skip reshuffles entirely. Known
+  Python-side parity gap, deferred with the rest of Phase 2 hardening
+  (see ROADMAP.md) since `pinochle_engine.py` is now a frozen reference
+  for the TS port rather than an active target. The TS port's dealing
+  flow (`round.ts`) should implement this rule correctly from the
+  start rather than inheriting the gap.
