@@ -29,6 +29,16 @@ export interface TableState {
   /** null before the auction (#34) has a winner. */
   readonly bidWinner: PlayerIndex | null
   readonly scoresByTeam: Record<TeamId, number>
+  /** Trick-play (#35): legal cards for the human's turn to play, and the
+   * callback to fire when one of them is clicked/tapped. Omitted outside
+   * the human's trick-play turn (auction phases, AI turns, mid-settle) —
+   * the human's hand then renders as plain, non-interactive cards, same as
+   * during the auction. */
+  readonly humanPlayable?: { readonly legalCards: readonly Card[]; readonly onPlay: (card: Card) => void }
+  /** Trick-play (#35): the just-completed trick's winner, highlighted in
+   * TrickArea while it settles before being cleared for the next trick.
+   * null/undefined outside that settle pause. */
+  readonly trickWinner?: PlayerIndex | null
 }
 
 /** Table position, independent of PlayerIndex — the human seat is always

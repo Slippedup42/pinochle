@@ -29,7 +29,8 @@ const POSITION_GRID_CLASS: Record<SeatPosition, string> = {
  * most likely inside/near the human seat and the TrickArea respectively.
  */
 export function Table({ state, overlay, logPanel }: TableProps) {
-  const { seats, humanPlayer, trick, trumpSuit, currentBid, bidWinner, scoresByTeam } = state
+  const { seats, humanPlayer, trick, trumpSuit, currentBid, bidWinner, scoresByTeam, humanPlayable, trickWinner } =
+    state
   const bidWinnerSeat = bidWinner === null ? undefined : seats.find((seat) => seat.player === bidWinner)
 
   return (
@@ -51,11 +52,12 @@ export function Table({ state, overlay, logPanel }: TableProps) {
               position={seatPosition(seat.player, humanPlayer)}
               isHuman={seat.player === humanPlayer}
               isBidWinner={seat.player === bidWinner}
+              playable={seat.player === humanPlayer ? humanPlayable : undefined}
             />
           </div>
         ))}
         <div className="col-start-2 row-start-2">
-          <TrickArea trick={trick} humanPlayer={humanPlayer} />
+          <TrickArea trick={trick} humanPlayer={humanPlayer} winningPlayer={trickWinner} />
         </div>
       </div>
       {logPanel && <div className="absolute top-16 right-2">{logPanel}</div>}
