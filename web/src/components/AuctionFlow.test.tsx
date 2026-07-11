@@ -25,6 +25,7 @@ describe('auctionReducer', () => {
     expect(next.bidding.bidWinner).toBe(0)
     expect(next.bidding.turn).toBe(1)
     expect(next.phase).toBe('bidding')
+    expect(next.bidding.bidHistory).toEqual([{ player: 0, amount: 300 }])
     expect(next.log).toEqual([{ kind: 'bid', player: 0, name: 'You', amount: 300 }])
   })
 
@@ -49,6 +50,10 @@ describe('auctionReducer', () => {
     state = auctionReducer(state, { type: 'BID', player: 3, amount: 310 })
     expect(state.phase).toBe('bidding')
     expect(state.bidding.bidWinner).toBe(3)
+    expect(state.bidding.bidHistory).toEqual([
+      { player: 0, amount: 300 },
+      { player: 3, amount: 310 },
+    ])
     state = auctionReducer(state, { type: 'PASS_BID', player: 0 })
     expect(state.phase).toBe('trump')
     expect(state.bidWinner).toBe(3)
@@ -117,9 +122,11 @@ describe('auctionReducer', () => {
 //
 // AI seats (1, 2, 3) are dealt intentionally weak 3-card hands (no aces,
 // marriages, runs, or arounds) so bidding.ts's bestBaseBid ceiling stays
-// well under OPENER_THRESHOLD (320) and mock/aiDecisions.ts's aiDecideBid
-// always passes for them — makes the human's path through the whole
-// auction/trump/pass flow deterministic without stubbing the engine.
+// well under OPENER_THRESHOLD (320) and chooseBid always passes for them
+// (opening threshold not cleared, and the raise ceiling in the
+// opponent-holds-the-bid branch is never reached either) — makes the
+// human's path through the whole auction/trump/pass flow deterministic
+// without stubbing the engine.
 
 function buildTestHands(): [Card[], Card[], Card[], Card[]] {
   const human = [
@@ -185,5 +192,59 @@ describe('AuctionFlow (component)', () => {
     // The auction/pass log surfaced every AI decision along the way.
     expect(screen.getByText('West passed')).not.toBeNull()
     expect(screen.getByText('Partner passed 3 cards to You')).not.toBeNull()
+  })
+
+  it('lets a weak-handed AI 3rd bidder open anyway, per chooseBid\'s "3rd bidder opens cheap" rule', () => {
+    // All 4 hands here are weak (bestBaseBid ceiling well under
+    // OPENER_THRESHOLD) — under the old mock/aiDecisions.ts stand-in every
+    // seat would just pass. The real chooseBid wrapper (#29) still opens
+    // for the 3rd bidder (2 prior passes, nobody's bid yet, score under
+    // 800) regardless of hand strength, so this exercises a decision the
+    // mock never made.
+    const hands = buildTestHands()
+    const onComplete = vi.fn()
+
+    render(
+      <AuctionFlow
+        initialHands={hands}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        dealer={3}
+        scoresByTeam={SCORES}
+        onComplete={onComplete}
+      />,
+    )
+
+    // Left of dealer (3) is seat 0 — the human passes first, then West
+    // (weak hand, not yet the 3rd bidder) passes too. Partner is now the
+    // 3rd bidder (2 passes so far, nobody's bid) and opens at OPENING_BID
+    // despite a weak hand; East (opponent, weak hand) then passes, ending
+    // the auction with Partner as bid winner.
+    fireEvent.click(screen.getByRole('button', { name: 'Pass' }))
+
+    expect(screen.getByText('You passed')).not.toBeNull()
+    expect(screen.getByText('West passed')).not.toBeNull()
+    expect(screen.getByText('Partner bid 300')).not.toBeNull()
+    expect(screen.getByText('East passed')).not.toBeNull()
+
+    // Partner's own hand (9C, JD, 10S) values highest at Clubs (the lone
+    // Dix) — chooseTrump picks it automatically since the bid winner is AI.
+    expect(screen.getByText('Partner named Clubs trump')).not.toBeNull()
+
+    // Bid winner is Partner (AI) — the human is Partner's partner, so the
+    // human is the sender on the first (partner-to-bidder) pass leg.
+    const passHeading = screen.getByRole('heading', { name: /Choose 3 cards to pass/ })
+    const passPanel = within(passHeading.closest('div') as HTMLElement)
+
+    fireEvent.click(passPanel.getByRole('img', { name: 'A of C' }))
+    fireEvent.click(passPanel.getByRole('img', { name: 'K of D' }))
+    fireEvent.click(passPanel.getByRole('img', { name: 'Q of H' }))
+    fireEvent.click(passPanel.getByRole('button', { name: 'Confirm pass' }))
+
+    expect(onComplete).toHaveBeenCalledOnce()
+    const result = onComplete.mock.calls[0][0] as AuctionResult
+    expect(result.bidWinner).toBe(2)
+    expect(result.bid).toBe(300)
+    expect(result.trumpSuit).toBe(Suit.Clubs)
   })
 })
