@@ -1,3 +1,4 @@
+import type { Card } from '../engine/card'
 import { type Rank, Suit } from '../engine/card'
 import { PlayingCard } from './PlayingCard'
 import type { SeatPosition, SeatState } from './tableTypes'
@@ -7,6 +8,12 @@ export interface SeatProps {
   position: SeatPosition
   isHuman: boolean
   isBidWinner: boolean
+  /** Trick-play (#35): legal cards for the human's turn to play, and the
+   * callback to fire on a legal card's click/tap. Legal cards render
+   * highlighted and clickable; illegal ones render dimmed and disabled.
+   * Omit entirely to render the hand as plain, non-interactive cards (the
+   * auction phases, or any AI seat). */
+  playable?: { legalCards: readonly Card[]; onPlay: (card: Card) => void }
 }
 
 // Placeholder face used for AI seats' face-down fan. The suit/rank props
@@ -28,7 +35,7 @@ const POSITION_LAYOUT: Record<SeatPosition, string> = {
  * sized to their card count — never the actual cards, since an AI's hand
  * is hidden information from the human player's point of view.
  */
-export function Seat({ seat, position, isHuman, isBidWinner }: SeatProps) {
+export function Seat({ seat, position, isHuman, isBidWinner, playable }: SeatProps) {
   return (
     <div className={`flex gap-1 ${POSITION_LAYOUT[position]}`}>
       <div className="flex items-center gap-2 text-sm font-medium">
@@ -44,14 +51,33 @@ export function Seat({ seat, position, isHuman, isBidWinner }: SeatProps) {
       </div>
       {isHuman ? (
         <div className="flex flex-wrap justify-center gap-1 overflow-x-auto">
-          {seat.hand.map((card) => (
-            <PlayingCard
-              key={card.toString()}
-              suit={card.suit}
-              rank={card.rank}
-              className="-ml-10 first:ml-0"
-            />
-          ))}
+          {seat.hand.map((card) => {
+            const cardFace = <PlayingCard suit={card.suit} rank={card.rank} />
+            if (!playable) {
+              return (
+                <div key={card.toString()} className="-ml-10 first:ml-0">
+                  {cardFace}
+                </div>
+              )
+            }
+            const isLegal = playable.legalCards.includes(card)
+            return (
+              <button
+                key={card.toString()}
+                type="button"
+                disabled={!isLegal}
+                onClick={() => playable.onPlay(card)}
+                aria-label={`Play ${card.rank} of ${card.suit}`}
+                className={`-ml-10 first:ml-0 rounded-lg transition-transform ${
+                  isLegal
+                    ? 'cursor-pointer ring-2 ring-amber-400 hover:-translate-y-2'
+                    : 'cursor-not-allowed opacity-40'
+                }`}
+              >
+                {cardFace}
+              </button>
+            )
+          })}
         </div>
       ) : (
         <div className="flex overflow-x-auto px-2">

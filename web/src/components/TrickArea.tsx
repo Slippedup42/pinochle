@@ -5,6 +5,10 @@ import { seatPosition, type SeatPosition } from './tableTypes'
 export interface TrickAreaProps {
   trick: readonly TrickPlay[]
   humanPlayer: PlayerIndex
+  /** Trick-play (#35): highlights the just-completed trick's winning card
+   * while it settles, before TrickPlayFlow clears it for the next trick.
+   * null/undefined outside that pause (nothing highlighted). */
+  winningPlayer?: PlayerIndex | null
 }
 
 const POSITION_CLASS: Record<SeatPosition, string> = {
@@ -20,11 +24,16 @@ const POSITION_CLASS: Record<SeatPosition, string> = {
  * until a seat has played, so a trick in progress shows 1-3 cards and a
  * completed-but-not-yet-cleared trick shows all 4.
  */
-export function TrickArea({ trick, humanPlayer }: TrickAreaProps) {
+export function TrickArea({ trick, humanPlayer, winningPlayer }: TrickAreaProps) {
   return (
     <div className="grid aspect-square w-full max-w-72 grid-cols-3 grid-rows-3 items-center justify-items-center rounded-full bg-green-950/40">
       {trick.map((play) => (
-        <div key={play.player} className={POSITION_CLASS[seatPosition(play.player, humanPlayer)]}>
+        <div
+          key={play.player}
+          className={`rounded-lg ${POSITION_CLASS[seatPosition(play.player, humanPlayer)]} ${
+            play.player === winningPlayer ? 'ring-4 ring-amber-400' : ''
+          }`}
+        >
           <PlayingCard suit={play.card.suit} rank={play.card.rank} />
         </div>
       ))}
