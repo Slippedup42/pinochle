@@ -114,4 +114,36 @@ describe('choosePassCards', () => {
     expect(choosePassCards(hand, 3, Suit.Spades, true)).toHaveLength(3)
     expect(choosePassCards(hand, 3, Suit.Spades, false)).toHaveLength(3)
   })
+
+  // Parity with the Python fallback-padding safety net (pinochle_engine.py:913-916):
+  // both bidderPassSelection and partnerPassSelection end in a catch-all "take
+  // anything left" tier, so in practice they always fill `count` on their own
+  // whenever the hand has at least `count` cards - the padding branch in
+  // choosePassCards is defensive and normally never adds anything. These tests
+  // exercise that branch directly via a hand smaller than `count`, where the
+  // strategy necessarily under-fills and there's nothing left in the pool to pad
+  // with. Python's `random.sample(remaining, count - len(chosen))` would raise
+  // ValueError there (sample size > population); the TS port degrades
+  // gracefully instead, returning every card the hand actually has.
+  it('degrades gracefully (no throw, no duplicates) when the hand has fewer cards than `count`', () => {
+    const hand = [new Card(Suit.Hearts, '9', 1), new Card(Suit.Clubs, '9', 1)]
+
+    const asBidder = choosePassCards(hand, 3, Suit.Spades, true)
+    expect(asBidder).toHaveLength(hand.length)
+    expect(new Set(asBidder).size).toBe(asBidder.length)
+    for (const c of asBidder) expect(hand).toContain(c)
+
+    const asPartner = choosePassCards(hand, 3, Suit.Spades, false)
+    expect(asPartner).toHaveLength(hand.length)
+    expect(new Set(asPartner).size).toBe(asPartner.length)
+    for (const c of asPartner) expect(hand).toContain(c)
+  })
+
+  it('never fabricates or duplicates cards when padding a single-card hand', () => {
+    const onlyCard = new Card(Suit.Diamonds, '9', 1)
+    const hand = [onlyCard]
+
+    expect(choosePassCards(hand, 3, Suit.Hearts, true)).toEqual([onlyCard])
+    expect(choosePassCards(hand, 3, Suit.Hearts, false)).toEqual([onlyCard])
+  })
 })
