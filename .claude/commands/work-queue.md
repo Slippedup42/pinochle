@@ -39,7 +39,16 @@ haven't already this session.
 6. **Start work.** For the top 2-3 low-hanging-fruit issues, dispatch
    a background agent per issue (Agent tool, `run_in_background: true`)
    to implement it on its own branch and open a PR per the project's
-   established branch -> PR -> merge convention - don't merge without
-   the user's review unless they've said otherwise for this session.
-   Tell the user which issues are now in progress and where to expect
-   the PRs.
+   established branch -> PR -> merge convention. Tell the user which
+   issues are now in progress and where to expect the PRs.
+
+7. **Merge when ready.** "Draining the queue" means landing the work,
+   not just opening PRs and stopping. As each dispatched agent's PR
+   comes back, check it's mergeable (`gh pr view --json
+   mergeable,mergeStateStatus`) and merge it (`gh pr merge --merge
+   --delete-branch`) rather than leaving it for manual review, unless
+   something about the PR looks genuinely wrong (failing checks,
+   conflicts, a change that looks off - in which case flag it to the
+   user instead of merging). If multiple PRs from the same run touch
+   overlapping code, merge one at a time and re-check mergeability on
+   the rest before merging the next.
