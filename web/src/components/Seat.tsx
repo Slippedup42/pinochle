@@ -14,6 +14,10 @@ export interface SeatProps {
    * Omit entirely to render the hand as plain, non-interactive cards (the
    * auction phases, or any AI seat). */
   playable?: { legalCards: readonly Card[]; onPlay: (card: Card) => void }
+  /** Options toggle (#54): when true, an AI seat renders only its name/card
+   * count — the face-down fan is skipped entirely to save screen space.
+   * No-op for the human seat, which always renders its real hand. */
+  hideOpponentHand?: boolean
 }
 
 // Placeholder face used for AI seats' face-down fan. The suit/rank props
@@ -35,7 +39,7 @@ const POSITION_LAYOUT: Record<SeatPosition, string> = {
  * sized to their card count — never the actual cards, since an AI's hand
  * is hidden information from the human player's point of view.
  */
-export function Seat({ seat, position, isHuman, isBidWinner, playable }: SeatProps) {
+export function Seat({ seat, position, isHuman, isBidWinner, playable, hideOpponentHand }: SeatProps) {
   return (
     <div className={`flex gap-1 ${POSITION_LAYOUT[position]}`}>
       <div className="flex items-center gap-2 text-sm font-medium">
@@ -79,7 +83,7 @@ export function Seat({ seat, position, isHuman, isBidWinner, playable }: SeatPro
             )
           })}
         </div>
-      ) : (
+      ) : hideOpponentHand ? null : (
         <div className="flex overflow-x-auto px-2">
           {seat.hand.map((_, i) => (
             <PlayingCard

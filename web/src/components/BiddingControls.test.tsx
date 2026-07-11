@@ -50,4 +50,19 @@ describe('BiddingControls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pass' }))
     expect(onPass).toHaveBeenCalledOnce()
   })
+
+  it('hides the base-bid hint when showBaseBidHint is false (Options toggle, #54)', () => {
+    render(
+      <BiddingControls
+        minBid={300}
+        currentBid={0}
+        suggestedCeiling={350}
+        showBaseBidHint={false}
+        onBid={() => {}}
+        onPass={() => {}}
+      />,
+    )
+    expect(screen.getByText(/Minimum: 300/)).not.toBeNull()
+    expect(screen.queryByText(/suggests up to/)).toBeNull()
+  })
 })

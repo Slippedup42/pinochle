@@ -10,6 +10,10 @@ export interface BiddingControlsProps {
   /** Non-binding hint from the human's own hand (bidding.ts's
    * `bestBaseBid`), shown so the bid amount isn't a guess in the dark. */
   suggestedCeiling: number
+  /** Options toggle (#54): whether to show the "Your hand suggests up to
+   * N" sentence at all — players who want to bid on pure judgment can turn
+   * it off. Defaults to true (current/original behavior) when omitted. */
+  showBaseBidHint?: boolean
   onBid: (amount: number) => void
   onPass: () => void
 }
@@ -19,7 +23,14 @@ export interface BiddingControlsProps {
  * props in, `onBid`/`onPass` out — AuctionFlow owns turn order, legality,
  * and what happens next.
  */
-export function BiddingControls({ minBid, currentBid, suggestedCeiling, onBid, onPass }: BiddingControlsProps) {
+export function BiddingControls({
+  minBid,
+  currentBid,
+  suggestedCeiling,
+  showBaseBidHint = true,
+  onBid,
+  onPass,
+}: BiddingControlsProps) {
   const [amount, setAmount] = useState(minBid)
   const isValid = amount >= minBid && amount % 10 === 0
 
@@ -28,7 +39,7 @@ export function BiddingControls({ minBid, currentBid, suggestedCeiling, onBid, o
       <h3 className="text-sm font-semibold">Your bid</h3>
       <p className="mt-1 text-xs text-neutral-600">
         {currentBid > 0 ? `Current bid: ${currentBid}. ` : ''}
-        Minimum: {minBid}. Your hand suggests up to {suggestedCeiling}.
+        Minimum: {minBid}.{showBaseBidHint ? ` Your hand suggests up to ${suggestedCeiling}.` : ''}
       </p>
 
       <div className="mt-3 flex items-center gap-2">

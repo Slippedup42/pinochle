@@ -4,6 +4,7 @@ import { OPENING_BID } from '../engine/card'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import { teamOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
+import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { AuctionLog } from './AuctionLog'
 import { auctionReducer, initAuctionState } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
@@ -25,6 +26,13 @@ export interface AuctionFlowProps {
   humanPlayer: PlayerIndex
   dealer: PlayerIndex
   scoresByTeam: Record<TeamId, number>
+  /** Opens the persistent mid-game menu (#54: New Game / Continue /
+   * Options) — rendered by Table.tsx as a small corner button. Omit to
+   * render without one (e.g. existing tests that don't exercise it). */
+  onOpenMenu?: () => void
+  /** Options toggles (#54) affecting rendering. Defaults to
+   * DEFAULT_OPTIONS (current pre-#54 behavior) when omitted. */
+  options?: GameOptions
   /** Fired once, when both passes have completed, with everything a live
    * Round orchestrator (trick-play, #35) needs to take over. */
   onComplete?: (result: AuctionResult) => void
@@ -39,7 +47,16 @@ export interface AuctionFlowProps {
  * (#29), passing.ts's real choosePassCards) and always log a visible
  * AuctionLog entry — no AI decision happens silently.
  */
-export function AuctionFlow({ initialHands, seatNames, humanPlayer, dealer, scoresByTeam, onComplete }: AuctionFlowProps) {
+export function AuctionFlow({
+  initialHands,
+  seatNames,
+  humanPlayer,
+  dealer,
+  scoresByTeam,
+  onOpenMenu,
+  options = DEFAULT_OPTIONS,
+  onComplete,
+}: AuctionFlowProps) {
   const [state, dispatch] = useReducer(
     auctionReducer,
     undefined,
@@ -127,6 +144,7 @@ export function AuctionFlow({ initialHands, seatNames, humanPlayer, dealer, scor
           minBid={minBid}
           currentBid={state.bidding.currentBid}
           suggestedCeiling={suggestedCeiling}
+          showBaseBidHint={options.showBaseBidHint}
           onBid={(amount) => dispatch({ type: 'BID', player: humanPlayer, amount })}
           onPass={() => dispatch({ type: 'PASS_BID', player: humanPlayer })}
         />
@@ -157,7 +175,15 @@ export function AuctionFlow({ initialHands, seatNames, humanPlayer, dealer, scor
     }
 
     return null
-  }, [state, humanPlayer])
+  }, [state, humanPlayer, options.showBaseBidHint])
 
-  return <Table state={tableState} overlay={overlay} logPanel={<AuctionLog entries={state.log} />} />
+  return (
+    <Table
+      state={tableState}
+      overlay={overlay}
+      logPanel={<AuctionLog entries={state.log} />}
+      onOpenMenu={onOpenMenu}
+      hideOpponentCards={options.hideOpponentCards}
+    />
+  )
 }
