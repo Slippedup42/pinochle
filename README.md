@@ -16,6 +16,8 @@ not yet implemented — see the strategy doc below.
 
 ## Contents
 
+- [`ROADMAP.md`](ROADMAP.md) — phased plan from current state through
+  Expert AI, the web/mobile client, and PWA distribution.
 - [`pinochle_rules.md`](pinochle_rules.md) — the rule set this engine
   implements, including house rules (3-card pass, ±1000 game
   thresholds).
