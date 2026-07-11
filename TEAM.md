@@ -56,6 +56,12 @@ made - don't open a duplicate issue for that.
   unblocked/small (`ready-for-agent`, no epic) issues as low-hanging
   fruit, converts larger scoped-out items into `[epic]` issues with
   linked children, and closes epics whose children are all closed.
+- `/human-queue` - walks the `ready-for-human` backlog interactively,
+  one issue at a time: the relevant lead gives a recommendation, the
+  user decides (accept it, give a different answer, skip, or close),
+  and the decision gets recorded on the issue. Anything resolved flips
+  to `ready-for-agent` and becomes eligible for `/work-queue`.
 
-See `.claude/commands/standup.md` and `.claude/commands/work-queue.md`
-for the exact procedure each one follows.
+See `.claude/commands/standup.md`, `.claude/commands/work-queue.md`,
+and `.claude/commands/human-queue.md` for the exact procedure each one
+follows.
