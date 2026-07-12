@@ -1214,6 +1214,346 @@ def choose_return_pass_cards(hand, trump, count):
 
 
 # ---------------------------------------------------------------------------
+# Expert-tier trick-play logic (issue #62) — implements
+# pinochle_expert_ai_strategy.md Section 4 (trick-play strategy) and, gated
+# behind an optional deception_evaluator, Section 7 (deception) as shared,
+# callable logic. Same design shape as Section 2/3's
+# choose_forward_pass_cards / choose_return_pass_cards above (issue #61):
+# free functions, independent of any Player subclass and of the Proficient-
+# tier choose_lead_card / choose_follow_card (which stay untouched — that's
+# the tournament control group, see CLAUDE.md/README.md) — reused/extended
+# here rather than duplicated, per this issue's Scope note. A future
+# ExpertPlayer (#63) and the rollout sampler's internal simulated players
+# (pinochle_rollout.py, #59) can both call into the exact same code. This
+# module never imports pinochle_rollout — callers that want rollout-compare
+# mode (defenders' trump-lead question, Section 9 Q5) or deception wire in
+# real evaluator callbacks from the outside, built on top of
+# monte_carlo_rollout/rollout_deal elsewhere, matching #61's precedent of
+# leaving that wiring to the GeneralStrategy issue.
+# ---------------------------------------------------------------------------
+
+TOTAL_TRUMP_COPIES = 12  # 6 ranks x 2 copies each
+
+
+def _trick_has_points(trick_plays):
+    return any(c.rank in POINT_RANKS for _, c in trick_plays)
+
+
+def _trump_fully_accounted(hand, trump, tracker):
+    """
+    Conservative proxy for Section 4's endgame trigger, "no trump remains
+    live among opponents". Real trick play only ever exposes this player's
+    own hand plus PlayTracker's played-so-far counts — never partner's
+    hand — so there is no way to prove trump is specifically dead among
+    *opponents* without also knowing partner's hand. This reuses the same
+    accounted-for pattern as `is_safe`/`is_unsecured_ace` above: sum
+    played-count + this hand's own count for every trump rank, and only
+    fire when that reaches all 12 copies (i.e. no trump card remains
+    unaccounted for ANYWHERE — a strictly stronger, always-safe subset of
+    "dead among opponents", since it also implies dead among partner).
+    Documented as the current default/tunable, same spirit as Section
+    2/3's resolved v1 defaults.
+    """
+    accounted = sum(
+        tracker.played_count(trump, rank) + _hand_count(hand, trump, rank)
+        for rank in RANKS
+    )
+    return accounted >= TOTAL_TRUMP_COPIES
+
+
+def _offense_trump_lead(hand, trump, tracker):
+    """
+    Section 4 "Bidder leading — draw trump", shared by both the Bidder and
+    the Bidder's partner (doc Section 9 Q4, resolved for v1: the partner
+    runs this exact same logic independently if *they* end up on lead —
+    no special-casing that defers to the Bidder's plan). Callers on the
+    bidding team (either seat) call this same function; there is exactly
+    one implementation of "how the offense leads trump", not two that can
+    drift apart.
+
+    1. If a trump Ace is held, it is always the first lead — unconditionally
+       (doc Section 4 point 1: unbeatable by rank, risk-free, and clarifies
+       whether the second Ace is still live).
+    2. Otherwise (doc Section 9 Q3, resolved for v1): this is a mid-hand
+       behavioral shift, not a bid-time refusal — the contract is kept
+       (bid-time EV already priced this risk in), but the aggressive
+       trump-draw plan is abandoned in favor of a conservative lead:
+       protect count cards, don't force trump out. Concretely, this
+       prefers any non-trump lead (via the existing safe-card cascade,
+       `choose_lead_card`) over proactively leading trump; trump is only
+       led here if it's literally all that's left in hand.
+    """
+    trump_aces = [c for c in hand if c.suit == trump and c.rank == "A"]
+    if trump_aces:
+        return trump_aces[0]
+
+    non_trump = [c for c in hand if c.suit != trump]
+    if non_trump:
+        return choose_lead_card(non_trump, trump, tracker)
+    return choose_lead_card(hand, trump, tracker)
+
+
+def _defender_lead(hand, trump, tracker, rollout_evaluator=None):
+    """
+    Section 4 "Defending team" — doc Section 9 Q5, revised resolution: NOT
+    one fixed global rule, the same static-mode-vs-rollout-compare-mode
+    split as #61, tied to skill level (see #63's dial):
+
+      - `rollout_evaluator=None` (static/no-rollout-budget skill levels):
+        avoid leading trump — it helps the Bidder consolidate control —
+        and instead attack the Bidder's weakest suit. Implemented as the
+        existing safe-card cascade (`choose_lead_card`) restricted to
+        non-trump cards (falls back to trump only when the hand is
+        entirely trump, i.e. there is no other legal lead at all).
+      - `rollout_evaluator` supplied (rollout-budget skill levels): no
+        hardcoded avoidance. Generates both the static non-trump-lead
+        candidate AND a trump-lead candidate, and lets
+        `rollout_evaluator` pick whichever scores better in this exact
+        game state — e.g. once the Bidder is nearly out of trump, leading
+        trump may no longer help them and the flat avoidance rule would
+        be wrong. This is exactly the kind of exception higher skill
+        should be able to find that the static rule can't.
+
+    `rollout_evaluator`, if provided, must be a callable:
+
+        rollout_evaluator(hand, trump, tracker, candidate_card) -> float
+
+    returning a higher-is-better simulated EV for leading `candidate_card`
+    in this exact state. This function only needs that numeric comparison
+    — it never imports or calls into pinochle_rollout.py itself, so it
+    stays pure/testable against constructed hands independent of the
+    rollout machinery (a caller wires a real evaluator on top of
+    `monte_carlo_rollout`/`rollout_deal` from pinochle_rollout.py, #59,
+    elsewhere).
+    """
+    non_trump = [c for c in hand if c.suit != trump]
+    trump_cards = [c for c in hand if c.suit == trump]
+
+    static_pick = (
+        choose_lead_card(non_trump, trump, tracker) if non_trump
+        else choose_lead_card(hand, trump, tracker)
+    )
+
+    if rollout_evaluator is None or not trump_cards or not non_trump:
+        return static_pick
+
+    trump_pick = choose_lead_card(trump_cards, trump, tracker)
+    ev_static = rollout_evaluator(hand, trump, tracker, static_pick)
+    ev_trump = rollout_evaluator(hand, trump, tracker, trump_pick)
+    return trump_pick if ev_trump > ev_static else static_pick
+
+
+def choose_expert_lead_card(hand, trump, tracker, is_bidding_team, rollout_evaluator=None):
+    """
+    Section 4 entry point for leading (having table control). Order of
+    decisions:
+
+      1. Endgame sequencing (doc "Endgame sequencing — protect the
+         last-trick bonus"): once no trump remains live among opponents
+         (see `_trump_fully_accounted` for exactly what that means here)
+         and this hand holds a mix of trump and non-trump cards, play
+         losers first and hold trump back — this guarantees a trump card
+         is still in hand to win trick 12's +10 bonus. Implemented by
+         restricting the lead choice to non-trump cards via the existing
+         safe-card cascade.
+      2. Otherwise, dispatch by side: the bidding team (Bidder or
+         partner, doc Section 9 Q4) uses the shared Ace-first trump-draw
+         logic (`_offense_trump_lead`); the defending team (doc Section 9
+         Q5) uses the static/rollout-compare split (`_defender_lead`).
+
+    `rollout_evaluator` is only consulted for a defending-team lead (see
+    `_defender_lead`) — the offense side's Ace-first rule has no
+    static/compare split (doc Section 4 point 1 is unconditional).
+    """
+    non_trump = [c for c in hand if c.suit != trump]
+    trump_cards = [c for c in hand if c.suit == trump]
+
+    if trump_cards and non_trump and _trump_fully_accounted(hand, trump, tracker):
+        return choose_lead_card(non_trump, trump, tracker)
+
+    if is_bidding_team:
+        return _offense_trump_lead(hand, trump, tracker)
+    return _defender_lead(hand, trump, tracker, rollout_evaluator=rollout_evaluator)
+
+
+def generate_false_card_candidates(hand, legal_moves, trick_plays, tracker):
+    """
+    Section 7 false-carding: legal alternative follow-plays that
+    misrepresent this player's holding in the suit being played — e.g.
+    playing a card other than the "honest" cheapest-sufficient/lowest
+    choice so an opponent tracking per-copy history (`PlayTracker`, reused
+    here rather than rebuilt) reads the remaining holding incorrectly.
+
+    Only proposes a rank as a false-card candidate when it's still
+    *believable* — i.e. the other physical copy of that exact (suit,
+    rank) is not yet fully accounted for (played, or still in this hand)
+    — so the deception isn't immediately self-defeating: playing a rank
+    you're provably out of (because both copies are otherwise accounted
+    for) wouldn't fool a card-counting opponent regardless of which one
+    you play.
+
+    Pure candidate generator — every returned card is drawn from
+    `legal_moves`, so it is trivially still a legal move. Never called
+    unless a caller supplies a `deception_evaluator` to
+    `choose_expert_follow_card`; does not decide anything on its own.
+    """
+    if len(legal_moves) < 2:
+        return []
+    candidates = []
+    for c in legal_moves:
+        other_copy_accounted = (
+            tracker.played_count(c.suit, c.rank) + _hand_count(hand, c.suit, c.rank) >= 2
+        )
+        if not other_copy_accounted:
+            candidates.append(c)
+    return candidates
+
+
+def generate_fake_void_candidates(hand, legal_moves, trick_plays, trump, tracker):
+    """
+    Section 7 fake voids: only meaningful during a genuine free sluff —
+    more than one suit represented among `legal_moves` — where discarding
+    from a suit that already has at least one copy of that same card's
+    rank recorded as played (via `PlayTracker`) is more believable as "I'm
+    voiding this suit" than a first-ever discard from it would be.
+
+    Pure candidate generator, same contract as
+    `generate_false_card_candidates` — every returned card is drawn from
+    `legal_moves`, so it is trivially still legal.
+    """
+    suits_present = {c.suit for c in legal_moves}
+    if len(suits_present) < 2:
+        return []  # no real choice of which suit to discard from
+    candidates = []
+    for c in legal_moves:
+        if tracker.played_count(c.suit, c.rank) >= 1:
+            candidates.append(c)
+    return candidates
+
+
+def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_players, tracker):
+    """
+    Section 4 "Following suit (general)" — the non-deceptive baseline
+    follow-card choice `choose_expert_follow_card` builds on:
+
+      - Mandatory-beat cases (`Trick.legal_moves` has already restricted
+        `legal_moves` to beaters-only) win as cheaply as possible — this
+        is where "third-hand-high" is mechanically enforced by the rules
+        engine itself, so there's no separate heuristic needed for it.
+      - Duck when partner is already winning: don't spend a big card on a
+        trick that's already secured; feed K/10 across if doing so is
+        free (doesn't cost the trick).
+      - Protect count cards (A/10/K): when following suit but unable to
+        beat, or when free-sluffing, prefer a zero-count card (9/J/Q)
+        over a count card whenever one is legal.
+      - Trump-in judgment when first to trump a trick (void of the lead
+        suit, no trump yet on the table — the one point in this ruleset
+        where trumping in is mandatory but *which* trump is a genuine
+        free choice): over-trump (commit the highest trump held) only
+        when the trick is worth winning — it already carries count
+        points, or the partner isn't already the one showing as the
+        trick's leader — otherwise under-trump (play the lowest trump
+        held) to conserve high trump for later.
+    """
+    lead_suit = trick_plays[0][1].suit if trick_plays else None
+    winner_player, winner_card = _current_winner(trick_plays, trump) if trick_plays else (None, None)
+    partner_winning = winner_player in my_team_players if winner_player else False
+
+    all_lead_suit = lead_suit is not None and all(c.suit == lead_suit for c in legal_moves)
+    all_trump = all(c.suit == trump for c in legal_moves)
+
+    if all_lead_suit and lead_suit != trump:
+        forced_beat = winner_card is not None and all(
+            RANK_VALUE[c.rank] > RANK_VALUE[winner_card.rank] for c in legal_moves
+        )
+        if forced_beat:
+            return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+        if partner_winning:
+            feed_cards = [c for c in legal_moves if c.rank in ("K", "10")]
+            if feed_cards:
+                return max(feed_cards, key=lambda c: RANK_VALUE[c.rank])
+            return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+        non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
+        if non_points:
+            return min(non_points, key=lambda c: RANK_VALUE[c.rank])
+        return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+
+    if all_trump:
+        trump_on_table = any(c.suit == trump for _, c in trick_plays)
+        if trump_on_table:
+            current_best_trump = max(
+                (c for _, c in trick_plays if c.suit == trump), key=lambda c: RANK_VALUE[c.rank]
+            )
+            forced_beat = all(
+                RANK_VALUE[c.rank] > RANK_VALUE[current_best_trump.rank] for c in legal_moves
+            )
+            if forced_beat:
+                return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+            non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
+            if non_points:
+                return min(non_points, key=lambda c: RANK_VALUE[c.rank])
+            return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+
+        worth_winning = _trick_has_points(trick_plays) or not partner_winning
+        if worth_winning:
+            return max(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+        return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+
+    # Free sluff - no lead-suit card, no trump forced. Protect count cards
+    # first, then build toward a void in the shortest suit among whatever
+    # is left, same tie-break as the Proficient-tier choose_follow_card.
+    non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
+    pool = non_points if non_points else legal_moves
+    legal_sorted = sorted(pool, key=lambda c: (_suit_length(hand, c.suit), RANK_VALUE[c.rank]))
+    return legal_sorted[0]
+
+
+def choose_expert_follow_card(hand, legal_moves, trick_plays, trump, my_team_players,
+                               tracker=None, deception_evaluator=None):
+    """
+    Section 4 + Section 7 entry point for following (not leading).
+    `legal_moves` already has the mandatory beat-if-possible / trump-if-
+    void rules applied by `Trick.legal_moves` — this only picks which one
+    to use.
+
+    Computes the honest baseline (`_expert_follow_card_honest`) per the
+    "Following suit (general)" heuristics. If `deception_evaluator` is
+    supplied (Section 7 — gated to the top skill levels by the caller, not
+    unconditionally on), also generates false-card and fake-void
+    candidates (`generate_false_card_candidates` /
+    `generate_fake_void_candidates`, both reusing `PlayTracker`'s per-copy
+    tracking to judge believability) and lets the evaluator pick among the
+    honest baseline plus every deceptive candidate — never a hardcoded
+    "always false-card when X" rule. Every candidate considered is drawn
+    from `legal_moves`, so the result is always a legal move regardless of
+    whether deception is enabled.
+
+    `deception_evaluator`, if provided, must be a callable:
+
+        deception_evaluator(hand, trump, tracker, trick_plays, candidate_card) -> float
+
+    returning a higher-is-better simulated EV for playing `candidate_card`
+    in this exact trick-play state. As with `rollout_evaluator` elsewhere
+    in this module, a caller wires a real evaluator on top of
+    `monte_carlo_rollout`/`rollout_deal` (pinochle_rollout.py, #59)
+    elsewhere — this module never imports pinochle_rollout.
+    """
+    tracker = tracker if tracker is not None else PlayTracker()
+    honest = _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_players, tracker)
+
+    if deception_evaluator is None or len(legal_moves) < 2:
+        return honest
+
+    candidates = {honest}
+    candidates.update(generate_false_card_candidates(hand, legal_moves, trick_plays, tracker))
+    candidates.update(generate_fake_void_candidates(hand, legal_moves, trick_plays, trump, tracker))
+    return max(
+        candidates,
+        key=lambda c: deception_evaluator(hand, trump, tracker, trick_plays, c),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Player / Team
 # ---------------------------------------------------------------------------
 
