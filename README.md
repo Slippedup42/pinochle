@@ -37,10 +37,18 @@ not yet implemented — see the strategy doc below.
   `Game`, meld scoring, bid valuation, passing strategy, trick-play
   strategy. Also holds the Expert-tier forward/return pass logic
   (`choose_forward_pass_cards` / `choose_return_pass_cards`, issue #61,
-  `pinochle_expert_ai_strategy.md` Sections 2-3) as free functions
-  independent of any Player subclass, ready for both a future
-  `ExpertPlayer` (#63) and the rollout sampler's simulated players to
-  call into.
+  `pinochle_expert_ai_strategy.md` Sections 2-3) and Expert-tier
+  trick-play logic (`choose_expert_lead_card` / `choose_expert_follow_card`,
+  issue #62, Sections 4 and 7) as free functions independent of any
+  `Player` subclass, ready for both a future `ExpertPlayer` (#63) and the
+  rollout sampler's simulated players to call into. Trick-play logic
+  covers Ace-first trump leads (shared by the Bidder and partner),
+  endgame loser-first sequencing to protect the 12th-trick bonus,
+  following-suit heuristics (duck/feed, count-card protection,
+  over/under-trump judgment), a static-vs-rollout-compare split for
+  whether defenders ever lead trump, and false-carding/fake-void
+  deception as pluggable candidate moves gated behind an optional
+  `deception_evaluator`.
 - [`pinochle_rollout.py`](pinochle_rollout.py) — Monte Carlo
   determinization sampler + Auto-SET guard (issue #59): deals the
   currently-unseen cards for a decision point (bidding / return-pass /
