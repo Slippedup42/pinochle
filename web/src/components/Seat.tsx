@@ -54,7 +54,13 @@ export function Seat({ seat, position, isHuman, isBidWinner, playable, hideOppon
         )}
       </div>
       {isHuman ? (
-        <div className="flex flex-wrap justify-center gap-1 overflow-x-auto">
+        // A single row, not `flex-wrap`: the fanned-overlap look below relies
+        // on `first:ml-0` to zero out the leading card's negative margin, which
+        // only identifies the true first card in the DOM — with wrapping on, a
+        // second row's leading card still carried the big negative margin and
+        // rendered shifted/misaligned relative to the row above it. One row
+        // that scrolls horizontally instead keeps every row's cards flush.
+        <div className="flex justify-center gap-1 overflow-x-auto">
           {sortHandForDisplay(seat.hand).map((card) => {
             const cardFace = <PlayingCard suit={card.suit} rank={card.rank} />
             if (!playable) {

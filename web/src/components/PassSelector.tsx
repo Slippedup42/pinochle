@@ -1,12 +1,17 @@
 import { useState } from 'react'
-import type { Card } from '../engine/card'
+import type { Card, Suit } from '../engine/card'
 import { sortHandForDisplay } from '../engine/card'
 import { PlayingCard } from './PlayingCard'
+import { RED_SUITS, SUIT_GLYPH } from './suitGlyphs'
 
 export interface PassSelectorProps {
   hand: readonly Card[]
   /** How many cards must be selected before Confirm is enabled — passing.ts's `PASS_COUNT`. */
   count: number
+  /** Trump is already settled by the time passing happens — shown here so
+   * the player doesn't have to hunt for it in the (dimmed, overlay-covered)
+   * header while deciding what to pass. */
+  trumpSuit: Suit
   onConfirm: (cards: Card[]) => void
 }
 
@@ -17,8 +22,9 @@ export interface PassSelectorProps {
  * which hand/role this renders for; this component just enforces "exactly
  * `count` selected" before letting the player confirm.
  */
-export function PassSelector({ hand, count, onConfirm }: PassSelectorProps) {
+export function PassSelector({ hand, count, trumpSuit, onConfirm }: PassSelectorProps) {
   const [selected, setSelected] = useState<Card[]>([])
+  const trumpColor = RED_SUITS.includes(trumpSuit) ? 'text-red-600' : 'text-neutral-900'
 
   const toggle = (card: Card) => {
     setSelected((prev) => {
@@ -31,7 +37,8 @@ export function PassSelector({ hand, count, onConfirm }: PassSelectorProps) {
   return (
     <div className="w-full max-w-2xl rounded-lg bg-white p-4 text-neutral-900 shadow-xl">
       <h3 className="text-sm font-semibold">
-        Choose {count} cards to pass ({selected.length}/{count} selected)
+        Choose {count} cards to pass ({selected.length}/{count} selected) — Trump:{' '}
+        <span className={`text-base font-bold ${trumpColor}`}>{SUIT_GLYPH[trumpSuit]}</span>
       </h3>
       <div className="mt-3 flex flex-wrap justify-center gap-1">
         {sortHandForDisplay(hand).map((card) => {

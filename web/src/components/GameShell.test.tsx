@@ -70,11 +70,27 @@ describe('GameShell', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
 
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     fireEvent.click(screen.getByRole('button', { name: 'New Game' }))
-    expect(confirmSpy).toHaveBeenCalledOnce()
+    // In-app confirm dialog (not a native window.confirm — that blocks the
+    // whole page and doesn't match the rest of the app's styled modals).
+    expect(screen.getByText('Start a new game? Your current saved game will be lost.')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     // Declined — the menu is still up, nothing was reset.
     expect(screen.getByText('Pinochle')).not.toBeNull()
+    expect(screen.queryByText('Start a new game? Your current saved game will be lost.')).toBeNull()
+  })
+
+  it('New Game confirmation actually discards the save when accepted', async () => {
+    mockDeal()
+    render(<GameShell />)
+    fireEvent.click(screen.getByRole('button', { name: 'New Game' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New Game' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start new game' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
+    expect(Deck.prototype.deal).toHaveBeenCalledTimes(2)
   })
 
   it('toggling "Hide opponent cards" in Options affects the next game rendered', async () => {
