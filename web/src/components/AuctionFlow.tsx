@@ -157,7 +157,8 @@ export function AuctionFlow({
 
     if (
       (state.phase === 'passing-partner-to-bidder' || state.phase === 'passing-bidder-to-partner') &&
-      state.bidWinner !== null
+      state.bidWinner !== null &&
+      state.trumpSuit !== null
     ) {
       const partner = partnerOf(state.bidWinner)
       const isPartnerStep = state.phase === 'passing-partner-to-bidder'
@@ -168,6 +169,7 @@ export function AuctionFlow({
           <PassSelector
             hand={state.hands[humanPlayer]}
             count={PASS_COUNT}
+            trumpSuit={state.trumpSuit}
             onConfirm={(cards) => dispatch({ type: 'PASS_CARDS', from: sender, to: receiver, cards })}
           />
         )

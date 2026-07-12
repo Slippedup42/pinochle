@@ -15,6 +15,7 @@
 import { useState } from 'react'
 import { clearSave, hasSavedGame, loadGame } from '../persistence/gameSave'
 import { loadOptions, saveOptions, type GameOptions } from '../persistence/options'
+import { ConfirmDialog } from './ConfirmDialog'
 import { GameFlow } from './GameFlow'
 import type { GameFlowState } from './gameFlowReducer'
 import { MainMenu } from './MainMenu'
@@ -30,17 +31,24 @@ export function GameShell() {
   const [resumeState, setResumeState] = useState<GameFlowState | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
+  const [confirmNewGameOpen, setConfirmNewGameOpen] = useState(false)
   const [options, setOptions] = useState<GameOptions>(() => loadOptions())
 
   function startNewGame(): void {
-    if (hasSavedGame() && !window.confirm('Start a new game? Your current saved game will be lost.')) {
+    if (hasSavedGame()) {
+      setConfirmNewGameOpen(true)
       return
     }
+    doStartNewGame()
+  }
+
+  function doStartNewGame(): void {
     clearSave()
     setResumeState(null)
     setMountKey((k) => k + 1)
     setScreen('game')
     setMenuOpen(false)
+    setConfirmNewGameOpen(false)
   }
 
   function continueGame(): void {
@@ -74,6 +82,13 @@ export function GameShell() {
         {optionsOpen && (
           <OptionsPanel options={options} onChange={updateOptions} onClose={() => setOptionsOpen(false)} />
         )}
+        {confirmNewGameOpen && (
+          <ConfirmDialog
+            message="Start a new game? Your current saved game will be lost."
+            onConfirm={doStartNewGame}
+            onCancel={() => setConfirmNewGameOpen(false)}
+          />
+        )}
       </>
     )
   }
@@ -97,6 +112,13 @@ export function GameShell() {
       )}
       {optionsOpen && (
         <OptionsPanel options={options} onChange={updateOptions} onClose={() => setOptionsOpen(false)} />
+      )}
+      {confirmNewGameOpen && (
+        <ConfirmDialog
+          message="Start a new game? Your current saved game will be lost."
+          onConfirm={doStartNewGame}
+          onCancel={() => setConfirmNewGameOpen(false)}
+        />
       )}
     </>
   )
