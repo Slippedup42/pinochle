@@ -152,9 +152,26 @@ Tier-0 eligible. Correct play: **keep K+Q** (preserves the partner's own
 of Run/Double Run, which are trump-only — a non-trump 10 is pure
 liability; shipping it also starts a void).
 
-**OPEN QUESTION:** Is Tier 1 strictly a last resort (only used to fill
-slots when Tier 0 is exhausted), or can it actively outrank a marginal
-Tier 0 pick? Needs a decision before implementing the priority sort.
+**Resolved for v1 (issue #61, revised)**: this is not one fixed global
+rule — it's a static-mode-vs-rollout-compare-mode split tied to skill
+level (see #63's dial), implemented as an optional `rollout_evaluator`
+callback on the shared `choose_forward_pass_cards` function
+(`pinochle_engine.py`):
+
+- **Static/no-rollout-budget skill levels** (no evaluator passed): Tier 1
+  is a strict last resort — it only fills slots Tier 0 left empty, and
+  never outranks a Tier 0 pick. This is intentionally not the smartest
+  possible play; that gap is part of what makes low skill actually play
+  worse.
+- **Rollout-budget skill levels** (evaluator passed): no hardcoded
+  ranking. Generate both the marginal Tier 0 candidate and the competing
+  Tier 1 candidate, and let the determinization sampler (#59) score each
+  via a mini pass-and-rollout EV comparison — whichever wins, wins. This
+  lets higher skill levels discover the cases where shedding differently
+  is actually correct, instead of following a fixed rule.
+
+Documented as the current default/tunable, same as the knapsack-doubles
+question in Section 3.
 
 ---
 
@@ -190,11 +207,14 @@ return-pass pool. Example: a hand that could complete Kings Around (80)
 slots for all of it should break the Kings Around and keep the higher
 group.
 
-**OPEN QUESTION:** Does this triage extend to doubles — e.g., is it ever
-correct to break a *complete* single Aces Around (100) to protect
-progress toward a Double Aces Around (1000)? Needs a decision; the
-greedy-by-value approach as described handles single-vs-single cleanly
-but hasn't been validated against double-vs-single tradeoffs.
+**Resolved for v1 (issue #61)**: no — the greedy-by-value knapsack does
+NOT break a complete single meld (e.g. a finished Aces Around) to chase a
+Double of the same meld. `choose_return_pass_cards`
+(`pinochle_engine.py`) locks melds highest-value-first and never reopens
+a lock once made — a complete single meld that gets locked stays locked
+for good. Documented as the current default/tunable; validating
+double-vs-single tradeoffs empirically is left to future tournament-sim
+tuning, not hand-coded here.
 
 ### Advanced: duplicate-card elimination plays (last resort, situational)
 
@@ -369,10 +389,14 @@ batch-simulate variants and let win rate pick the winner.
 
 ## 9. Open Design Questions — resolve before implementing the affected section
 
-1. **(Section 2)** Is Tier-1 forward-pass shedding strictly a last resort,
-   or can it outrank a marginal Tier-0 pick?
-2. **(Section 3)** Does return-pass knapsack triage extend to
-   doubles (e.g., break a complete single Around to chase its Double)?
+1. ~~**(Section 2)** Is Tier-1 forward-pass shedding strictly a last
+   resort, or can it outrank a marginal Tier-0 pick?~~ **Resolved for
+   v1** (issue #61): both, split by skill level via an optional
+   `rollout_evaluator` callback — see Section 2.
+2. ~~**(Section 3)** Does return-pass knapsack triage extend to
+   doubles (e.g., break a complete single Around to chase its
+   Double)?~~ **Resolved for v1** (issue #61): no, completed melds
+   stay locked once knapsacked — see Section 3.
 3. **(Section 4)** What does "fold" mean for a Bidder with no trump Ace —
    a bid-time signal (don't take the contract on such a hand) or a
    mid-hand behavioral shift (keep the contract, abandon the aggressive
@@ -411,4 +435,8 @@ batch-simulate variants and let win rate pick the winner.
   (Section 3) as shared, callable logic — used both by the real
   `choose_pass_cards` and by the sampler's internal simulated players,
   so there's exactly one implementation of "how a partner passes," not
-  two that can drift apart.
+  two that can drift apart. **Implemented (issue #61)** as
+  `choose_forward_pass_cards` / `choose_return_pass_cards` in
+  `pinochle_engine.py`, independent of any Player subclass — a future
+  `ExpertPlayer` (#63) and the rollout sampler's internal simulated
+  players both call into the same functions.
