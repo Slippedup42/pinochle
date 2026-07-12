@@ -218,6 +218,7 @@ class InteractiveRound(Round):
 
         if self._phase == "trump":
             self.trump_suit = self.bid_winner.choose_trump()
+            self._stamp_team_round_context()
             self._phase = "passing"
 
         if self._phase == "passing":

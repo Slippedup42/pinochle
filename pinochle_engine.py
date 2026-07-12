@@ -584,7 +584,8 @@ def run_return_pass(bid_winner, partner, trump_suit):
     partner.hand.extend(back_to_partner)
 
 
-def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_offset=0):
+def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_offset=0,
+                 forced_lead_card=None):
     """
     Plays `num_tricks` tricks starting with players[leader_index] on lead,
     via each player's real choose_card (-> choose_lead_card/
@@ -596,6 +597,17 @@ def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_
     partway through a round) must pass the right offset to still award
     it in the correct trick.
 
+    `forced_lead_card`, if given, is played as the leader's card for the
+    very first trick of this call instead of asking that player's own
+    choose_card - every other play (this trick's followers, and every
+    later trick) still goes through the real choose_card as usual. Default
+    None preserves the exact prior behavior for every existing caller
+    (Round, the rollout sampler's own full-round rollouts). This exists so
+    a caller (issue #63's GeneralStrategy, evaluating "what if I lead
+    THIS specific candidate card") can force one hypothetical lead through
+    the real rollout machinery without duplicating play_tricks' trick-loop
+    logic just to inject a single card.
+
     Returns {team: trick_points} for just the tricks played here.
     """
     trick_points = {}
@@ -605,13 +617,16 @@ def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_
     for i in range(num_tricks):
         trick = Trick(trump)
         idx = leader_index
-        for _ in range(4):
+        for play_pos in range(4):
             player = players[idx]
             legal = trick.legal_moves(player.hand)
-            card = player.choose_card(
-                legal, trick=trick, trump=trump,
-                tracker=tracker, my_team_players=set(player.team.players),
-            )
+            if i == 0 and play_pos == 0 and forced_lead_card is not None:
+                card = forced_lead_card
+            else:
+                card = player.choose_card(
+                    legal, trick=trick, trump=trump,
+                    tracker=tracker, my_team_players=set(player.team.players),
+                )
             player.hand.remove(card)
             trick.play(player, card)
             tracker.record(card)
@@ -1834,6 +1849,371 @@ class EasyPlayer(Player):
         return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
 
 
+# ---------------------------------------------------------------------------
+# GeneralStrategy (issue #63) - wires the shared Expert-tier machinery from
+# #59/#60/#61/#62 (pinochle_rollout.py's determinization+rollout sampler,
+# bid-time EV, forward/return-pass Tier-0/1 logic, and trick-play
+# lead/follow logic) into one Player subclass, parameterized by a skill
+# level 1-5 - a dial, not a branch to a different algorithm. Same code path
+# at every level; only the parameter values in GENERAL_STRATEGY_SKILL_PARAMS
+# differ. Per the issue's revised scope, the static-formula-vs-rollout-EV
+# switch moves together across all three decision points that have one
+# (bidding, forward-pass shedding, defender trump-lead) so a given skill
+# level is internally consistent - never rollout at one decision point and
+# static at another for the same level.
+#
+# pinochle_rollout.py can't be imported at module scope here - it already
+# imports FROM this module, and pinochle_engine.py is scoped (per issue
+# #63) to hold GeneralStrategy itself. Every method below that needs the
+# rollout machinery imports pinochle_rollout lazily (inside the method
+# body), which sidesteps the circular import entirely: by the time any of
+# these methods actually runs, both modules have already finished loading.
+#
+# Player (Proficient) and EasyPlayer above are NOT modified by any of this
+# - GeneralStrategy is purely additive, reusing their public surface
+# (Player.__init__, Player.choose_trump, Player.choose_bid via super()) and
+# the free functions from #61/#62 without changing either class.
+# ---------------------------------------------------------------------------
+
+GENERAL_STRATEGY_SKILL_PARAMS = {
+    # hand_valuation: which bidding logic runs (Section 8's table).
+    #   "meld_only" - flat meld-value-only static formula (skill 1).
+    #   "base_bid"  - Player's existing Base-Bid formula, itself a blend of
+    #                 meld + heuristic trick-potential (skill 2-3).
+    #   "rollout_ev"- pinochle_rollout.bid_ev/choose_bid_by_ev (skill 4-5).
+    # use_rollout: the shared static-vs-rollout switch for forward-pass
+    #   shedding (#61) and the defender trump-lead question (#62) - must
+    #   move together with hand_valuation == "rollout_ev" (both flip at
+    #   the same skill threshold), per the issue's consistency note.
+    # *_samples: Monte Carlo sample counts fed to the rollout machinery.
+    #   Deliberately small even at skill 5 relative to the doc's suggested
+    #   ~100-150/~300+ starting point - kept cheap enough for real games
+    #   and test suites to run in reasonable time. Treat as a starting
+    #   point, not final; the tuning-pass child issue of #57 will adjust
+    #   these (and possibly hand_valuation/use_rollout's exact thresholds)
+    #   based on simulated win rates, per the doc's Section 8 validation
+    #   plan.
+    # deception: whether choose_expert_follow_card gets a deception_evaluator.
+    1: {"hand_valuation": "meld_only",  "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
+    2: {"hand_valuation": "base_bid",   "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
+    3: {"hand_valuation": "base_bid",   "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
+    4: {"hand_valuation": "rollout_ev", "use_rollout": True,  "bid_samples": 8,  "pass_samples": 8,  "trick_samples": 6,  "deception": False},
+    5: {"hand_valuation": "rollout_ev", "use_rollout": True,  "bid_samples": 15, "pass_samples": 15, "trick_samples": 10, "deception": True},
+}
+
+MELD_ONLY_TRICK_ESTIMATE = EASY_FLAT_TRICK_ESTIMATE  # same flat, non-hand-shape-aware stand-in EasyPlayer uses for skill 1's meld-only bidding (doc Section 8) - reused rather than redefined, since it's the same judgment call.
+
+
+def _score_deception_candidate(hand, trump, tracker, trick_plays, candidate_card):
+    """
+    `deception_evaluator` for `choose_expert_follow_card` (skill 5 only).
+
+    Deliberately NOT built on the Monte Carlo rollout machinery, unlike
+    the other two evaluators below: Section 0 of the strategy doc
+    explicitly excludes deception from the rollout mechanism ("Not in
+    scope for this rollout mechanism: actual bluffing/deception"), and
+    for good reason - the rollout's simulated opponents are plain
+    `Player` objects that reason only about their own hand plus
+    `PlayTracker`'s aggregate history, with no opponent-belief model to
+    fool. A false-card would score identically to the honest play in any
+    literal rollout comparison, making one pointless to run.
+
+    Instead: a cheap, self-contained heuristic. Prefers low-rank,
+    non-count cards (a real false-card/fake-void is only worth playing if
+    it doesn't cost meaningful trick value), with a small flat bonus for
+    candidates whose other physical copy is already accounted for as
+    played - exactly the believability signal
+    `generate_false_card_candidates`/`generate_fake_void_candidates`
+    already filtered on, so this naturally favors genuinely deceptive
+    candidates over merely-different ones without needing to know which
+    candidate is "the honest one" (not available in this signature).
+    """
+    score = -RANK_VALUE[candidate_card.rank] * 0.1
+    if candidate_card.rank in POINT_RANKS:
+        score -= 3.0
+    if tracker.played_count(candidate_card.suit, candidate_card.rank) >= 1:
+        score += 0.5
+    return score
+
+
+class GeneralStrategy(Player):
+    """
+    Skill-level-dialed AI tier (issue #63) - see
+    `pinochle_expert_ai_strategy.md` Section 8 for the parameter table and
+    Section 0 for the underlying determinization+rollout principle this
+    builds on. `skill_level` must be 1-5 (validated at construction).
+    """
+
+    def __init__(self, name, team=None, skill_level=3, rng=None):
+        super().__init__(name, team)
+        if skill_level not in GENERAL_STRATEGY_SKILL_PARAMS:
+            raise ValueError(f"GeneralStrategy skill_level must be 1-5, got {skill_level!r}")
+        self.skill_level = skill_level
+        self.rng = rng if rng is not None else random
+
+    # -- Bidding (doc Section 1 / Section 8's "Hand worth"/"Bidding" columns) --
+
+    def choose_bid(self, current_bid, min_increment, context=None):
+        if context is None:
+            # Fallback for isolated/old-style calls, matching Player's own
+            # fallback shape.
+            if random.random() < 0.6:
+                return None
+            return current_bid + min_increment
+
+        params = GENERAL_STRATEGY_SKILL_PARAMS[self.skill_level]
+        if params["hand_valuation"] == "meld_only":
+            return self._meld_only_bid(current_bid, min_increment, context)
+        if params["hand_valuation"] == "base_bid":
+            # Reuses Player's own Base-Bid logic unmodified (super() call,
+            # not a copy) - skill 2-3's "blend of static formula" per the
+            # doc's Section 8 table is exactly Player's existing meld +
+            # heuristic-trick-potential formula, already a blend.
+            return super().choose_bid(current_bid, min_increment, context)
+        return self._rollout_ev_bid(current_bid, min_increment, context, params)
+
+    def _meld_only_bid(self, current_bid, min_increment, context):
+        """Skill 1: meld-only static formula (doc Section 8), same shape
+        as EasyPlayer's bidding logic but implemented independently here
+        (GeneralStrategy skill 1 is its own bottom-of-the-dial behavior,
+        not literally EasyPlayer) - no noise, no positional/score-context
+        awareness, matching skill 1's "None" risk column."""
+        best_meld_value = max(score_melds(self.hand, t)[0] for t in Suit)
+        ceiling = best_meld_value + MELD_ONLY_TRICK_ESTIMATE
+        next_bid = current_bid + min_increment
+        if not context["ever_bid"]:
+            return OPENING_BID if ceiling >= OPENING_BID else None
+        return next_bid if next_bid <= ceiling else None
+
+    def _rollout_ev_bid(self, current_bid, min_increment, context, params):
+        """Skill 4-5: replace the static ceiling comparison with simulated
+        EV (doc Section 1), via pinochle_rollout.choose_bid_by_ev built on
+        top of #59's sampler. Table-position judgment (partner already
+        carrying the bid, our own bid already stands) stays governed by
+        Player's own logic first - that's not a valuation question the
+        rollout should re-litigate, only whether-to-bid/raise is."""
+        from pinochle_rollout import choose_bid_by_ev
+
+        static_bid = super().choose_bid(current_bid, min_increment, context)
+        if static_bid is None and context["ever_bid"]:
+            last_bidder = context["bid_history"][-1][0]
+            if last_bidder in self.team.players:
+                return None  # our own bid stands / partner carrying it - positional, not a valuation call
+
+        my_score = self.team.score if self.team is not None else 0
+        opp_team = next((t for t in context["teams"] if t is not self.team), None)
+        opp_score = opp_team.score if opp_team is not None else 0
+        trump, base_bid, _ = best_base_bid(self.hand, my_score, opp_score)
+
+        # Cheap hard floor, same "prune before the expensive simulation"
+        # spirit as the Auto-SET guard elsewhere in this epic: a hand
+        # whose static ceiling can't even clear the game's own
+        # forced-bid floor is never going to out-EV a pass.
+        if base_bid < FORCED_BID:
+            return None
+
+        next_bid = OPENING_BID if not context["ever_bid"] else current_bid + min_increment
+        best_bid, _best_ev, _all_evs = choose_bid_by_ev(
+            self.hand, trump, [None, next_bid],
+            num_samples=params["bid_samples"], rng=self.rng,
+        )
+        return best_bid
+
+    # -- Passing (doc Sections 2-3) --
+
+    def choose_pass_cards(self, count, trump_suit=None, is_bid_winner=None):
+        if trump_suit is None or is_bid_winner is None:
+            return random.sample(self.hand, count)
+
+        params = GENERAL_STRATEGY_SKILL_PARAMS[self.skill_level]
+
+        if is_bid_winner:
+            # Return pass (Section 3): no static/rollout switch exists for
+            # this function (the knapsack triage has no rollout_evaluator
+            # hook, per #61) - same logic at every skill level.
+            chosen = choose_return_pass_cards(self.hand, trump_suit, count)
+        else:
+            evaluator = None
+            if params["use_rollout"] and self.team is not None and self.team.round_bid is not None:
+                evaluator = self._make_forward_pass_evaluator(self.team.round_bid, params["pass_samples"])
+            chosen = choose_forward_pass_cards(self.hand, trump_suit, count, rollout_evaluator=evaluator)
+
+        # Fallback safety net, same as Player/EasyPlayer's own.
+        if len(chosen) < count:
+            remaining = [c for c in self.hand if c not in chosen]
+            chosen = list(chosen) + random.sample(remaining, count - len(chosen))
+        return chosen[:count]
+
+    def _make_forward_pass_evaluator(self, bid, num_samples):
+        """
+        Builds the `rollout_evaluator(hand, trump, candidate_cards) -> float`
+        callback `choose_forward_pass_cards` (#61) expects, on top of #59's
+        public sampler. `hand` there is MY (the forward-passing partner's)
+        own 12-card hand, so this uses the same determinization shape as
+        the bid-time decision point (Section 0's table row 1: only my own
+        cards are known) - the "partner" key in the dealt sample actually
+        represents the Bidder here, not literally my partner; the dict key
+        names from `sample_bid_time_deal` are just positional labels. Only
+        the return pass remains to simulate (the forward pass this is
+        evaluating is baked into the sampled Bidder hand via
+        `candidate_cards` already), matching Section 0's row 2 shape from
+        there on.
+        """
+        from pinochle_rollout import sample_bid_time_deal, monte_carlo_rollout
+
+        rng = self.rng
+
+        def rollout_evaluator(hand, trump, candidate_cards):
+            kept = [c for c in hand if c not in candidate_cards]
+
+            def sample_fn(active_rng):
+                return sample_bid_time_deal(hand, rng=active_rng)
+
+            def build_fn(dealt):
+                players = [Player("bidder", None), Player("opp_left", None),
+                           Player("me", None), Player("opp_right", None)]
+                team_offense = Team("Offense", [players[0], players[2]])
+                team_defense = Team("Defense", [players[1], players[3]])
+                players[0].team = players[2].team = team_offense
+                players[1].team = players[3].team = team_defense
+                players[0].hand = list(dealt["partner"]) + list(candidate_cards)
+                players[1].hand = list(dealt["opp_left"])
+                players[2].hand = list(kept)
+                players[3].hand = list(dealt["opp_right"])
+                return players, players[0]
+
+            diagnostics = monte_carlo_rollout(
+                sample_fn, build_fn, trump, bid, num_samples,
+                rollout_kwargs={"passing": "return_only"}, rng=rng,
+            )
+            p_make = diagnostics["p_make"]
+            made = [r for r in diagnostics["samples"] if r["made"]]
+            expected_if_made = sum(r["bidding_total"] for r in made) / len(made) if made else 0.0
+            return p_make * expected_if_made - (1.0 - p_make) * bid
+
+        return rollout_evaluator
+
+    # -- Trick play (doc Section 4 + Section 7) --
+
+    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
+        if trick is None or trump is None:
+            return legal_moves[0]
+
+        tracker = tracker if tracker is not None else PlayTracker()
+        params = GENERAL_STRATEGY_SKILL_PARAMS[self.skill_level]
+
+        if not trick.plays:
+            is_bidding_team = bool(self.team is not None and self.team.is_bidding_team)
+            evaluator = None
+            if params["use_rollout"] and not is_bidding_team and self.team is not None:
+                opponent = self.team.opponent
+                bid = self.team.round_bid
+                if opponent is not None and bid is not None:
+                    evaluator = self._make_defender_lead_evaluator(
+                        bid, bidding_meld=opponent.meld_points, defending_meld=self.team.meld_points,
+                        num_samples=params["trick_samples"],
+                    )
+            return choose_expert_lead_card(self.hand, trump, tracker, is_bidding_team, rollout_evaluator=evaluator)
+
+        team_set = my_team_players if my_team_players is not None else (
+            set(self.team.players) if self.team is not None else set()
+        )
+        deception_evaluator = _score_deception_candidate if params["deception"] else None
+        return choose_expert_follow_card(
+            self.hand, legal_moves, trick.plays, trump, team_set,
+            tracker=tracker, deception_evaluator=deception_evaluator,
+        )
+
+    def _make_defender_lead_evaluator(self, bid, bidding_meld, defending_meld, num_samples):
+        """
+        Builds the `rollout_evaluator(hand, trump, tracker, candidate_card)
+        -> float` callback `choose_expert_lead_card`/`_defender_lead` (#62)
+        expects, on top of #59's public sampler. Determinizes the other 3
+        seats' unseen hands the same way #59's trick-play sampling table
+        row does (`sample_trick_play_deal`), then resumes the round via
+        `rollout_deal` with `forced_lead_card=candidate_card` so the
+        REAL trick-play machinery decides everything downstream of this
+        one hypothetical lead - not a second, simplified trick-play
+        implementation. Each sample gets its own clone of the real
+        tracker (copying just `.played`, the only mutable state) rather
+        than sharing one mutable tracker across samples or with the live
+        game - `monte_carlo_rollout` doesn't support a per-sample tracker
+        factory, so this loop is hand-rolled instead of reusing it.
+
+        Scores higher-is-better for the DEFENDER (the caller), not the
+        bidding team: defending team's own average total, minus the
+        bidding team's simulated EV - so suppressing the bidding team's
+        success is rewarded even though it doesn't directly add to the
+        defender's own score.
+        """
+        from pinochle_rollout import sample_trick_play_deal, rollout_deal
+
+        rng = self.rng
+
+        def rollout_evaluator(hand, trump, tracker, candidate_card):
+            n = len(hand)  # every seat holds n cards right now - nobody has played this trick yet (I'm leading)
+            remaining_hand_sizes = [("right", n), ("partner", n), ("left", n)]
+            tricks_already_played = 12 - n
+
+            bidding_totals = []
+            made_flags = []
+            defending_totals = []
+
+            for _ in range(num_samples):
+                dealt = sample_trick_play_deal(hand, tracker, remaining_hand_sizes, rng=rng)
+
+                players = [Player("me", None), Player("right", None),
+                           Player("partner", None), Player("left", None)]
+                team_defense = Team("Defense", [players[0], players[2]])
+                team_offense = Team("Offense", [players[1], players[3]])
+                players[0].team = players[2].team = team_defense
+                players[1].team = players[3].team = team_offense
+                players[0].hand = list(hand)
+                players[1].hand = list(dealt["right"])
+                players[2].hand = list(dealt["partner"])
+                players[3].hand = list(dealt["left"])
+
+                sample_tracker = PlayTracker()
+                sample_tracker.played = dict(tracker.played)
+
+                result = rollout_deal(
+                    players, trump, bid, players[1],
+                    tracker=sample_tracker, leader_index=0,
+                    tricks_already_played=tricks_already_played,
+                    passing="none", bidding_meld=bidding_meld, defending_meld=defending_meld,
+                    forced_lead_card=candidate_card,
+                )
+                bidding_totals.append(result["bidding_total"])
+                made_flags.append(result["made"])
+                defending_totals.append(result["defending_total"])
+
+            p_make = sum(made_flags) / len(made_flags)
+            made_only = [t for t, m in zip(bidding_totals, made_flags) if m]
+            expected_if_made = sum(made_only) / len(made_only) if made_only else 0.0
+            bidding_ev = p_make * expected_if_made - (1.0 - p_make) * bid
+            defending_avg = sum(defending_totals) / len(defending_totals)
+            return defending_avg - bidding_ev
+
+        return rollout_evaluator
+
+
+class RandomStrategy(GeneralStrategy):
+    """
+    "Random" difficulty (deferred from issue #58, implemented here per
+    #63's revised scope): NOT its own strategy logic - a thin constructor
+    wrapper that draws a uniform-random skill level 1-5 once, at creation
+    time, and instantiates GeneralStrategy at that level. Every decision
+    this player makes afterward runs through the exact same
+    GeneralStrategy code path as any other skill level; only the level
+    itself was chosen randomly, up front - not any individual move.
+    """
+
+    def __init__(self, name, team=None, rng=None):
+        rng = rng if rng is not None else random
+        skill_level = rng.randint(1, 5)
+        super().__init__(name, team, skill_level=skill_level, rng=rng)
+
+
 class Team:
     def __init__(self, name, players):
         self.name = name
@@ -1841,6 +2221,21 @@ class Team:
         self.score = 0
         self.meld_points = 0
         self.trick_points = 0
+        # Per-round bookkeeping, stamped by Round.run() (see below) right
+        # after the bid winner/trump are determined and before passing -
+        # existing tiers (Player/EasyPlayer) never read these, but
+        # GeneralStrategy (issue #63) needs a channel to learn "am I on
+        # the bidding team" and "what's the contract" at decision points
+        # (choose_pass_cards/choose_card) whose call signatures are fixed
+        # by Player's own contract and can't be extended with new
+        # required args without touching Player/EasyPlayer. Defaults here
+        # keep isolated/no-Round usage (e.g. hand-built Team objects in
+        # tests) safe - GeneralStrategy treats an unset opponent/round_bid
+        # as "no real round context available" and falls back to static
+        # (non-rollout) behavior rather than guessing.
+        self.is_bidding_team = False
+        self.round_bid = None
+        self.opponent = None
 
 
 # ---------------------------------------------------------------------------
@@ -1871,6 +2266,7 @@ class Round:
             self.current_bid = FORCED_BID
 
         self.trump_suit = self.bid_winner.choose_trump()
+        self._stamp_team_round_context()
         self._passing_phase()
         self._meld_phase()
         trick_points = self._trick_taking_loop()
@@ -1929,6 +2325,26 @@ class Round:
             self.current_bid = current_bid
         else:
             self.bid_winner = None
+
+    def _stamp_team_round_context(self):
+        """
+        Round-global bookkeeping both teams can read for the rest of this
+        round, generically (not specific to any AI tier) - same spirit as
+        `_meld_phase` setting `team.meld_points` for both teams below.
+        `GeneralStrategy` (issue #63) uses this to learn "am I on the
+        bidding team" and "what's the contract" at decision points that
+        don't otherwise carry that information (`choose_pass_cards`,
+        `choose_card`); Player/EasyPlayer never read it. `team.opponent`
+        is round-invariant in practice (the same two Team objects persist
+        for the whole Game) but is cheap to re-stamp every round rather
+        than special-cased at construction time.
+        """
+        team_a, team_b = self.teams
+        team_a.opponent = team_b
+        team_b.opponent = team_a
+        for team in self.teams:
+            team.is_bidding_team = (team is self.bid_winner.team)
+            team.round_bid = self.current_bid
 
     def _passing_phase(self):
         partner = next(p for p in self.bid_winner.team.players if p is not self.bid_winner)

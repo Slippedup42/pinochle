@@ -1,22 +1,29 @@
-# Pinochle Expert AI — Strategy Design Guide
+# Pinochle General Strategy AI — Strategy Design Guide
 
 This document is a companion to `pinochle_rules.md`. Where the rules doc
-defines what is *legal*, this doc defines what the **Expert-tier AI**
-should do to play *well*. It captures design decisions made in a planning
-session with the project's domain authority (20+ years playing Pinochle)
-and should be treated as a spec to implement against — not a finished
-algorithm. Several open questions are called out explicitly at the end;
-resolve those before finalizing the affected sections.
+defines what is *legal*, this doc defines what the **General Strategy
+AI** should do to play *well*. It captures design decisions made in a
+planning session with the project's domain authority (20+ years playing
+Pinochle) and should be treated as a spec to implement against — not a
+finished algorithm. Several open questions are called out explicitly at
+the end; resolve those before finalizing the affected sections.
 
-Scope: this doc is about the **Expert** difficulty tier only. Easy and
+Scope: this doc is about the **General Strategy** AI only. Easy and
 Proficient are out of scope here and should not be changed based on this
-document unless noted.
+document unless noted. **Naming note (issue #63):** this used to be
+called "Expert" as if it were a discrete top tier alongside Easy/
+Proficient. It's since been implemented as `GeneralStrategy`, a single
+class parameterized by a skill level 1–5 (Section 8) — the same code
+path at every level, with sample count / hand valuation / risk /
+deception all just parameter values that scale together, not a fourth
+hardcoded tier. References to "Expert" throughout this doc mean "the
+GeneralStrategy machinery described here," not a standalone class.
 
 ---
 
 ## 0. Core Architectural Principle: Determinization + Rollout
 
-The Expert AI must never access hidden information (opponents' hands,
+The General Strategy AI must never access hidden information (opponents' hands,
 undealt cards). Instead, hand "worth" is estimated the way strong
 Bridge/Skat engines do it: **Monte Carlo determinization**.
 
@@ -62,7 +69,7 @@ before the Monte Carlo numbers can be trusted.
 **Not in scope for this rollout mechanism:** actual bluffing/deception.
 Partnership Pinochle bidding is public and sequential, so there is
 little to bluff about at the bid — see Section 7 for what deception
-*does* apply to (trick play only, Expert-tier, last-resort).
+*does* apply to (trick play only, General Strategy's top skill level only, last-resort).
 
 ---
 
@@ -70,7 +77,7 @@ little to bluff about at the bid — see Section 7 for what deception
 
 Replace the static Base-Bid + Competitive-Adjustment formula (still fine
 as the fast-path prior, and as the Easy/Proficient logic) with simulated
-EV for Expert:
+EV for General Strategy's rollout-mode skill levels:
 
 ```
 EV(bid) = P(make bid) × (meld + trick points) − P(fail) × bid
@@ -360,7 +367,7 @@ beliefs from what's been played:
 - **Fake voids**: discarding out of a suit strategically (when you have
   a choice) to make an opponent believe you're void.
 
-**Scope this strictly to Expert tier**, and only after the card-counting
+**Scope this strictly to General Strategy's top skill level**, and only after the card-counting
 / lookahead dependency in Section 4 exists — false-carding is wasted
 sophistication without an opponent-model capable of noticing it, and
 without your own tracking layer in place to know when a false-card would
@@ -374,16 +381,31 @@ even be believable. Not needed for Easy/Proficient.
 |---|---|---|---|---|
 | Easy | Meld only, no trick-potential estimate | Static formula + noise | None | None |
 | Proficient (current baseline) | Meld + heuristic trick-potential, no simulation | Static/refined formula | None | None |
-| **Expert (this doc)** | Monte Carlo determinization + rollout (Section 0) | Simulated P(make) → true EV (Section 1) | Score-aware multiplier (optional, low priority) | False-carding vs. tracked opponents only (Section 7) |
+| **General Strategy (this doc, `GeneralStrategy`, issue #63)** | Skill-dial 1–5, not a fourth hardcoded tier: meld-only static (1) → Player's Base-Bid blend (2–3) → Monte Carlo determinization + rollout (4–5, Section 0) | Same dial: static formula (1–3) → simulated P(make) → true EV via `bid_ev`/`choose_bid_by_ev` (4–5, Section 1) | None (1) → low (2–3) → moderate/full (4–5) | Off (1–4) → on (5): false-carding + fake voids vs. tracked opponents (Section 7) |
 
-**Validation plan:** build Expert as a separate strategy module/class so
-Proficient stays untouched as a control group. Run large-N 2v2 tournament
-simulations (Expert+Expert vs. Proficient+Proficient) as both the
+The key property is architectural, not just numeric: every skill level
+runs through the *same* `GeneralStrategy` code path. Sample count, hand
+valuation, risk/aggression, and deception are parameter values fed into
+that one class, not separate hand-coded branches per level — and per
+issue #63's revised scope, the static-formula-vs-rollout-EV switch is
+wired to move together across all three decision points that have one
+(bidding, forward-pass Tier-0/1 shedding, and the trick-play defender
+trump-lead question) so a given skill level is internally consistent:
+levels 1–3 never invoke the rollout at any of those three points, and
+levels 4–5 always do.
+
+**Validation plan:** build General Strategy as a separate strategy
+module/class so Proficient stays untouched as a control group. Run
+large-N 2v2 tournament simulations (`GeneralStrategy` at various skill
+levels vs. Proficient+Proficient, and against itself) as both the
 acceptance test and the ongoing regression check — if a change doesn't
 measurably move the win rate, it isn't actually an improvement. This is
 also the mechanism for tuning any numeric parameters (sample counts,
 percentile cutoffs, risk multipliers) rather than hand-picking them —
-batch-simulate variants and let win rate pick the winner.
+batch-simulate variants and let win rate pick the winner. The specific
+per-level numbers in the table above (and in `GeneralStrategy`'s
+parameter dial in `pinochle_engine.py`) are a starting point for that
+tuning pass, not final.
 
 ---
 
@@ -397,46 +419,92 @@ batch-simulate variants and let win rate pick the winner.
    doubles (e.g., break a complete single Around to chase its
    Double)?~~ **Resolved for v1** (issue #61): no, completed melds
    stay locked once knapsacked — see Section 3.
-3. **(Section 4)** What does "fold" mean for a Bidder with no trump Ace —
-   a bid-time signal (don't take the contract on such a hand) or a
+3. ~~**(Section 4)** What does "fold" mean for a Bidder with no trump
+   Ace — a bid-time signal (don't take the contract on such a hand) or a
    mid-hand behavioral shift (keep the contract, abandon the aggressive
    trump-draw plan)? Does the partner mirror this behavior when *they*
-   lack the trump Ace?
-4. **(Section 4)** Does the Bidder's partner run the same Ace-first
+   lack the trump Ace?~~ **Resolved for v1** (issue #62): a mid-hand
+   behavioral shift, not a bid-time refusal — the contract is kept
+   (bid-time EV already priced this risk in), but the lead falls back to
+   the conservative non-trump safe-card cascade instead of the aggressive
+   trump-draw plan. The partner runs the identical rule independently if
+   *they* lack the trump Ace — see `_offense_trump_lead` in
+   `pinochle_engine.py`.
+4. ~~**(Section 4)** Does the Bidder's partner run the same Ace-first
    trump-draw sequence when *they* end up on lead, or defer entirely to
-   the Bidder's declared plan?
-5. **(Section 4)** Confirm (or correct) the proposed defender default:
+   the Bidder's declared plan?~~ **Resolved for v1** (issue #62): yes,
+   the partner runs the exact same `_offense_trump_lead` logic
+   independently — one implementation of "how the offense leads trump"
+   shared by both bidding-team seats, no deferral to a separate "the
+   Bidder's plan."
+5. ~~**(Section 4)** Confirm (or correct) the proposed defender default:
    avoid leading trump, attack the Bidder's weak suits, hoard trump to
-   ruff.
-6. **(Section 4 — critical, blocks several other sections)** Does the
+   ruff.~~ **Resolved for v1, revised** (issue #62): not one fixed global
+   rule — the avoid-trump default is what static/no-rollout-budget skill
+   levels use, but rollout-budget skill levels (issue #63's dial) compare
+   the static non-trump lead against a trump-lead candidate via an
+   optional `rollout_evaluator` callback and take whichever scores higher
+   in the exact game state — see `_defender_lead` in `pinochle_engine.py`.
+6. ~~**(Section 4 — critical, blocks several other sections)** Does the
    existing cascade trick-play strategy already track which of the two
    copies of each rank/suit have been played? Is it currently reactive
-   (best legal move this trick) or does it have any lookahead? This gates
-   the reliability of Monte Carlo rollouts on any hand where sequencing
-   matters (Section 3's elimination-play example, Section 4's trump-draw
-   logic).
-7. **(Section 6)** Expose "realistic ceiling" as a standalone number, or
-   keep it purely internal to the EV calculation?
+   (best legal move this trick) or does it have any lookahead?~~
+   **Resolved** (confirmed during issue #59, reused unchanged through
+   #61/#62): yes — `PlayTracker` (present since the initial commit,
+   predating this epic) already tracks per-copy play counts, and it's
+   exactly what the Monte Carlo sampler's `played_counts_from_tracker`
+   and the trick-play cascade's `is_safe`/`is_unsecured_ace` reuse rather
+   than rebuild. The underlying trick-play logic is purely reactive (best
+   legal move this trick, no built-in lookahead); any multi-trick
+   sequencing (e.g. Section 3's elimination-play example) only emerges
+   through the Monte Carlo rollout trying many determinized samples, not
+   through explicit planning inside the trick-play functions themselves.
+7. ~~**(Section 6)** Expose "realistic ceiling" as a standalone number, or
+   keep it purely internal to the EV calculation?~~ **Resolved for v1**
+   (issue #60): kept purely internal. `bid_ev`/`choose_bid_by_ev` fold
+   P(make) and the conditional expected-points-if-made directly into a
+   single EV number per candidate bid; no standalone percentile
+   "realistic ceiling" value is exposed. The per-sample detail
+   (`estimate_bid_time`'s diagnostics) is still available to callers/tests
+   that want to inspect the Monte Carlo output directly, so nothing is
+   lost — there's just no separate named "ceiling" concept layered on top.
 
 ---
 
 ## Appendix: Suggested Implementation Shape
 
-- `ExpertPlayer` as a new subclass alongside the existing `Player`/
-  `HumanPlayer` pattern — do not modify the Proficient-tier logic; it's
-  the tournament control group.
+- `GeneralStrategy` as a new `Player` subclass alongside the existing
+  `Player`/`HumanPlayer`/`EasyPlayer` pattern, parameterized by skill
+  level 1–5 — do not modify the Proficient-tier logic; it's the
+  tournament control group. **Implemented (issue #63)** in
+  `pinochle_engine.py`.
 - A determinization/sampler function, parameterized by decision point
   (bid-time / return-pass / trick-play), that deals unseen cards and
   invokes the *real* pass and trick-play logic — not simplified stand-ins
-  — so rollout fidelity matches Section 0's requirement.
+  — so rollout fidelity matches Section 0's requirement. **Implemented
+  (issue #59)** in `pinochle_rollout.py`.
 - Auto-SET check (Section 5) as a cheap guard at the top of the rollout,
-  before any 12-trick simulation.
+  before any 12-trick simulation. **Implemented (issue #59)** as
+  `is_auto_set` / the guard inside `rollout_deal`, `pinochle_rollout.py`.
 - Tier-0/Tier-1 candidate tables (Section 2) and the knapsack triage
   (Section 3) as shared, callable logic — used both by the real
   `choose_pass_cards` and by the sampler's internal simulated players,
   so there's exactly one implementation of "how a partner passes," not
   two that can drift apart. **Implemented (issue #61)** as
   `choose_forward_pass_cards` / `choose_return_pass_cards` in
-  `pinochle_engine.py`, independent of any Player subclass — a future
-  `ExpertPlayer` (#63) and the rollout sampler's internal simulated
+  `pinochle_engine.py`, independent of any Player subclass —
+  `GeneralStrategy` (#63) and the rollout sampler's internal simulated
   players both call into the same functions.
+- Trick-play leading/following (Section 4) and gated deception
+  (Section 7) as shared, callable logic, same shape as Section 2/3's
+  functions above. **Implemented (issue #62)** as
+  `choose_expert_lead_card` / `choose_expert_follow_card` in
+  `pinochle_engine.py`.
+- Bid-time simulated EV (Section 1). **Implemented (issue #60)** as
+  `bid_ev` / `choose_bid_by_ev` in `pinochle_rollout.py`.
+- Wiring all of the above together behind one skill-level dial, with the
+  static-formula-vs-rollout-EV switch moving together across bidding,
+  passing, and trick-play leads at the same skill threshold, plus the
+  "Random" tier as a thin wrapper that draws a random skill level at
+  creation time. **Implemented (issue #63)** as `GeneralStrategy` /
+  `RandomStrategy` in `pinochle_engine.py`.
