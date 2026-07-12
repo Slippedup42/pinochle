@@ -559,6 +559,75 @@ def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, t
 
 
 # ---------------------------------------------------------------------------
+# Shared pass/trick-play phase runners — used by Round for a real game, and
+# reused as-is by the Monte Carlo rollout sampler (pinochle_rollout.py, issue
+# #59) so there is exactly one implementation of "how passing/trick-play
+# actually happens," not two that can drift apart. Free functions (not Round
+# methods) so the rollout module can call them without a live Round/Deck.
+# ---------------------------------------------------------------------------
+
+def run_forward_pass(bid_winner, partner, trump_suit):
+    """Partner -> bidder, PASS_COUNT cards, via the real
+    Player.choose_pass_cards. Mutates both players' hands in place."""
+    to_bidder = partner.choose_pass_cards(PASS_COUNT, trump_suit, is_bid_winner=False)
+    for c in to_bidder:
+        partner.hand.remove(c)
+    bid_winner.hand.extend(to_bidder)
+
+
+def run_return_pass(bid_winner, partner, trump_suit):
+    """Bidder -> partner, PASS_COUNT cards, via the real
+    Player.choose_pass_cards. Mutates both players' hands in place."""
+    back_to_partner = bid_winner.choose_pass_cards(PASS_COUNT, trump_suit, is_bid_winner=True)
+    for c in back_to_partner:
+        bid_winner.hand.remove(c)
+    partner.hand.extend(back_to_partner)
+
+
+def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_offset=0):
+    """
+    Plays `num_tricks` tricks starting with players[leader_index] on lead,
+    via each player's real choose_card (-> choose_lead_card/
+    choose_follow_card). Mutates player hands and `tracker` in place.
+
+    `trick_num_offset` is the overall trick number (0-11) of the first
+    trick played here - only overall trick 11 gets the +10 last-trick
+    bonus, so a caller resuming mid-round (rollout sampler picking up
+    partway through a round) must pass the right offset to still award
+    it in the correct trick.
+
+    Returns {team: trick_points} for just the tricks played here.
+    """
+    trick_points = {}
+    for p in players:
+        trick_points.setdefault(p.team, 0)
+
+    for i in range(num_tricks):
+        trick = Trick(trump)
+        idx = leader_index
+        for _ in range(4):
+            player = players[idx]
+            legal = trick.legal_moves(player.hand)
+            card = player.choose_card(
+                legal, trick=trick, trump=trump,
+                tracker=tracker, my_team_players=set(player.team.players),
+            )
+            player.hand.remove(card)
+            trick.play(player, card)
+            tracker.record(card)
+            idx = (idx + 1) % 4
+
+        winner = trick.winner()
+        points = trick.points()
+        if trick_num_offset + i == 11:
+            points += 10  # last trick bonus
+        trick_points[winner.team] += points
+        leader_index = players.index(winner)
+
+    return trick_points
+
+
+# ---------------------------------------------------------------------------
 # Trick — owns lead suit, trump, legal-move filtering, and winner resolution.
 # ---------------------------------------------------------------------------
 
@@ -1180,16 +1249,8 @@ class Round:
 
     def _passing_phase(self):
         partner = next(p for p in self.bid_winner.team.players if p is not self.bid_winner)
-
-        to_bidder = partner.choose_pass_cards(PASS_COUNT, self.trump_suit, is_bid_winner=False)
-        for c in to_bidder:
-            partner.hand.remove(c)
-        self.bid_winner.hand.extend(to_bidder)
-
-        back_to_partner = self.bid_winner.choose_pass_cards(PASS_COUNT, self.trump_suit, is_bid_winner=True)
-        for c in back_to_partner:
-            self.bid_winner.hand.remove(c)
-        partner.hand.extend(back_to_partner)
+        run_forward_pass(self.bid_winner, partner, self.trump_suit)
+        run_return_pass(self.bid_winner, partner, self.trump_suit)
 
     def _meld_phase(self):
         for team in self.teams:
@@ -1200,30 +1261,8 @@ class Round:
 
     def _trick_taking_loop(self):
         """Runs 12 tricks, returns {team: trick_points}."""
-        trick_points = {team: 0 for team in self.teams}
         leader_index = self.players.index(self.bid_winner)
-
-        for trick_num in range(12):
-            trick = Trick(self.trump_suit)
-            idx = leader_index
-            for _ in range(4):
-                player = self.players[idx]
-                legal = trick.legal_moves(player.hand)
-                card = player.choose_card(
-                    legal, trick=trick, trump=self.trump_suit,
-                    tracker=self.tracker, my_team_players=set(player.team.players),
-                )
-                player.hand.remove(card)
-                trick.play(player, card)
-                self.tracker.record(card)
-                idx = (idx + 1) % 4
-
-            winner = trick.winner()
-            points = trick.points()
-            if trick_num == 11:
-                points += 10  # last trick bonus
-            trick_points[winner.team] += points
-            leader_index = self.players.index(winner)
+        trick_points = play_tricks(self.players, self.trump_suit, leader_index, self.tracker)
 
         for team in self.teams:
             team.trick_points = trick_points[team]
