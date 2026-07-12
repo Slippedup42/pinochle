@@ -7,9 +7,13 @@
 
 import type { TeamId } from '../engine/round'
 
-/** Display names for the two fixed teams — matches Scoreboard's "Team A" /
- * "Team B" labels (Player 0 & 2 = Team A, Player 1 & 3 = Team B). */
-export const TEAM_NAMES: Record<TeamId, string> = {
+/** Fallback team display names (#73) for callers that don't have live
+ * per-game team names yet — e.g. AuctionFlow/TrickPlayFlow's `teamNames`
+ * prop defaults to this when omitted (component tests that predate #73 and
+ * don't care about team-name text). GameFlow.tsx always supplies real,
+ * randomized `GameFlowState.teamNames` instead, so this default is never
+ * seen in an actual game. */
+export const DEFAULT_TEAM_NAMES: Record<TeamId, string> = {
   0: 'Team A',
   1: 'Team B',
 }
@@ -32,6 +36,10 @@ export interface RoundSummaryData {
   readonly bid: number
   /** Cumulative totals after this round's score has been added. */
   readonly cumulativeScoresByTeam: Record<TeamId, number>
+  /** Randomized per-game team display names (#73), from
+   * GameFlowState.teamNames — replaces the old static "Team A"/"Team B"
+   * labels. */
+  readonly teamNames: Record<TeamId, string>
 }
 
 /** Everything the win/loss screen needs once `checkGameOutcome` (game.ts)
@@ -39,4 +47,8 @@ export interface RoundSummaryData {
 export interface GameOverData {
   readonly winningTeam: TeamId
   readonly finalScoresByTeam: Record<TeamId, number>
+  /** Randomized per-game team display names (#73), from
+   * GameFlowState.teamNames — replaces the old static "Team A"/"Team B"
+   * labels. */
+  readonly teamNames: Record<TeamId, string>
 }

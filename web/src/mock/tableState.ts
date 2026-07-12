@@ -53,5 +53,6 @@ export function buildMockTableState(): TableState {
     currentBid: CURRENT_BID,
     bidWinner: BID_WINNER,
     scoresByTeam: { 0: 180, 1: 220 },
+    teamNames: { 0: 'Team A', 1: 'Team B' },
   }
 }

@@ -12,7 +12,6 @@ import {
   HUMAN_PLAYER,
   initGameFlowState,
   INITIAL_DEALER,
-  SEAT_NAMES,
   type GameFlowState,
 } from './gameFlowReducer'
 import { GameOverScreen } from './GameOverScreen'
@@ -133,10 +132,11 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
     return (
       <AuctionFlow
         initialHands={state.hands}
-        seatNames={SEAT_NAMES}
+        seatNames={state.seatNames}
         humanPlayer={HUMAN_PLAYER}
         dealer={state.dealer}
         scoresByTeam={state.scoresByTeam}
+        teamNames={state.teamNames}
         onOpenMenu={onOpenMenu}
         options={options}
         onComplete={handleAuctionComplete}
@@ -152,9 +152,10 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
         trumpSuit={trumpSuit}
         bidWinner={bidWinner}
         bid={bid}
-        seatNames={SEAT_NAMES}
+        seatNames={state.seatNames}
         humanPlayer={HUMAN_PLAYER}
         scoresByTeam={state.scoresByTeam}
+        teamNames={state.teamNames}
         // Local autosave (#54): resume mid-round from the last checkpoint
         // when there is one (only set right after LOAD_SAVE resumed a save
         // straight into this phase — a normal auction handoff clears it),
@@ -194,7 +195,7 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
   // paint in practice) and 'misdeal-check' both render the table
   // underneath, the same shell AuctionFlow uses — misdeal-check adds the
   // human's reshuffle prompt once the check reaches their seat.
-  const seatFor = (p: PlayerIndex) => ({ player: p, name: SEAT_NAMES[p], hand: state.hands[p] })
+  const seatFor = (p: PlayerIndex) => ({ player: p, name: state.seatNames[p], hand: state.hands[p] })
   const tableState: TableState = {
     seats: [seatFor(0), seatFor(1), seatFor(2), seatFor(3)],
     humanPlayer: HUMAN_PLAYER,
@@ -203,6 +204,7 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
     currentBid: 0,
     bidWinner: null,
     scoresByTeam: state.scoresByTeam,
+    teamNames: state.teamNames,
   }
 
   const humanMisdealEligible =

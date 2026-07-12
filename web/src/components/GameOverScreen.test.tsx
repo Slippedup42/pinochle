@@ -11,6 +11,7 @@ afterEach(cleanup)
 const data: GameOverData = {
   winningTeam: 0,
   finalScoresByTeam: { 0: 1040, 1: 760 },
+  teamNames: { 0: 'Team A', 1: 'Team B' },
 }
 
 describe('GameOverScreen', () => {

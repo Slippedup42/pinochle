@@ -29,6 +29,7 @@ export function buildMockRoundSummary(): RoundSummaryData {
       0: 420 + roundScoreByTeam[0],
       1: 380 + roundScoreByTeam[1],
     },
+    teamNames: { 0: 'Team A', 1: 'Team B' },
   }
 }
 
@@ -36,5 +37,6 @@ export function buildMockGameOver(): GameOverData {
   return {
     winningTeam: 0,
     finalScoresByTeam: { 0: 1040, 1: 760 },
+    teamNames: { 0: 'Team A', 1: 'Team B' },
   }
 }

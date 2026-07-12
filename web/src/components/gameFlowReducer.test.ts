@@ -19,6 +19,21 @@ describe('initGameFlowState', () => {
     expect(state.hands).toEqual(emptyHands())
     expect(state.misdealCheckIndex).toBe(0)
   })
+
+  it('seats the human as "You" and draws 3 unique opponent names (#73)', () => {
+    const state = initGameFlowState(3)
+    expect(state.seatNames[0]).toBe('You')
+    const opponents = [state.seatNames[1], state.seatNames[2], state.seatNames[3]]
+    expect(new Set(opponents).size).toBe(3)
+    for (const name of opponents) expect(name).not.toBe('You')
+  })
+
+  it('draws 2 unique team names (#73)', () => {
+    const state = initGameFlowState(3)
+    expect(state.teamNames[0]).not.toBe(state.teamNames[1])
+    expect(state.teamNames[0]).toBeTruthy()
+    expect(state.teamNames[1]).toBeTruthy()
+  })
 })
 
 describe('gameFlowReducer', () => {
@@ -155,6 +170,7 @@ describe('gameFlowReducer', () => {
           bidWinnerTeam,
           bid: 300,
           cumulativeScoresByTeam: scoresByTeam,
+          teamNames: { 0: 'Team A', 1: 'Team B' },
         },
       }
     }
@@ -172,7 +188,11 @@ describe('gameFlowReducer', () => {
       const state = stateAfterRoundSummary({ 0: GAME_WIN_SCORE, 1: 400 }, 0)
       const next = gameFlowReducer(state, { type: 'CONTINUE_ROUND' })
       expect(next.phase).toBe('game-over')
-      expect(next.gameOverData).toEqual({ winningTeam: 0, finalScoresByTeam: { 0: GAME_WIN_SCORE, 1: 400 } })
+      expect(next.gameOverData).toEqual({
+        winningTeam: 0,
+        finalScoresByTeam: { 0: GAME_WIN_SCORE, 1: 400 },
+        teamNames: state.teamNames,
+      })
     })
 
     it('ends the game in the other team\'s favor once a team busts to the loss threshold', () => {
@@ -194,13 +214,26 @@ describe('gameFlowReducer', () => {
         ...initGameFlowState(1),
         phase: 'game-over',
         scoresByTeam: { 0: 1000, 1: -400 },
-        gameOverData: { winningTeam: 0, finalScoresByTeam: { 0: 1000, 1: -400 } },
+        gameOverData: {
+          winningTeam: 0,
+          finalScoresByTeam: { 0: 1000, 1: -400 },
+          teamNames: { 0: 'Team A', 1: 'Team B' },
+        },
       }
       const next = gameFlowReducer(state, { type: 'NEW_GAME', dealer: 3 })
       expect(next.phase).toBe('dealing')
       expect(next.dealer).toBe(3)
       expect(next.scoresByTeam).toEqual({ 0: 0, 1: 0 })
       expect(next.gameOverData).toBeNull()
+    })
+
+    it('redraws seat and team names for the new game (#73)', () => {
+      const state: GameFlowState = { ...initGameFlowState(1), phase: 'game-over' }
+      const next = gameFlowReducer(state, { type: 'NEW_GAME', dealer: 3 })
+      expect(next.seatNames[0]).toBe('You')
+      const opponents = [next.seatNames[1], next.seatNames[2], next.seatNames[3]]
+      expect(new Set(opponents).size).toBe(3)
+      expect(next.teamNames[0]).not.toBe(next.teamNames[1])
     })
   })
 })

@@ -1,5 +1,5 @@
 import type { TeamId } from '../engine/round'
-import { TEAM_NAMES, type RoundSummaryData } from './scoreTypes'
+import type { RoundSummaryData } from './scoreTypes'
 
 export interface RoundSummaryProps {
   data: RoundSummaryData
@@ -21,7 +21,8 @@ const TEAM_IDS: readonly TeamId[] = [0, 1]
  * `onContinue` does.
  */
 export function RoundSummary({ data, onContinue }: RoundSummaryProps) {
-  const { meldPointsByTeam, trickPointsByTeam, roundScoreByTeam, bidWinnerTeam, bid, cumulativeScoresByTeam } = data
+  const { meldPointsByTeam, trickPointsByTeam, roundScoreByTeam, bidWinnerTeam, bid, cumulativeScoresByTeam, teamNames } =
+    data
   // scoreRound() only ever produces a negative net score for the bidding
   // team, and only when they fell short of their bid ("going set").
   const wentSet = roundScoreByTeam[bidWinnerTeam] < 0
@@ -31,7 +32,7 @@ export function RoundSummary({ data, onContinue }: RoundSummaryProps) {
       <div className="w-full max-w-sm rounded-lg bg-white p-6 text-neutral-900 shadow-xl">
         <h2 className="text-lg font-semibold">Round summary</h2>
         <p className="mt-1 text-sm text-neutral-600">
-          {TEAM_NAMES[bidWinnerTeam]} bid {bid} and{' '}
+          {teamNames[bidWinnerTeam]} bid {bid} and{' '}
           {wentSet ? 'went set' : 'made their contract'}.
         </p>
 
@@ -41,7 +42,7 @@ export function RoundSummary({ data, onContinue }: RoundSummaryProps) {
               <th className="font-normal" />
               {TEAM_IDS.map((team) => (
                 <th key={team} className="pl-4 font-medium text-neutral-900">
-                  {TEAM_NAMES[team]}
+                  {teamNames[team]}
                 </th>
               ))}
             </tr>

@@ -51,6 +51,34 @@ describe('GameShell', () => {
     expect(Deck.prototype.deal).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the same randomized opponent and team names across a save/Continue cycle (#73)', async () => {
+    mockDeal()
+    const { unmount } = render(<GameShell />)
+    fireEvent.click(screen.getByRole('button', { name: 'New Game' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
+
+    // West/Partner/East seat names, read off the seat labels (Seat.tsx
+    // renders `seat.name` as plain text) — captured before unmount so we
+    // can assert the resumed game shows the exact same draw, not a fresh
+    // one.
+    const seatNamesBefore = screen.getAllByText(/cards$/).map((el) => el.parentElement?.textContent ?? '')
+    // Team names, read off the Scoreboard strip ("<name>: <score>").
+    const scoreboardTextBefore = document.querySelector('.bg-green-950')?.textContent ?? ''
+
+    unmount()
+
+    render(<GameShell />)
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
+
+    const seatNamesAfter = screen.getAllByText(/cards$/).map((el) => el.parentElement?.textContent ?? '')
+    const scoreboardTextAfter = document.querySelector('.bg-green-950')?.textContent ?? ''
+
+    expect(seatNamesAfter).toEqual(seatNamesBefore)
+    expect(seatNamesBefore.length).toBeGreaterThan(0) // sanity: actually found opponent seats
+    expect(scoreboardTextAfter).toBe(scoreboardTextBefore)
+  })
+
   it('opens the mid-game menu via the persistent menu button, and Continue there just resumes', async () => {
     mockDeal()
     render(<GameShell />)

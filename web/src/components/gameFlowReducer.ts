@@ -17,7 +17,9 @@
 
 import { checkGameOutcome } from '../engine/game'
 import { scoreMelds } from '../engine/melds'
+import { sampleNames } from '../engine/names'
 import { scoreRound, teamOf, type Hands, type TeamId } from '../engine/round'
+import { sampleTeamNames } from '../engine/teamNames'
 import type { PlayerIndex } from '../engine/trick'
 import type { AuctionResult } from './auctionTypes'
 import type { GameOverData, RoundSummaryData } from './scoreTypes'
@@ -53,6 +55,17 @@ export interface GameFlowState {
    * reload lands back on the exact trick in progress rather than the start
    * of the round. */
   readonly trickPlayCheckpoint: TrickPlayState | null
+  /** Randomized per-seat display names (#73): seat 0 (the human) is always
+   * 'You'; seats 1/2/3 get 3 unique names drawn from names.ts's NAME_POOL.
+   * Generated once when a new game starts (initGameFlowState/NEW_GAME) —
+   * not regenerated on every render/action — so a resumed game (via the
+   * autosave/resume machinery, persistence/gameSave.ts) keeps the same
+   * opponent names rather than redrawing them. */
+  readonly seatNames: Record<PlayerIndex, string>
+  /** Randomized per-team display names (#73), drawn from teamNames.ts's
+   * TEAM_NAME_POOL — same once-per-new-game generation and
+   * autosave/resume persistence as seatNames above. */
+  readonly teamNames: Record<TeamId, string>
 }
 
 export type GameFlowAction =
@@ -77,16 +90,24 @@ export type GameFlowAction =
 // component itself; oxlint's react/only-export-components rule flags mixed
 // component+value exports since it breaks fast refresh (same reason these
 // don't live in AuctionFlow.tsx/TrickPlayFlow.tsx either).
-export const SEAT_NAMES: Record<PlayerIndex, string> = {
-  0: 'You',
-  1: 'West',
-  2: 'Partner',
-  3: 'East',
-}
 export const HUMAN_PLAYER: PlayerIndex = 0
 export const INITIAL_DEALER: PlayerIndex = 3
 
 const TEAM_IDS: readonly TeamId[] = [0, 1]
+
+/** Draws a fresh set of randomized seat names (#73): seat 0 is always
+ * 'You', seats 1/2/3 get 3 unique names from names.ts's NAME_POOL. */
+function randomSeatNames(): Record<PlayerIndex, string> {
+  const [west, partner, east] = sampleNames(3)
+  return { 0: 'You', 1: west, 2: partner, 3: east }
+}
+
+/** Draws a fresh set of randomized team names (#73) from teamNames.ts's
+ * TEAM_NAME_POOL. */
+function randomTeamNames(): Record<TeamId, string> {
+  const [team0, team1] = sampleTeamNames(2)
+  return { 0: team0, 1: team1 }
+}
 
 export function initGameFlowState(dealer: PlayerIndex): GameFlowState {
   return {
@@ -99,6 +120,8 @@ export function initGameFlowState(dealer: PlayerIndex): GameFlowState {
     roundSummary: null,
     gameOverData: null,
     trickPlayCheckpoint: null,
+    seatNames: randomSeatNames(),
+    teamNames: randomTeamNames(),
   }
 }
 
@@ -173,6 +196,7 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         bidWinnerTeam,
         bid,
         cumulativeScoresByTeam,
+        teamNames: state.teamNames,
       }
       return {
         ...state,
@@ -189,7 +213,7 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         return {
           ...state,
           phase: 'game-over',
-          gameOverData: { winningTeam: winner, finalScoresByTeam: state.scoresByTeam },
+          gameOverData: { winningTeam: winner, finalScoresByTeam: state.scoresByTeam, teamNames: state.teamNames },
         }
       }
       return {
@@ -210,6 +234,10 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         roundSummary: null,
         gameOverData: null,
         trickPlayCheckpoint: null,
+        // Fresh names per new game (#73) — a brand new game, not a resume,
+        // so opponents/teams should be redrawn rather than carried over.
+        seatNames: randomSeatNames(),
+        teamNames: randomTeamNames(),
       }
     }
     case 'TRICK_CHECKPOINT': {
