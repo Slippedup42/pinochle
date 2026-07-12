@@ -46,12 +46,20 @@ not yet implemented — see the strategy doc below.
   process (no pickling needed).
 - [`names.py`](names.py) — 200-name pool for randomizing AI opponent
   names.
+- [`tournament_sim.py`](tournament_sim.py) — dev/tuning tool: batch-runs
+  N full `Game.play()` matches between two team configs (player class +
+  kwargs per seat), alternating which physical seats each team occupies
+  to cancel out positional bias, and reports win rate and average score
+  margin per team. Not yet useful for its intended purpose (comparing
+  AI skill levels) until the Expert/GeneralStrategy tier lands, but
+  runs today against `Player`/`EasyPlayer`.
 
 ## Running
 
 ```
 python pinochle_engine.py   # rules engine self-checks + full-game sanity runs
 python play_local.py        # play a full interactive game in the terminal
+python tournament_sim.py --games 300   # Proficient-vs-Proficient sanity check (~50/50)
 ```
 
 ## Architecture
