@@ -1,10 +1,12 @@
 """
-Monte Carlo determinization sampler + Auto-SET guard (issue #59).
+Monte Carlo determinization sampler + Auto-SET guard (issue #59), plus
+bid-time simulated EV built on top of it (issue #60).
 
 Foundation piece for the Expert AI epic (#57) - implements
 `pinochle_expert_ai_strategy.md` Section 0 (the shared determinization +
 rollout machinery that underlies bid-time EV, pass selection, and the
-"realistic ceiling" problem) and Section 5 (the Auto-SET hard prune).
+"realistic ceiling" problem), Section 1 (bid-time expected value), and
+Section 5 (the Auto-SET hard prune).
 
 This module is infrastructure only. It is deliberately NOT wired into any
 Player subclass's decision-making yet - that's issue #63 (GeneralStrategy).
@@ -24,6 +26,12 @@ What lives here is the shared machinery later issues will call:
   - Auto-SET guard (Section 5): a hard mathematical prune checked before
     any 12-trick rollout, so a sample that's already a guaranteed set
     skips the expensive trick-play simulation entirely.
+  - Bid-time EV (Section 1): `bid_ev` folds an `estimate_bid_time`
+    aggregate into a single EV(bid) number using the doc's formula, and
+    `choose_bid_by_ev` picks the candidate bid level that maximizes it -
+    the Expert-tier replacement for the static Base-Bid formula, at the
+    top of the skill range only. `Player`/`EasyPlayer.choose_bid` are
+    untouched; a higher-skill strategy calls this instead (issue #63).
 
 Sample counts are always a caller-supplied parameter (never hardcoded) -
 the doc suggests ~100-150 for bid-time and ~300+ for the one-time
@@ -448,3 +456,96 @@ def estimate_return_pass(hand, trump, bid, num_samples=300, rng=None):
         sample_fn, build_fn, trump, bid, num_samples,
         rollout_kwargs={"passing": "return_only"}, rng=rng,
     )
+
+
+# ---------------------------------------------------------------------------
+# Bid-time expected value (issue #60 / strategy doc Section 1) - EV-maximizing
+# bid selection, built on estimate_bid_time above rather than duplicating any
+# sampling/rollout logic. This is new, additive Expert-tier machinery: it
+# does not touch Player.choose_bid or EasyPlayer.choose_bid, which keep
+# using the static Base-Bid + Competitive-Adjustment formula (still correct
+# as the fast-path prior for those tiers, per the doc).
+# ---------------------------------------------------------------------------
+
+def bid_ev(hand, trump, bid, num_samples=150, rng=None):
+    """
+    Section 1's formula:
+
+        EV(bid) = P(make bid) x E[meld + trick points | made] -
+                  P(fail) x bid
+
+    Runs `estimate_bid_time` - the real determinization + rollout
+    machinery (real forward pass, real return pass, full real trick play,
+    Auto-SET guard included) - and folds the per-sample results into a
+    single expected-value number for this (hand, trump, bid) combination.
+
+    The "meld + trick points" term is deliberately conditioned on made ==
+    True samples only, not `estimate_bid_time`'s unconditional
+    `expected_bidding_points` (which averages in the *lower* totals from
+    samples that got set too, double-counting the failure penalty the
+    -P(fail) x bid term already covers). This mirrors the actual scoring
+    rule the formula models (see `Round._score_round` in
+    pinochle_engine.py): make the bid and your team scores whatever
+    meld+trick total it actually took; fail it and your team scores
+    exactly -bid instead, regardless of how close the total came. There
+    is no partial credit for a failed bid, so a failed sample's actual
+    total has no business feeding the "if made" average.
+
+    Returns (ev, diagnostics) - diagnostics is the aggregate dict from
+    `estimate_bid_time` (p_make, expected_bidding_points, auto_set_rate,
+    samples, ...) with one extra key, `expected_points_if_made` (0.0 if
+    no sample made the bid), so callers/tests can inspect the Monte Carlo
+    detail behind the number rather than just the final float.
+    """
+    diagnostics = estimate_bid_time(hand, trump, bid, num_samples=num_samples, rng=rng)
+    p_make = diagnostics["p_make"]
+    p_fail = 1.0 - p_make
+
+    made_samples = [r for r in diagnostics["samples"] if r["made"]]
+    if made_samples:
+        expected_points_if_made = sum(r["bidding_total"] for r in made_samples) / len(made_samples)
+    else:
+        expected_points_if_made = 0.0
+
+    diagnostics["expected_points_if_made"] = expected_points_if_made
+    ev = p_make * expected_points_if_made - p_fail * bid
+    return ev, diagnostics
+
+
+def choose_bid_by_ev(hand, trump, candidate_bids, num_samples=150, rng=None):
+    """
+    Section 1: "Choose the bid that maximizes EV ... rather than reading
+    off a fixed table." Evaluates `bid_ev` for every level in
+    `candidate_bids` under a single fixed candidate trump suit (the doc's
+    step 2 assumes trump - this function doesn't search trump suits, a
+    caller does that by calling it once per candidate trump) and returns
+    whichever bid has the highest EV.
+
+    `candidate_bids` may include `None` to represent "don't bid at all" -
+    modeled as a fixed EV of 0.0 (no points won, nothing risked) rather
+    than run a rollout for it, so passing is directly comparable to every
+    real bid level on the same EV scale instead of being a special case
+    the caller has to reason about separately.
+
+    Competitive/blocking bids are not a separate mechanic here, per the
+    doc: a caller just includes bid levels above the naive "optimal" one
+    in `candidate_bids`, and this same evaluation loop picks them up
+    automatically if their EV (accounting for the higher fail risk) still
+    beats every alternative - no hand-coded "should I block" branch.
+
+    Returns (best_bid, best_ev, all_evs) where `all_evs` maps every
+    candidate (including `None`, if supplied) to its EV, so callers/tests
+    can inspect the full comparison, not just the winner.
+    """
+    if not candidate_bids:
+        raise ValueError("candidate_bids must be non-empty")
+
+    all_evs = {}
+    for bid in candidate_bids:
+        if bid is None:
+            all_evs[None] = 0.0
+        else:
+            all_evs[bid], _ = bid_ev(hand, trump, bid, num_samples=num_samples, rng=rng)
+
+    best_bid = max(all_evs, key=all_evs.get)
+    return best_bid, all_evs[best_bid], all_evs
