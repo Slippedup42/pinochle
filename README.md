@@ -35,7 +35,17 @@ not yet implemented — see the strategy doc below.
 - [`pinochle_engine.py`](pinochle_engine.py) — the rules engine and
   Proficient AI: `Card`, `Deck`, `Player`, `Team`, `Trick`, `Round`,
   `Game`, meld scoring, bid valuation, passing strategy, trick-play
-  strategy.
+  strategy. Also holds the Expert-tier forward/return pass logic
+  (`choose_forward_pass_cards` / `choose_return_pass_cards`, issue #61,
+  `pinochle_expert_ai_strategy.md` Sections 2-3) as free functions
+  independent of any Player subclass, ready for both a future
+  `ExpertPlayer` (#63) and the rollout sampler's simulated players to
+  call into.
+- [`pinochle_rollout.py`](pinochle_rollout.py) — Monte Carlo
+  determinization sampler + Auto-SET guard (issue #59): deals the
+  currently-unseen cards for a decision point (bidding / return-pass /
+  trick-play), rolls a sample out to completion via the real pass/
+  trick-play logic, and aggregates P(make)/E[points] across samples.
 - [`human_play.py`](human_play.py) — resumable interactive play layer
   (`HumanPlayer`, `InteractiveRound`) built for chat-session play, where
   a script can't block on `input()` between messages: decisions raise

@@ -871,6 +871,349 @@ def _bidder_pass_selection(hand, trump, category, count):
 
 
 # ---------------------------------------------------------------------------
+# Expert-tier pass logic (issue #61) — implements
+# pinochle_expert_ai_strategy.md Sections 2 (forward pass) and 3 (return
+# pass) as shared, callable logic, per the doc's Appendix: "there should be
+# exactly one implementation of 'how a partner passes', not two that can
+# drift apart." `choose_forward_pass_cards`/`choose_return_pass_cards` are
+# deliberately free functions, independent of the Proficient-tier
+# `_partner_pass_selection`/`_bidder_pass_selection` above (which stay
+# untouched — Proficient is the tournament control group, see
+# CLAUDE.md/README.md) and of any Player subclass, so both a future
+# ExpertPlayer (#63) and the rollout sampler's internal simulated players
+# (pinochle_rollout.py, #59) can call into the exact same code. Pure
+# functions over a hand + trump + count, independent of the rollout
+# machinery itself (per issue #61's Scope note) — callers that want
+# rollout-compare mode (Section 2) wire in a `rollout_evaluator` callback
+# from the outside; this module never imports pinochle_rollout.
+# ---------------------------------------------------------------------------
+
+def _pad_pass_selection(hand, chosen, count):
+    """Safety net matching Player.choose_pass_cards' own fallback: the
+    tiered logic above should always fill `count`, but pad deterministically
+    with whatever's left rather than ever returning short."""
+    if len(chosen) < count:
+        remaining = [c for c in hand if c not in chosen]
+        chosen = chosen + remaining[:count - len(chosen)]
+    return chosen[:count]
+
+
+def _tier0_forward_pass_candidates(hand, trump):
+    """
+    Section 2 Tier 0 — "always chase if missing": cards the partner should
+    unconditionally offer toward the bidder's meld, in priority order:
+
+      1. QS / JD (Pinochle) — trump-independent, always a candidate since
+         the physical cards are QS/JD specifically.
+      2. Trump A/10/K/Q/J (Run/Marriage) — trump-suit only, in RUN_RANKS
+         order (A, 10, K, Q, J).
+      3. Any Ace, any suit (Aces Around only).
+
+    Hard exclusion (doc-confirmed, not implemented here by omission, not
+    by a negative check): Kings/Queens/Jacks Around are NEVER chased, from
+    zero or from partial progress — no "3 Kings implies partner might hold
+    a Queen" heuristic. That kind of inference is meant to emerge from the
+    rollout itself (Section 0), not be hardcoded. A trump K/Q/J still shows
+    up here, but only via the Run/Marriage tier above, not because of
+    Kings/Queens/Jacks Around.
+    """
+    pool = list(hand)
+    chosen = []
+    limit = len(hand)
+
+    _take(pool, chosen, limit,
+          lambda c: (c.suit == Suit.SPADES and c.rank == "Q")
+          or (c.suit == Suit.DIAMONDS and c.rank == "J"))
+
+    _take(pool, chosen, limit,
+          lambda c: c.suit == trump and c.rank in RUN_RANKS,
+          sort_key=lambda c: RUN_RANKS.index(c.rank))
+
+    _take(pool, chosen, limit, lambda c: c.rank == "A")
+
+    return chosen
+
+
+def _tier1_forward_pass_candidates(hand, trump, exclude):
+    """
+    Section 2 Tier 1 — fallback shedding, used only when Tier 0 doesn't
+    fill all slots (static mode) or as the competing alternative to a
+    marginal Tier 0 pick (rollout-compare mode). Priority order:
+
+      1. Non-trump 10s not already chosen — zero meld value outside a
+         trump-only Run/Double Run, pure liability (same reasoning as the
+         return-pass rule in Section 3).
+      2. Other unprotected non-trump count-cards (A/K) that wouldn't break
+         partner's own kept marriage/around.
+      3. Void-building filler: a whole non-trump suit that fits the
+         remaining slots and contains nothing protected.
+      4. Any other non-trump card that doesn't break a kept meld.
+      5. True last resort: anything left (surplus trump, or a card that
+         would break a kept meld).
+
+    Concrete doc example: partner holds 10-K-Q of a non-trump suit and
+    nothing Tier-0 eligible — keeps K+Q (preserves the 20-pt Common
+    Marriage), ships the 10 (tier 1). Never proposes a card that would
+    break the partner's own kept meld ahead of one that wouldn't.
+    """
+    pool = [c for c in hand if c not in exclude]
+    chosen = []
+    limit = len(pool)
+
+    keeps_meld = lambda c: _breaks_marriage(hand, c) or _breaks_around(hand, c)
+
+    _take(pool, chosen, limit,
+          lambda c: c.suit != trump and c.rank == "10",
+          sort_key=lambda c: _suit_length(hand, c.suit))
+
+    _take(pool, chosen, limit,
+          lambda c: c.suit != trump and c.rank in POINT_RANKS and not keeps_meld(c),
+          sort_key=lambda c: _suit_length(hand, c.suit))
+
+    if len(chosen) < limit:
+        void_cards = _find_void_opportunity(pool, trump, keeps_meld, limit - len(chosen))
+        if void_cards:
+            for c in void_cards:
+                if c in pool and len(chosen) < limit:
+                    chosen.append(c)
+                    pool.remove(c)
+
+    _take(pool, chosen, limit, lambda c: c.suit != trump and not keeps_meld(c))
+    _take(pool, chosen, limit, lambda c: True)
+
+    return chosen
+
+
+def choose_forward_pass_cards(hand, trump, count, rollout_evaluator=None):
+    """
+    Section 2 entry point: partner -> bidder pass selection. Combines Tier
+    0 ("always chase if missing", `_tier0_forward_pass_candidates`) and
+    Tier 1 fallback shedding (`_tier1_forward_pass_candidates`).
+
+    **Resolved v1 design (doc Section 9 Q1 / issue #61's revised open
+    question)**: whether Tier 1 can outrank a marginal Tier 0 pick is NOT
+    one fixed global rule — it's a static-mode-vs-rollout-compare-mode
+    split tied to skill level (see #63's GeneralStrategy dial):
+
+      - `rollout_evaluator=None` (static/no-rollout-budget skill levels):
+        Tier 1 is a strict last resort — it only fills slots Tier 0 left
+        empty, and never outranks a Tier 0 pick. Intentionally not the
+        smartest possible play; that gap is part of what makes low skill
+        actually play worse.
+      - `rollout_evaluator` supplied (rollout-budget skill levels): no
+        hardcoded ranking. When Tier 0 alone has enough candidates to fill
+        every slot, this generates two candidate pass sets — the static
+        all-Tier-0 pick, and one that swaps the single lowest-priority
+        ("marginal") Tier 0 card for the best competing Tier 1 card — and
+        lets `rollout_evaluator` pick the winner by simulated EV. This is
+        what lets higher skill levels discover the cases where shedding
+        differently is actually correct, instead of following a fixed
+        rule.
+
+    `rollout_evaluator`, if provided, must be a callable:
+
+        rollout_evaluator(hand, trump, candidate_cards) -> float
+
+    returning a higher-is-better simulated EV for passing exactly
+    `candidate_cards` (a list of `count` Card objects drawn from `hand`).
+    This function only needs that numeric comparison — it never imports or
+    calls into pinochle_rollout.py itself, so it stays pure/testable
+    against constructed hands independent of the rollout machinery (a
+    caller wires a real evaluator on top of `monte_carlo_rollout`/
+    `rollout_deal` from pinochle_rollout.py, #59, elsewhere).
+    """
+    tier0 = _tier0_forward_pass_candidates(hand, trump)
+
+    if len(tier0) < count:
+        # Tier 0 has nothing left to offer for the remaining slots — both
+        # modes agree here, there's no marginal pick to compare against.
+        chosen = list(tier0)
+        tier1 = _tier1_forward_pass_candidates(hand, trump, exclude=chosen)
+        chosen += tier1[:count - len(chosen)]
+        return _pad_pass_selection(hand, chosen, count)
+
+    static_chosen = tier0[:count]
+    if rollout_evaluator is None:
+        return static_chosen
+
+    tier1 = _tier1_forward_pass_candidates(hand, trump, exclude=static_chosen)
+    if not tier1:
+        return static_chosen  # nothing to compare against — static and compare modes agree
+
+    marginal_kept = static_chosen[:-1]
+    competing_tier1_pick = tier1[0]
+    candidate_static = static_chosen
+    candidate_compare = marginal_kept + [competing_tier1_pick]
+
+    ev_static = rollout_evaluator(hand, trump, candidate_static)
+    ev_compare = rollout_evaluator(hand, trump, candidate_compare)
+    return candidate_compare if ev_compare > ev_static else candidate_static
+
+
+def _first_n_of(hand, suit, rank, n):
+    return [c for c in hand if c.suit == suit and c.rank == rank][:n]
+
+
+def _return_pass_meld_groups(hand, trump):
+    """
+    Section 3 knapsack input: every meld currently present in `hand` (same
+    categories as `score_melds`), as (value, name, required_cards) triples.
+    `required_cards` are the exact physical Card objects that meld needs —
+    deliberately allowed to overlap across groups (e.g. a trump King is
+    part of both Run and Royal Marriage using the very same card), since
+    `_knapsack_lock_return_pass_melds` below dedupes by tracking what's
+    already locked rather than by partitioning cards into disjoint pools.
+    """
+    groups = []
+
+    def n(suit, rank):
+        return _n_of(hand, suit, rank)
+
+    run_count = min(n(trump, r) for r in RUN_RANKS)
+    if run_count == 2:
+        cards = [c for r in RUN_RANKS for c in _first_n_of(hand, trump, r, 2)]
+        groups.append((DOUBLE_RUN_VALUE, "Double Run", cards))
+    elif run_count == 1:
+        cards = [c for r in RUN_RANKS for c in _first_n_of(hand, trump, r, 1)]
+        groups.append((RUN_VALUE, "Run", cards))
+
+    royal_count = min(n(trump, "K"), n(trump, "Q"))
+    if royal_count:
+        cards = _first_n_of(hand, trump, "K", royal_count) + _first_n_of(hand, trump, "Q", royal_count)
+        groups.append((royal_count * ROYAL_MARRIAGE_VALUE, "Royal Marriage", cards))
+
+    for suit in Suit:
+        if suit == trump:
+            continue
+        cm = min(n(suit, "K"), n(suit, "Q"))
+        if cm:
+            cards = _first_n_of(hand, suit, "K", cm) + _first_n_of(hand, suit, "Q", cm)
+            groups.append((cm * COMMON_MARRIAGE_VALUE, f"Common Marriage ({suit.value})", cards))
+
+    dix_count = n(trump, "9")
+    if dix_count:
+        groups.append((dix_count * DIX_VALUE, "Dix", _first_n_of(hand, trump, "9", dix_count)))
+
+    qs_count = n(Suit.SPADES, "Q")
+    jd_count = n(Suit.DIAMONDS, "J")
+    pin_count = min(qs_count, jd_count)
+    if pin_count == 2:
+        cards = _first_n_of(hand, Suit.SPADES, "Q", 2) + _first_n_of(hand, Suit.DIAMONDS, "J", 2)
+        groups.append((PINOCHLE_DOUBLE_VALUE, "Double Pinochle", cards))
+    elif pin_count == 1:
+        cards = _first_n_of(hand, Suit.SPADES, "Q", 1) + _first_n_of(hand, Suit.DIAMONDS, "J", 1)
+        groups.append((PINOCHLE_SINGLE_VALUE, "Pinochle", cards))
+
+    for rank, base in AROUND_VALUES.items():
+        around_count = min(n(s, rank) for s in Suit)
+        if around_count == 2:
+            cards = [c for s in Suit for c in _first_n_of(hand, s, rank, 2)]
+            groups.append((base * AROUND_DOUBLE_MULTIPLIER, f"{rank}s Around (double)", cards))
+        elif around_count == 1:
+            cards = [c for s in Suit for c in _first_n_of(hand, s, rank, 1)]
+            groups.append((base, f"{rank}s Around", cards))
+
+    return groups
+
+
+def _knapsack_lock_return_pass_melds(hand, trump, cap):
+    """
+    Section 3 knapsack triage: sort candidate meld groups by point value
+    descending, greedily lock the cards each one needs — skipping cards a
+    higher-value group already locked — as long as the running total stays
+    within `cap` slots. A group that would push the total over `cap` is
+    skipped ENTIRELY, never partially locked: doc example — a hand that
+    could complete Kings Around (80) *and* Run (150) + Double Pinochle
+    (300) + Aces Around (100) but lacks slots for all of it breaks Kings
+    Around whole and keeps the higher group whole.
+
+    **Resolved v1 default (doc Section 9 Q2)**: this has no "reopen a
+    locked meld to chase its Double" step — a complete single meld that
+    gets locked here stays locked for good, it is never broken later to
+    protect progress toward a Double of the same meld. Documented here as
+    the current default/tunable, same as Section 2's mode split.
+    """
+    groups = sorted(_return_pass_meld_groups(hand, trump), key=lambda g: -g[0])
+    locked = []
+    for _value, _name, cards in groups:
+        additional = [c for c in cards if c not in locked]
+        if len(locked) + len(additional) <= cap:
+            locked.extend(additional)
+    return locked
+
+
+def _return_pass_pool_priority(pool, hand, trump):
+    """
+    Section 3 shedding priority within the return-pass pool (cards NOT
+    locked by the knapsack triage — see `_knapsack_lock_return_pass_melds`).
+    Objective: reduce the Bidder's count-card liability, pass loser-points
+    to partner. Priority order:
+
+      1. Non-trump 10s — zero meld value outside a trump-only Run/Double
+         Run, so any non-trump 10 not needed for a Run is a top ship
+         candidate (doc-mandated, tier-agnostic).
+      2. Other unprotected non-trump count-cards (A/K) — reduces liability
+         the Bidder would otherwise have to protect through 12 tricks.
+      3. Void-building filler: a whole non-trump suit that fits the
+         remaining slots.
+      4. Any other non-trump card.
+      5. True last resort: trump (or anything left).
+    """
+    remaining = list(pool)
+    chosen = []
+    limit = len(remaining)
+
+    # Everything reaching this pool is already NOT part of a locked meld
+    # (that's what makes it pool, not locked), so there's no kept-meld to
+    # break here — `_find_void_opportunity` still wants an is_protected
+    # callback, so pass a permissive no-op.
+    not_protected = lambda c: False
+
+    _take(remaining, chosen, limit,
+          lambda c: c.suit != trump and c.rank == "10",
+          sort_key=lambda c: _suit_length(hand, c.suit))
+
+    _take(remaining, chosen, limit,
+          lambda c: c.suit != trump and c.rank in POINT_RANKS,
+          sort_key=lambda c: _suit_length(hand, c.suit))
+
+    if len(chosen) < limit:
+        void_cards = _find_void_opportunity(remaining, trump, not_protected, limit - len(chosen))
+        if void_cards:
+            for c in void_cards:
+                if c in remaining and len(chosen) < limit:
+                    chosen.append(c)
+                    remaining.remove(c)
+
+    _take(remaining, chosen, limit, lambda c: c.suit != trump)
+    _take(remaining, chosen, limit, lambda c: True)
+
+    return chosen
+
+
+def choose_return_pass_cards(hand, trump, count):
+    """
+    Section 3 entry point: bidder -> partner pass selection. `hand` is the
+    bidder's full 15-card hand (12 dealt + 3 already received from the
+    forward pass) — no restriction on which cards can be returned,
+    including ones just received (pinochle_rules.md).
+
+    Knapsack-locks up to `len(hand) - count` cards to the hand's
+    highest-value melds (`_knapsack_lock_return_pass_melds`), then ranks
+    everything NOT locked by shedding priority
+    (`_return_pass_pool_priority`) and ships the top `count`. Locking never
+    exceeds `len(hand) - count` cards, so the pool is always guaranteed at
+    least `count` cards — the fallback pad below is just a defensive net,
+    not expected to ever trigger in practice.
+    """
+    cap = len(hand) - count
+    locked = _knapsack_lock_return_pass_melds(hand, trump, cap)
+    pool = [c for c in hand if c not in locked]
+    chosen = _return_pass_pool_priority(pool, hand, trump)[:count]
+    return _pad_pass_selection(hand, chosen, count)
+
+
+# ---------------------------------------------------------------------------
 # Player / Team
 # ---------------------------------------------------------------------------
 
