@@ -29,6 +29,9 @@ export interface TableState {
   /** null before the auction (#34) has a winner. */
   readonly bidWinner: PlayerIndex | null
   readonly scoresByTeam: Record<TeamId, number>
+  /** Randomized per-game team display names (#73), replacing the old
+   * static "Team A"/"Team B" labels — threaded down to Scoreboard. */
+  readonly teamNames: Record<TeamId, string>
   /** Trick-play (#35): legal cards for the human's turn to play, and the
    * callback to fire when one of them is clicked/tapped. Omitted outside
    * the human's trick-play turn (auction phases, AI turns, mid-settle) —

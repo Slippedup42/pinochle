@@ -11,6 +11,7 @@ import type { AuctionResult } from './auctionTypes'
 import { partnerOf } from './auctionTypes'
 import { BiddingControls } from './BiddingControls'
 import { PassSelector } from './PassSelector'
+import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
 import { TrumpSelector } from './TrumpSelector'
@@ -26,6 +27,11 @@ export interface AuctionFlowProps {
   humanPlayer: PlayerIndex
   dealer: PlayerIndex
   scoresByTeam: Record<TeamId, number>
+  /** Randomized per-game team display names (#73), threaded straight into
+   * the TableState this component builds for Table/Scoreboard. Defaults to
+   * scoreTypes.ts's DEFAULT_TEAM_NAMES ("Team A"/"Team B") when omitted —
+   * GameFlow.tsx always supplies real per-game names in practice. */
+  teamNames?: Record<TeamId, string>
   /** Opens the persistent mid-game menu (#54: New Game / Continue /
    * Options) — rendered by Table.tsx as a small corner button. Omit to
    * render without one (e.g. existing tests that don't exercise it). */
@@ -53,6 +59,7 @@ export function AuctionFlow({
   humanPlayer,
   dealer,
   scoresByTeam,
+  teamNames = DEFAULT_TEAM_NAMES,
   onOpenMenu,
   options = DEFAULT_OPTIONS,
   onComplete,
@@ -123,8 +130,9 @@ export function AuctionFlow({
       currentBid: state.bid || state.bidding.currentBid,
       bidWinner: state.bidWinner,
       scoresByTeam: state.scoresByTeam,
+      teamNames,
     }
-  }, [state, seatNames, humanPlayer])
+  }, [state, seatNames, humanPlayer, teamNames])
 
   const overlay = useMemo(() => {
     if (state.phase === 'bidding' && state.bidding.turn === humanPlayer) {

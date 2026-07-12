@@ -15,6 +15,7 @@ const madeContractData: RoundSummaryData = {
   bidWinnerTeam: 0,
   bid: 180,
   cumulativeScoresByTeam: { 0: 610, 1: 524 },
+  teamNames: { 0: 'Team A', 1: 'Team B' },
 }
 
 const wentSetData: RoundSummaryData = {
@@ -24,6 +25,7 @@ const wentSetData: RoundSummaryData = {
   bidWinnerTeam: 0,
   bid: 340,
   cumulativeScoresByTeam: { 0: 80, 1: 554 },
+  teamNames: { 0: 'Team A', 1: 'Team B' },
 }
 
 describe('RoundSummary', () => {

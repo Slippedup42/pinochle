@@ -4,6 +4,7 @@ import type { Hands, TeamId } from '../engine/round'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
 import type { PlayerIndex } from '../engine/trick'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
+import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
 import { TrickLog } from './TrickLog'
@@ -26,6 +27,11 @@ export interface TrickPlayFlowProps {
   seatNames: Record<PlayerIndex, string>
   humanPlayer: PlayerIndex
   scoresByTeam: Record<TeamId, number>
+  /** Randomized per-game team display names (#73), threaded straight into
+   * the TableState this component builds for Table/Scoreboard. Defaults to
+   * scoreTypes.ts's DEFAULT_TEAM_NAMES ("Team A"/"Team B") when omitted —
+   * GameFlow.tsx always supplies real per-game names in practice. */
+  teamNames?: Record<TeamId, string>
   /** Local autosave (#54): resume from a saved trick-play checkpoint
    * (GameFlowState.trickPlayCheckpoint) instead of dealing out `hands`
    * fresh via initTrickPlayState. Only ever set by GameFlow.tsx's "Continue"
@@ -80,6 +86,7 @@ export function TrickPlayFlow({
   seatNames,
   humanPlayer,
   scoresByTeam,
+  teamNames = DEFAULT_TEAM_NAMES,
   initialState,
   onCheckpoint,
   onOpenMenu,
@@ -170,10 +177,11 @@ export function TrickPlayFlow({
       currentBid: bid,
       bidWinner: state.bidWinner,
       scoresByTeam,
+      teamNames,
       humanPlayable,
       trickWinner: state.phase === 'trick-complete' ? (state.trickWinners.at(-1) ?? null) : null,
     }
-  }, [state, seatNames, humanPlayer, bid, scoresByTeam, legalMovesForHuman])
+  }, [state, seatNames, humanPlayer, bid, scoresByTeam, teamNames, legalMovesForHuman])
 
   return (
     <Table

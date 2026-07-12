@@ -4,6 +4,9 @@ import { RED_SUITS, SUIT_GLYPH } from './suitGlyphs'
 
 export interface ScoreboardProps {
   scoresByTeam: Record<TeamId, number>
+  /** Randomized per-game team display names (#73), replacing the old
+   * static "Team A"/"Team B" labels. */
+  teamNames: Record<TeamId, string>
   currentBid: number
   /** undefined while the auction (#34) hasn't produced a bid winner yet. */
   bidWinnerName?: string
@@ -14,7 +17,7 @@ export interface ScoreboardProps {
 /** Top strip: cumulative team scores, the standing bid, and trump. Stays
  * mounted throughout bidding/passing/trick-play so those flows (separate
  * issues) can render alongside it without needing their own scoreboard. */
-export function Scoreboard({ scoresByTeam, currentBid, bidWinnerName, trumpSuit }: ScoreboardProps) {
+export function Scoreboard({ scoresByTeam, teamNames, currentBid, bidWinnerName, trumpSuit }: ScoreboardProps) {
   const trumpColor = trumpSuit && RED_SUITS.includes(trumpSuit) ? 'text-red-400' : 'text-white'
 
   return (
@@ -26,10 +29,10 @@ export function Scoreboard({ scoresByTeam, currentBid, bidWinnerName, trumpSuit 
         </span>
       </span>
       <span>
-        Team A: <span className="font-semibold">{scoresByTeam[0]}</span>
+        {teamNames[0]}: <span className="font-semibold">{scoresByTeam[0]}</span>
       </span>
       <span>
-        Team B: <span className="font-semibold">{scoresByTeam[1]}</span>
+        {teamNames[1]}: <span className="font-semibold">{scoresByTeam[1]}</span>
       </span>
       <span>
         Bid: <span className="font-semibold">{currentBid || '—'}</span>
