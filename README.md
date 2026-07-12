@@ -11,8 +11,9 @@ positional/score-aware bidding, category-split passing, card-counting
 trick play) rather than placeholder logic — see `pinochle_engine.py`'s
 `__main__` block for self-checks. An interactive human-play layer
 (`human_play.py`, `play_local.py`) lets a person play against the AI.
-Expert-tier AI (Monte Carlo determinization + rollout) is designed but
-not yet implemented — see the strategy doc below.
+`GeneralStrategy` (Monte Carlo determinization + rollout, skill-level
+1-5) and `RandomStrategy` (a thin wrapper that draws a random skill
+level at creation) are implemented — see the strategy doc below.
 
 ## Contents
 
@@ -27,28 +28,32 @@ not yet implemented — see the strategy doc below.
   implements, including house rules (3-card pass, ±1000 game
   thresholds).
 - [`pinochle_expert_ai_strategy.md`](pinochle_expert_ai_strategy.md) —
-  design spec for the Expert-tier AI: Monte Carlo determinization +
+  design spec for the General Strategy AI: Monte Carlo determinization +
   rollout for bidding, passing, and trick play, on top of the
-  Proficient tier already implemented. Several open design questions
-  are called out at the end and should be resolved before implementing
-  the sections they affect.
+  Proficient tier already implemented. Implemented as `GeneralStrategy`,
+  a single `Player` subclass parameterized by a skill level 1-5 (issue
+  #63) rather than a separate hardcoded tier — see Section 8. All of
+  Section 9's open design questions are now resolved, with pointers to
+  which child issue of #57 resolved each.
 - [`pinochle_engine.py`](pinochle_engine.py) — the rules engine and
   Proficient AI: `Card`, `Deck`, `Player`, `Team`, `Trick`, `Round`,
   `Game`, meld scoring, bid valuation, passing strategy, trick-play
-  strategy. Also holds the Expert-tier forward/return pass logic
-  (`choose_forward_pass_cards` / `choose_return_pass_cards`, issue #61,
-  `pinochle_expert_ai_strategy.md` Sections 2-3) and Expert-tier
+  strategy. Also holds the General Strategy machinery: the forward/return
+  pass logic (`choose_forward_pass_cards` / `choose_return_pass_cards`,
+  issue #61, `pinochle_expert_ai_strategy.md` Sections 2-3) and
   trick-play logic (`choose_expert_lead_card` / `choose_expert_follow_card`,
   issue #62, Sections 4 and 7) as free functions independent of any
-  `Player` subclass, ready for both a future `ExpertPlayer` (#63) and the
-  rollout sampler's simulated players to call into. Trick-play logic
-  covers Ace-first trump leads (shared by the Bidder and partner),
-  endgame loser-first sequencing to protect the 12th-trick bonus,
-  following-suit heuristics (duck/feed, count-card protection,
-  over/under-trump judgment), a static-vs-rollout-compare split for
-  whether defenders ever lead trump, and false-carding/fake-void
-  deception as pluggable candidate moves gated behind an optional
-  `deception_evaluator`.
+  `Player` subclass, called into by both `GeneralStrategy` and the
+  rollout sampler's simulated players — plus `GeneralStrategy` and
+  `RandomStrategy` themselves (issue #63), which wire that machinery and
+  #59/#60's rollout sampler / bid-time EV together behind one skill-level
+  dial. Trick-play logic covers Ace-first trump leads (shared by the
+  Bidder and partner), endgame loser-first sequencing to protect the
+  12th-trick bonus, following-suit heuristics (duck/feed, count-card
+  protection, over/under-trump judgment), a static-vs-rollout-compare
+  split for whether defenders ever lead trump, and false-carding/
+  fake-void deception as pluggable candidate moves gated behind an
+  optional `deception_evaluator`.
 - [`pinochle_rollout.py`](pinochle_rollout.py) — Monte Carlo
   determinization sampler + Auto-SET guard (issue #59): deals the
   currently-unseen cards for a decision point (bidding / return-pass /
@@ -68,9 +73,11 @@ not yet implemented — see the strategy doc below.
   N full `Game.play()` matches between two team configs (player class +
   kwargs per seat), alternating which physical seats each team occupies
   to cancel out positional bias, and reports win rate and average score
-  margin per team. Not yet useful for its intended purpose (comparing
-  AI skill levels) until the Expert/GeneralStrategy tier lands, but
-  runs today against `Player`/`EasyPlayer`.
+  margin per team. Now that `GeneralStrategy` exists, this is the
+  intended mechanism (per the strategy doc's Section 8 validation plan)
+  for tuning its per-skill-level parameters against `Player`/
+  `EasyPlayer` and against itself — not yet run at scale for that
+  purpose, but the harness is ready.
 
 ## Running
 

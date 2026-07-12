@@ -8,9 +8,16 @@ rollout machinery that underlies bid-time EV, pass selection, and the
 "realistic ceiling" problem), Section 1 (bid-time expected value), and
 Section 5 (the Auto-SET hard prune).
 
-This module is infrastructure only. It is deliberately NOT wired into any
-Player subclass's decision-making yet - that's issue #63 (GeneralStrategy).
-What lives here is the shared machinery later issues will call:
+This module is infrastructure only - it never imports or subclasses
+`Player` itself beyond using the plain (Proficient-tier) `Player` as the
+rollout's internal simulated players, per Section 0's fidelity
+requirement. It is wired into a real Player subclass's decision-making by
+`GeneralStrategy` (issue #63, `pinochle_engine.py`), which builds its own
+`rollout_evaluator`/`deception_evaluator` callbacks on top of the public
+functions here (`sample_bid_time_deal`, `sample_trick_play_deal`,
+`monte_carlo_rollout`, `rollout_deal`) rather than this module reaching
+back into `pinochle_engine`'s AI tiers. What lives here is the shared
+machinery that wiring calls:
 
   - Determinization: randomly deal the *currently unseen* cards into the
     unseen hands appropriate to a decision point (bidding / return-pass /
@@ -236,7 +243,7 @@ def is_auto_set(bidding_team_meld, bid):
 
 def rollout_deal(players, trump, bid, bid_winner, tracker=None,
                   leader_index=None, tricks_already_played=0, passing="none",
-                  bidding_meld=None, defending_meld=None):
+                  bidding_meld=None, defending_meld=None, forced_lead_card=None):
     """
     Roll out one Monte Carlo sample to completion and score it.
 
@@ -270,6 +277,14 @@ def rollout_deal(players, trump, bid, bid_winner, tracker=None,
     is fixed at the real meld phase and can't be recomputed once cards
     have already been played out of a hand, so callers resuming mid-round
     (tricks_already_played > 0) MUST supply both explicitly.
+
+    `forced_lead_card`, if given, is threaded straight through to
+    `play_tricks` (pinochle_engine.py, issue #63): the very first play of
+    this call (only meaningful when resuming with a specific player on
+    lead) uses this exact card instead of asking that player's own
+    choose_card. Lets a caller evaluate "what if I lead THIS card" via the
+    real rollout machinery - e.g. GeneralStrategy's defender trump-lead
+    comparison - without a second trick-play implementation.
 
     Returns a dict: auto_set, made (bidding team reached `bid`),
     bidding_meld, defending_meld, bidding_trick_points,
@@ -322,6 +337,7 @@ def rollout_deal(players, trump, bid, bid_winner, tracker=None,
     trick_points = play_tricks(
         players, trump, leader_index, tracker,
         num_tricks=num_tricks, trick_num_offset=tricks_already_played,
+        forced_lead_card=forced_lead_card,
     )
 
     bidding_trick_points = trick_points[bidding_team]
