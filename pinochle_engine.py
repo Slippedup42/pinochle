@@ -935,47 +935,18 @@ class Player:
 # ---------------------------------------------------------------------------
 # AI difficulty tiers (issue #53). Player above is the "Proficient" tier and
 # is the tournament control group - its choose_bid/choose_trump/
-# choose_pass_cards/choose_card are NOT touched by anything below. Random and
-# Easy are new, additive-only subclasses so a future ExpertPlayer (see
+# choose_pass_cards/choose_card are NOT touched by anything below. Easy is a
+# new, additive-only subclass so a future ExpertPlayer (see
 # pinochle_expert_ai_strategy.md) can plug into the same pattern.
+#
+# There used to be a RandomPlayer here (issue #53/PR #55): a floor tier that
+# made a uniformly-random *legal* choice at every decision point, with no
+# hand evaluation at all. Product direction changed - no tier should ever
+# make a literal random move, "even Easy should be better than random" - so
+# it was removed in issue #58. A "Random" tier will return once
+# GeneralStrategy exists (see #57/#63): implemented as a random draw over
+# GeneralStrategy's skill levels, not as its own strategy class.
 # ---------------------------------------------------------------------------
-
-class RandomPlayer(Player):
-    """
-    Floor tier: uniformly-random *legal* choice at every decision point.
-    No hand evaluation at all - this exists purely as a tournament-sim
-    baseline (e.g. "does Easy actually beat Random," per issue #53), not as
-    a plausible human skill level.
-    """
-
-    def choose_bid(self, current_bid, min_increment, context=None):
-        # Bid amounts are technically unbounded above the legal minimum (any
-        # +10 raise is legal), so there's no finite action set to sample
-        # uniformly from. "Uniformly random legal choice" is instead modeled
-        # as a coin flip between the two atomic actions available here: pass,
-        # or raise by exactly the minimum legal increment. `current_bid` is
-        # already the correct base to raise off of either way (Round passes
-        # OPENING_BID - min_increment before anyone has bid, and the running
-        # current_bid otherwise), so `current_bid + min_increment` is always
-        # a legal bid.
-        if random.random() < 0.5:
-            return None
-        return current_bid + min_increment
-
-    def choose_trump(self):
-        return random.choice(list(Suit))
-
-    def choose_pass_cards(self, count, trump_suit=None, is_bid_winner=None):
-        # No Tier 0/1 chase logic, no protecting existing meld - every card
-        # in hand is an equally likely pick.
-        return random.sample(self.hand, count)
-
-    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
-        # `legal_moves` already has follow-suit/beat-if-possible/trump-if-void
-        # applied by Trick.legal_moves (or is the full hand when leading) -
-        # picking uniformly from it is exactly "random legal move".
-        return random.choice(legal_moves)
-
 
 # Static constants for EasyPlayer's bidding formula. Kept as module-level
 # names (like OPENING_BID etc. above) rather than buried in the method, per
@@ -1289,7 +1260,7 @@ class Game:
     def from_players(cls, players):
         """
         Build a Game from 4 already-constructed player objects (any mix of
-        Player/RandomPlayer/EasyPlayer/HumanPlayer/etc.) instead of just
+        Player/EasyPlayer/HumanPlayer/etc.) instead of just
         names - added for issue #53 so tournament-sim harnesses can wire up
         mixed AI tiers per seat. Seating/teams are wired identically to
         __init__ (seats 0&2 = Team A, seats 1&3 = Team B, per
@@ -1363,15 +1334,13 @@ if __name__ == "__main__":
         assert winner.score >= GAME_WIN_SCORE or loser.score <= GAME_LOSE_SCORE
     print("10/10 full games completed cleanly with Double Run scoring active.")
 
-    # AI tier sanity checks (issue #53) - RandomPlayer/EasyPlayer only ever
-    # produce legal moves, and Game.from_players() supports mixed tiers
-    # across the 4 seats. See test_ai_tiers.py for the full test suite.
+    # AI tier sanity checks (issue #53) - EasyPlayer only ever produces
+    # legal moves, and Game.from_players() supports mixed tiers across the
+    # 4 seats. See test_ai_tiers.py for the full test suite.
     tier_mixes = [
-        [RandomPlayer, RandomPlayer, RandomPlayer, RandomPlayer],
         [EasyPlayer, EasyPlayer, EasyPlayer, EasyPlayer],
         [EasyPlayer, Player, EasyPlayer, Player],
-        [RandomPlayer, EasyPlayer, RandomPlayer, EasyPlayer],
-        [Player, RandomPlayer, Player, RandomPlayer],
+        [Player, EasyPlayer, Player, EasyPlayer],
     ]
     for i, classes in enumerate(tier_mixes):
         names = ["N", "E", "S", "W"]
@@ -1380,4 +1349,4 @@ if __name__ == "__main__":
         winner = game.play()
         loser = next(t for t in game.teams if t is not winner)
         assert winner.score >= GAME_WIN_SCORE or loser.score <= GAME_LOSE_SCORE
-    print(f"{len(tier_mixes)}/{len(tier_mixes)} mixed-tier games (Random/Easy/Proficient) completed cleanly via Game.from_players().")
+    print(f"{len(tier_mixes)}/{len(tier_mixes)} mixed-tier games (Easy/Proficient) completed cleanly via Game.from_players().")

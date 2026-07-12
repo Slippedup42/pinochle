@@ -1,12 +1,19 @@
 """
-Focused tests for issue #53 - RandomPlayer / EasyPlayer AI tiers and
-Game.from_players(). Not a full pytest suite (that's separately deferred,
-Phase 2) - just plain assert-based, pytest-discoverable tests covering:
+Focused tests for issue #53 - EasyPlayer AI tier and Game.from_players().
+Not a full pytest suite (that's separately deferred, Phase 2) - just plain
+assert-based, pytest-discoverable tests covering:
 
-  1. RandomPlayer and EasyPlayer only ever produce *legal* moves at each
-     decision point (bid, trump, pass, trick-play), across varied hands.
+  1. EasyPlayer only ever produces *legal* moves at each decision point
+     (bid, trump, pass, trick-play), across varied hands.
   2. Several full Game.play() runs complete cleanly with mixed tiers
      across the 4 seats.
+
+Note: this file used to also cover RandomPlayer (issue #53/PR #55), which
+made uniformly-random legal moves at every decision point. It was removed
+in issue #58 per changed product direction - no tier should ever make a
+literal random move. A "Random" tier will return once GeneralStrategy
+exists (see #57/#63), as a random draw over its skill levels rather than
+its own strategy class, at which point it'll get its own coverage here.
 
 Run directly (`python test_ai_tiers.py`) or via pytest.
 """
@@ -14,7 +21,7 @@ Run directly (`python test_ai_tiers.py`) or via pytest.
 import random
 
 from pinochle_engine import (
-    Deck, Player, RandomPlayer, EasyPlayer, Team, Game, Trick,
+    Deck, Player, EasyPlayer, Team, Game, Trick,
     Suit, OPENING_BID, GAME_WIN_SCORE, GAME_LOSE_SCORE,
     PASS_COUNT,
 )
@@ -36,11 +43,11 @@ def _make_player(cls, name, hand):
 
 
 # ---------------------------------------------------------------------------
-# 1. Legal-move checks, both tiers, across many hands/contexts.
+# 1. Legal-move checks, EasyPlayer, across many hands/contexts.
 # ---------------------------------------------------------------------------
 
 def test_choose_trump_always_returns_a_suit():
-    for cls in (RandomPlayer, EasyPlayer):
+    for cls in (EasyPlayer,):
         for hand in _fresh_hands() * 5:  # reuse a few shuffles' worth of hands
             p = _make_player(cls, "T", hand)
             trump = p.choose_trump()
@@ -50,7 +57,7 @@ def test_choose_trump_always_returns_a_suit():
 def test_choose_pass_cards_always_legal():
     """Returned cards must be exactly `count`, all distinct objects
     actually present in the player's hand at the time of the call."""
-    for cls in (RandomPlayer, EasyPlayer):
+    for cls in (EasyPlayer,):
         for _ in range(20):
             hands = _fresh_hands()
             for trump in Suit:
@@ -65,9 +72,9 @@ def test_choose_pass_cards_always_legal():
 
 
 def test_choose_pass_cards_isolated_fallback():
-    """trump_suit/is_bid_winner omitted -> both tiers fall back to a
-    legal random sample, same contract as Player's own fallback."""
-    for cls in (RandomPlayer, EasyPlayer):
+    """trump_suit/is_bid_winner omitted -> falls back to a legal random
+    sample, same contract as Player's own fallback."""
+    for cls in (EasyPlayer,):
         hand = _fresh_hands()[0]
         p = _make_player(cls, "T", hand)
         chosen = p.choose_pass_cards(PASS_COUNT)
@@ -77,7 +84,7 @@ def test_choose_pass_cards_isolated_fallback():
 
 
 def test_choose_card_leading_and_following_always_legal():
-    for cls in (RandomPlayer, EasyPlayer):
+    for cls in (EasyPlayer,):
         for _ in range(30):
             hands = _fresh_hands()
             trump = random.choice(list(Suit))
@@ -111,26 +118,19 @@ def test_choose_card_leading_and_following_always_legal():
 
 def test_choose_card_isolated_fallback():
     """trick/trump omitted: EasyPlayer falls back to legal_moves[0], same
-    contract as Player's own fallback. RandomPlayer has no such fallback by
-    design - it ignores trick/trump entirely and is uniformly random on
-    every call, isolated or not - so it's only checked for legality here,
-    not for matching Player's deterministic fallback."""
+    contract as Player's own fallback."""
     hand = _fresh_hands()[0]
 
     easy = _make_player(EasyPlayer, "T", hand)
     legal = list(hand)
     assert easy.choose_card(legal) == legal[0]
 
-    rand = _make_player(RandomPlayer, "T", hand)
-    for _ in range(20):
-        assert rand.choose_card(legal) in legal
-
 
 def test_choose_bid_always_legal_or_none():
     """Across a spread of synthetic bidding contexts, the returned bid is
     either None (pass) or exactly current_bid + min_increment - the only
-    legal raise both tiers ever make."""
-    for cls in (RandomPlayer, EasyPlayer):
+    legal raise EasyPlayer ever makes."""
+    for cls in (EasyPlayer,):
         for _ in range(40):
             hand = random.choice(_fresh_hands())
             p = _make_player(cls, "T", hand)
@@ -164,7 +164,7 @@ def test_choose_bid_always_legal_or_none():
             bid = p.choose_bid(current_bid_arg, min_increment, context)
             if bid is not None:
                 expected_next = current_bid_arg + min_increment
-                # Opening bid is the one special case both tiers use (fixed
+                # Opening bid is the one special case EasyPlayer uses (fixed
                 # OPENING_BID, not current_bid_arg + increment, since
                 # current_bid_arg is OPENING_BID - increment before anyone
                 # has bid - these are numerically identical anyway).
@@ -173,9 +173,9 @@ def test_choose_bid_always_legal_or_none():
 
 
 def test_choose_bid_isolated_fallback():
-    """context=None -> both tiers fall back to a legal coin-flip shape,
-    same contract as Player's own fallback."""
-    for cls in (RandomPlayer, EasyPlayer):
+    """context=None -> falls back to a legal coin-flip shape, same
+    contract as Player's own fallback."""
+    for cls in (EasyPlayer,):
         hand = _fresh_hands()[0]
         p = _make_player(cls, "T", hand)
         for _ in range(20):
@@ -188,13 +188,10 @@ def test_choose_bid_isolated_fallback():
 # ---------------------------------------------------------------------------
 
 TIER_MIXES = [
-    (RandomPlayer, RandomPlayer, RandomPlayer, RandomPlayer),
     (EasyPlayer, EasyPlayer, EasyPlayer, EasyPlayer),
     (Player, Player, Player, Player),
     (EasyPlayer, Player, EasyPlayer, Player),          # Easy team vs Proficient team
-    (RandomPlayer, Player, RandomPlayer, Player),        # Random team vs Proficient team
-    (RandomPlayer, EasyPlayer, RandomPlayer, EasyPlayer),  # Random team vs Easy team
-    (Player, RandomPlayer, EasyPlayer, Player),           # fully mixed, no team symmetry
+    (Player, EasyPlayer, EasyPlayer, Player),           # fully mixed, no team symmetry
 ]
 
 
@@ -217,7 +214,7 @@ def test_game_from_players_matches_init_team_wiring():
     assert by_name.players[1].team is by_name.players[3].team
     assert by_name.players[0].team is not by_name.players[1].team
 
-    players = [RandomPlayer("N", None), EasyPlayer("E", None), Player("S", None), RandomPlayer("W", None)]
+    players = [EasyPlayer("N", None), Player("E", None), EasyPlayer("S", None), Player("W", None)]
     by_players = Game.from_players(players)
     assert by_players.players[0].team is by_players.players[2].team
     assert by_players.players[1].team is by_players.players[3].team
