@@ -42,11 +42,14 @@ export interface TrickPlayState {
   readonly trickPointsByTeam: Record<TeamId, number>
   readonly phase: TrickPlayPhase
   readonly log: readonly TrickPlayLogEntry[]
+  /** True when the human has conceded the hand (#83). */
+  readonly conceded: boolean
 }
 
 export type TrickPlayAction =
   | { readonly type: 'PLAY_CARD'; readonly player: PlayerIndex; readonly card: Card }
   | { readonly type: 'CLEAR_TRICK' }
+  | { readonly type: 'CONCEDE' }
 
 export function initTrickPlayState(
   hands: Hands,
@@ -67,6 +70,7 @@ export function initTrickPlayState(
     trickPointsByTeam: { 0: 0, 1: 0 },
     phase: 'playing',
     log: [],
+    conceded: false,
   }
 }
 
@@ -153,6 +157,10 @@ export function trickPlayReducer(state: TrickPlayState, action: TrickPlayAction)
         turn: winner,
         trickNumber: nextTrickNumber,
       }
+    }
+    case 'CONCEDE': {
+      if (state.phase !== 'playing') return state
+      return { ...state, phase: 'complete', conceded: true }
     }
     default:
       return state
