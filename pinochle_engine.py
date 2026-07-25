@@ -196,6 +196,12 @@ PARTNER_ESTIMATE_RANGE = (50, 100)  # Proficient draws randomly in this range ea
 MAX_BID_DEFAULT = 400
 MAX_BID_MELD_THRESHOLD = 300
 OPENER_THRESHOLD = 320  # minimum Base Bid to justify opening at all
+# Minimum ceiling to justify a defensive push against an opening bid of 300.
+# Hands at or above this floor should almost always raise a 300 opener,
+# since even moderate hands can contribute toward making 300 with partner's
+# help, and pushing deprives the opponent of a cheap contract. "Truly
+# hopeless" hands (no meld, no aces — ceiling ~130) fall below this floor.
+DEFENSIVE_PUSH_FLOOR = 200
 
 
 def compute_base_bid(hand, trump):
@@ -1686,6 +1692,14 @@ class Player:
             effective_ceiling = min(effective_ceiling, cap)
 
         next_bid = current_bid + min_increment
+
+        # Defensive push (#78): when opponent opened at the minimum (300),
+        # respond unless the hand is truly hopeless (ceiling below
+        # DEFENSIVE_PUSH_FLOOR). In real Pinochle, 300 is the absolute floor
+        # and is almost always raised.
+        if current_bid <= OPENING_BID and ceiling >= DEFENSIVE_PUSH_FLOOR:
+            return next_bid
+
         return next_bid if next_bid <= effective_ceiling else None
 
     def choose_trump(self):

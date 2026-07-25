@@ -329,9 +329,14 @@ describe('chooseBid', () => {
       expect(chooseBid(0, strongHand, 300, 10, context)).toBe(310)
     })
 
-    it('passes when the next bid exceeds my ceiling', () => {
+    it('defensively pushes against an opening bid of 300 unless the hand is truly hopeless', () => {
+      // runOnlyHand has ceiling 300 (Run 150 + Ace 20 + baseline adj 130) >= DEFENSIVE_PUSH_FLOOR (200)
       const context = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 300 }] })
-      expect(chooseBid(0, runOnlyHand, 300, 10, context)).toBeNull()
+      expect(chooseBid(0, runOnlyHand, 300, 10, context)).toBe(310)
+
+      // weakHand has ceiling 130 (no meld, no aces) < DEFENSIVE_PUSH_FLOOR (200) — truly hopeless
+      const hopelessContext = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 300 }] })
+      expect(chooseBid(0, weakHand, 300, 10, hopelessContext)).toBeNull()
     })
 
     it('relaxes the ceiling to at least 330 once my partner has bid', () => {

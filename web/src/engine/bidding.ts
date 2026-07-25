@@ -43,6 +43,12 @@ export const MAX_BID_DEFAULT = 400
 export const MAX_BID_MELD_THRESHOLD = 300
 // Minimum Base Bid to justify opening at all.
 export const OPENER_THRESHOLD = 320
+// Minimum ceiling to justify a defensive push against an opening bid of 300.
+// Hands at or above this floor should almost always raise a 300 opener,
+// since even moderate hands can contribute toward making 300 with partner's
+// help, and pushing deprives the opponent of a cheap contract. "Truly
+// hopeless" hands (no meld, no aces — ceiling ~130) fall below this floor.
+export const DEFENSIVE_PUSH_FLOOR = 200
 
 function handCount(hand: readonly Card[], suit: Suit, rank: Rank): number {
   return hand.reduce((count, c) => count + (c.suit === suit && c.rank === rank ? 1 : 0), 0)
@@ -440,6 +446,17 @@ export function chooseBid(
   }
 
   const nextBid = currentBid + minIncrement
+
+  // Defensive push (#78): when opponent opened at the minimum (300), respond
+  // unless the hand is truly hopeless (ceiling below DEFENSIVE_PUSH_FLOOR).
+  // In real Pinochle, 300 is the absolute floor and is almost always raised.
+  // Even a moderate hand (~200+ ceiling) can contribute toward making 300
+  // with partner's help, and pushing deprives the opponent of a cheap contract.
+  if (currentBid <= OPENING_BID && ceiling >= DEFENSIVE_PUSH_FLOOR) {
+    if (partnerPassed) return Math.max(nextBid, 321)
+    return nextBid
+  }
+
   // When partner passed, the bid must be at least 320 regardless of ceiling.
   if (partnerPassed && nextBid < 321) return competitiveCeiling >= 321 ? 321 : null
   return nextBid <= competitiveCeiling ? nextBid : null
