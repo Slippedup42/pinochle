@@ -8,6 +8,7 @@ export interface SeatProps {
   position: SeatPosition
   isHuman: boolean
   isBidWinner: boolean
+  isDealer: boolean
   /** Trick-play (#35): legal cards for the human's turn to play, and the
    * callback to fire on a legal card's click/tap. Legal cards render
    * highlighted and clickable; illegal ones render dimmed and disabled.
@@ -18,6 +19,9 @@ export interface SeatProps {
    * count — the face-down fan is skipped entirely to save screen space.
    * No-op for the human seat, which always renders its real hand. */
   hideOpponentHand?: boolean
+  /** Meld phase (#??): when true, a non-human seat renders its cards face-up
+   * (meld cards laid on the table) instead of face-down or hidden. */
+  exposeCards?: boolean
 }
 
 // Placeholder face used for AI seats' face-down fan. The suit/rank props
@@ -39,11 +43,16 @@ const POSITION_LAYOUT: Record<SeatPosition, string> = {
  * sized to their card count — never the actual cards, since an AI's hand
  * is hidden information from the human player's point of view.
  */
-export function Seat({ seat, position, isHuman, isBidWinner, playable, hideOpponentHand }: SeatProps) {
+export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable, hideOpponentHand, exposeCards }: SeatProps) {
   return (
     <div className={`flex gap-1 ${POSITION_LAYOUT[position]}`}>
       <div className="flex items-center gap-2 text-sm font-medium">
         <span>{seat.name}</span>
+        {isDealer && (
+          <span className="rounded bg-neutral-700/80 px-1.5 py-0.5 text-xs font-bold text-amber-300">
+            D
+          </span>
+        )}
         {isBidWinner && (
           <span className="rounded bg-amber-500/90 px-1.5 py-0.5 text-xs font-semibold text-amber-950">
             Bid
@@ -53,6 +62,9 @@ export function Seat({ seat, position, isHuman, isBidWinner, playable, hideOppon
           <span className="text-xs text-white/70">{seat.hand.length} cards</span>
         )}
       </div>
+      {seat.statusText && (
+        <div className="text-xs text-white/60">{seat.statusText}</div>
+      )}
       {isHuman ? (
         // A single row, not `flex-wrap`: the fanned-overlap look below relies
         // on `first:ml-0` to zero out the leading card's negative margin, which
@@ -88,6 +100,14 @@ export function Seat({ seat, position, isHuman, isBidWinner, playable, hideOppon
               </button>
             )
           })}
+        </div>
+      ) : exposeCards ? (
+        <div className="flex justify-center gap-1 overflow-x-auto">
+          {sortHandForDisplay(seat.hand).map((card, i) => (
+            <div key={i} className="-ml-10 first:ml-0">
+              <PlayingCard suit={card.suit} rank={card.rank} className="w-[60px]" />
+            </div>
+          ))}
         </div>
       ) : hideOpponentHand ? null : (
         <div className="flex overflow-x-auto px-2">

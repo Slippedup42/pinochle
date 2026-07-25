@@ -3,6 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Card, Deck, Suit } from '../engine/card'
 import { GameShell } from './GameShell'
 
+// Random dealer causes flaky tests (human might not be first to bid).
+// Fix dealer to East (3) so the human (seat 0, left of dealer) always bids first.
+vi.mock('./gameFlowReducer', async (importOriginal) => {
+  const actual: object = await importOriginal()
+  return { ...actual, randomDealer: () => 3 as const }
+})
+
 // Same deterministic-weak-hand approach GameFlow.test.tsx uses: no nines
 // means nobody's misdeal-eligible, so dealing lands straight in the
 // auction (dealer East (3), human (0) bids first).

@@ -34,6 +34,16 @@ export interface MeldResult {
   breakdown: Record<string, number>
 }
 
+function countByKey(hand: readonly Card[]): Map<string, Card[]> {
+  const m = new Map<string, Card[]>()
+  for (const card of hand) {
+    const key = `${card.suit}${card.rank}`
+    if (!m.has(key)) m.set(key, [])
+    m.get(key)!.push(card)
+  }
+  return m
+}
+
 export function scoreMelds(hand: readonly Card[], trumpSuit: Suit): MeldResult {
   const counts = new Map<string, number>()
   for (const card of hand) {
@@ -97,4 +107,133 @@ export function scoreMelds(hand: readonly Card[], trumpSuit: Suit): MeldResult {
 
   const total = Object.values(breakdown).reduce((sum, v) => sum + v, 0)
   return { total, breakdown }
+}
+
+export interface MeldCardsResult {
+  /** Every card that contributes to at least one meld group (deduplicated). */
+  meldCards: Card[]
+  /** Per-group breakdown with the actual cards. A card may appear in multiple groups. */
+  groups: { name: string; points: number; cards: Card[] }[]
+}
+
+/**
+ * Extract the specific cards that form melds in a hand. Used during the
+ * meld-declaration phase to show opponent meld cards face-up on the table.
+ *
+ * In real pinochle, the same card can be used in multiple *different* meld
+ * types simultaneously (e.g. Q♠ counts toward Pinochle, Queens Around, and
+ * a Royal Marriage if spades is trump). The only conflict is Run vs Royal
+ * Marriage in the trump suit — the Run takes precedence since it scores higher.
+ *
+ * This detection therefore does NOT remove cards from a pool as it goes;
+ * instead, each meld type is detected independently, and the same Card object
+ * may appear in several groups' card lists. The returned `meldCards` array
+ * deduplicates across all groups so the table display shows each card once.
+ */
+export function extractMeldCards(hand: readonly Card[], trumpSuit: Suit): MeldCardsResult {
+  const byKey = countByKey(hand)
+  const n = (suit: Suit, rank: Rank) => byKey.get(`${suit}${rank}`)?.length ?? 0
+  const cardAt = (suit: Suit, rank: Rank, index: number): Card | undefined =>
+    byKey.get(`${suit}${rank}`)?.[index]
+
+  const groups: { name: string; points: number; cards: Card[] }[] = []
+  const allCards = new Set<Card>()
+
+  // -- Run / Double Run (trump only) --
+  const runCount = Math.min(...RUN_RANKS.map((r) => n(trumpSuit, r)))
+  let trumpKRunCount = 0
+  let trumpQRunCount = 0
+  if (runCount >= 2) {
+    const cards = RUN_RANKS.flatMap((r) => {
+      const arr = byKey.get(`${trumpSuit}${r}`) ?? []
+      return arr.slice(0, 2)
+    })
+    groups.push({ name: 'Double Run', points: DOUBLE_RUN_VALUE, cards })
+    cards.forEach((c) => allCards.add(c))
+    trumpKRunCount = 2
+    trumpQRunCount = 2
+  } else if (runCount === 1) {
+    const cards = RUN_RANKS.flatMap((r) => {
+      const arr = byKey.get(`${trumpSuit}${r}`) ?? []
+      return arr.slice(0, 1)
+    })
+    groups.push({ name: 'Run', points: RUN_VALUE, cards })
+    cards.forEach((c) => allCards.add(c))
+    trumpKRunCount = 1
+    trumpQRunCount = 1
+  }
+
+  // -- Royal Marriage (skip K/Q pairs already counted in the Run) --
+  const royalK = n(trumpSuit, 'K')
+  const royalQ = n(trumpSuit, 'Q')
+  const royalCount = Math.min(royalK - trumpKRunCount, royalQ - trumpQRunCount)
+  for (let i = 0; i < royalCount; i++) {
+    const k = cardAt(trumpSuit, 'K', trumpKRunCount + i)
+    const q = cardAt(trumpSuit, 'Q', trumpQRunCount + i)
+    const cards = [k!, q!]
+    groups.push({ name: 'Royal Marriage', points: ROYAL_MARRIAGE_VALUE, cards })
+    cards.forEach((c) => allCards.add(c))
+  }
+
+  // -- Common Marriage (non-trump suits) --
+  for (const suit of SUITS) {
+    if (suit === trumpSuit) continue
+    const cm = Math.min(n(suit, 'K'), n(suit, 'Q'))
+    for (let i = 0; i < cm; i++) {
+      const k = cardAt(suit, 'K', i)
+      const q = cardAt(suit, 'Q', i)
+      const cards = [k!, q!]
+      groups.push({ name: `Common Marriage (${suit})`, points: COMMON_MARRIAGE_VALUE, cards })
+      cards.forEach((c) => allCards.add(c))
+    }
+  }
+
+  // -- Dix --
+  const dixCount = n(trumpSuit, '9')
+  for (let i = 0; i < dixCount; i++) {
+    const d = cardAt(trumpSuit, '9', i)!
+    groups.push({ name: 'Dix', points: DIX_VALUE, cards: [d] })
+    allCards.add(d)
+  }
+
+  // -- Pinochle / Double Pinochle --
+  const qs = n(Suit.Spades, 'Q')
+  const jd = n(Suit.Diamonds, 'J')
+  const pinCount = Math.min(qs, jd)
+  if (pinCount >= 2) {
+    const cards = [
+      cardAt(Suit.Spades, 'Q', 0)!,
+      cardAt(Suit.Spades, 'Q', 1)!,
+      cardAt(Suit.Diamonds, 'J', 0)!,
+      cardAt(Suit.Diamonds, 'J', 1)!,
+    ]
+    groups.push({ name: 'Double Pinochle', points: PINOCHLE_DOUBLE_VALUE, cards })
+    cards.forEach((c) => allCards.add(c))
+  } else if (pinCount === 1) {
+    const cards = [cardAt(Suit.Spades, 'Q', 0)!, cardAt(Suit.Diamonds, 'J', 0)!]
+    groups.push({ name: 'Pinochle', points: PINOCHLE_SINGLE_VALUE, cards })
+    cards.forEach((c) => allCards.add(c))
+  }
+
+  // -- Arounds --
+  for (const [rank, baseValue] of Object.entries(AROUND_VALUES) as ['A' | 'K' | 'Q' | 'J', number][]) {
+    const ac = Math.min(...SUITS.map((s) => n(s, rank)))
+    if (ac >= 2) {
+      const cards: Card[] = []
+      for (const s of SUITS) {
+        for (let i = 0; i < 2; i++) cards.push(cardAt(s, rank, i)!)
+      }
+      groups.push({ name: `${rank}s Around (double)`, points: baseValue * AROUND_DOUBLE_MULTIPLIER, cards })
+      cards.forEach((c) => allCards.add(c))
+    } else if (ac === 1) {
+      const cards: Card[] = []
+      for (const s of SUITS) {
+        cards.push(cardAt(s, rank, 0)!)
+      }
+      groups.push({ name: `${rank}s Around`, points: baseValue, cards })
+      cards.forEach((c) => allCards.add(c))
+    }
+  }
+
+  return { meldCards: [...allCards], groups }
 }

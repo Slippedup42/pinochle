@@ -69,13 +69,29 @@ function isUnsecuredAce(card: Card, hand: readonly Card[], tracker: PlayTracker)
 
 /**
  * Choose what to lead when you have control. Priority:
+ *   0. Bidder's first lead (#82) — must lead trump if any is held
  *   1. Unsecured trump Ace
  *   2. Other unsecured Aces (longest suit first)
  *   3. Safe cards, cascading top-down by rank (longest suit first within a rank)
  *   4. Junk lead (non-point, non-trump) to surrender - shortest suit first
  *   5. Non-point trump as a last resort before giving up a point card
+ *
+ * @param isBidderFirstLead - When true (bidder opening the first trick of the
+ *   round), forces a trump lead if the player has any trump cards remaining.
  */
-export function chooseLeadCard(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
+export function chooseLeadCard(hand: readonly Card[], trump: Suit, tracker: PlayTracker, isBidderFirstLead = false): Card {
+  // Bidder's first lead must be trump if they have any — rule #82
+  if (isBidderFirstLead) {
+    const trumps = hand.filter((c) => c.suit === trump)
+    if (trumps.length > 0) {
+      const unsecuredAce = trumps.find((c) => c.rank === 'A' && isUnsecuredAce(c, hand, tracker))
+      if (unsecuredAce) return unsecuredAce
+      const ace = trumps.find((c) => c.rank === 'A')
+      if (ace) return ace
+      return maxByRank(trumps)
+    }
+  }
+
   const trumpAces = hand.filter((c) => c.suit === trump && c.rank === 'A' && isUnsecuredAce(c, hand, tracker))
   if (trumpAces.length > 0) return trumpAces[0]
 

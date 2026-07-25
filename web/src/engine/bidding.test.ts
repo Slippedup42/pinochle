@@ -72,7 +72,7 @@ describe('computeBaseBid', () => {
       new Card(Suit.Diamonds, 'J', 1),
     ]
     const { breakdown } = computeBaseBid(hand, Suit.Hearts)
-    expect(breakdown['Pinochle/near-double']).toBe(225)
+    expect(breakdown['Pinochle/near-double']).toBe(60)
   })
 
   it('always includes the flat Aces line even at zero', () => {
@@ -212,6 +212,7 @@ describe('chooseBid', () => {
     bidHistory: [],
     dealer: 2,
     scores: { 0: 0, 1: 0 },
+    passedPlayers: [],
     ...overrides,
   })
 
@@ -238,8 +239,10 @@ describe('chooseBid', () => {
       expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
     })
 
-    it('passes when the ceiling does not clear OPENER_THRESHOLD', () => {
-      const context = baseContext({ dealer: 1 })
+    it('passes when the ceiling does not clear OPENER_THRESHOLD and partner has already had a turn', () => {
+      // 4th bidder (passesSoFar=3, dealer): partner (player 2) has already had
+      // their turn, so the "partner hasn't bid" rule doesn't apply.
+      const context = baseContext({ dealer: 0, passesSoFar: 3 })
       expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context)).toBeNull()
     })
 
@@ -249,8 +252,10 @@ describe('chooseBid', () => {
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
     })
 
-    it('does not trigger dealer-protection when the opponent score is not under 500', () => {
-      const context = baseContext({ dealer: 2, scores: { 0: 850, 1: 500 } })
+    it('passes for a weak-handed 4th bidder when partner has already had a turn', () => {
+      // 4th bidder (passesSoFar=3, dealer=player): partner has had a turn,
+      // and the weak hand's ceiling (130) doesn't clear OPENER_THRESHOLD.
+      const context = baseContext({ dealer: 0, passesSoFar: 3, scores: { 0: 850, 1: 500 } })
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
     })
 

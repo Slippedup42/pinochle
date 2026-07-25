@@ -57,6 +57,7 @@ describe('game save persistence', () => {
       trumpSuit: Suit.Diamonds,
       bidWinner: 0,
       bid: 320,
+      log: [],
     }
     const state: GameFlowState = { ...initGameFlowState(3), phase: 'trick-play', auctionResult }
     saveGame(state)
@@ -94,7 +95,7 @@ describe('game save persistence', () => {
     const state: GameFlowState = {
       ...initGameFlowState(3),
       phase: 'trick-play',
-      auctionResult: { hands, trumpSuit: Suit.Spades, bidWinner: 1, bid: 300 },
+      auctionResult: { hands, trumpSuit: Suit.Spades, bidWinner: 1, bid: 300, log: [] },
       trickPlayCheckpoint: trickState,
     }
     saveGame(state)

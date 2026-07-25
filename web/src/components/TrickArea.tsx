@@ -9,6 +9,9 @@ export interface TrickAreaProps {
    * while it settles, before TrickPlayFlow clears it for the next trick.
    * null/undefined outside that pause (nothing highlighted). */
   winningPlayer?: PlayerIndex | null
+  /** Trick counter display: e.g. 1-based trick number so "Trick 3 of 12"
+   * renders above the trick circle. Omitted outside trick-play. */
+  trickNumber?: number
 }
 
 const POSITION_CLASS: Record<SeatPosition, string> = {
@@ -24,9 +27,13 @@ const POSITION_CLASS: Record<SeatPosition, string> = {
  * until a seat has played, so a trick in progress shows 1-3 cards and a
  * completed-but-not-yet-cleared trick shows all 4.
  */
-export function TrickArea({ trick, humanPlayer, winningPlayer }: TrickAreaProps) {
+export function TrickArea({ trick, humanPlayer, winningPlayer, trickNumber }: TrickAreaProps) {
   return (
-    <div className="grid aspect-square w-full max-w-72 grid-cols-3 grid-rows-3 items-center justify-items-center rounded-full bg-green-950/40">
+    <div className="flex flex-col items-center gap-1">
+      {trickNumber !== undefined && (
+        <span className="text-xs font-semibold text-white/70">Trick {trickNumber} of 12</span>
+      )}
+      <div className="grid aspect-square w-72 max-w-full min-h-[12rem] grid-cols-3 grid-rows-3 items-center justify-items-center rounded-full bg-green-950/40">
       {trick.map((play) => (
         <div
           key={play.player}
@@ -37,6 +44,7 @@ export function TrickArea({ trick, humanPlayer, winningPlayer }: TrickAreaProps)
           <PlayingCard suit={play.card.suit} rank={play.card.rank} />
         </div>
       ))}
+    </div>
     </div>
   )
 }

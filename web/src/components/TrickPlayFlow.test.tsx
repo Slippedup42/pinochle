@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Card, Deck, Suit } from '../engine/card'
 import type { Hands } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
+import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { AI_PLAY_DELAY_MS, TrickPlayFlow } from './TrickPlayFlow'
 import type { TrickPlayResult } from './trickPlayTypes'
 
@@ -33,10 +34,13 @@ describe('TrickPlayFlow (component)', () => {
         trumpSuit={Suit.Spades}
         bidWinner={1}
         bid={300}
+        meldPointsByTeam={{ 0: 0, 1: 0 }}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
         scoresByTeam={SCORES}
+        dealer={0}
         onComplete={onComplete}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
       />,
     )
 
@@ -82,9 +86,12 @@ describe('TrickPlayFlow (component)', () => {
         trumpSuit={Suit.Spades}
         bidWinner={1}
         bid={300}
+        meldPointsByTeam={{ 0: 0, 1: 0 }}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
         scoresByTeam={SCORES}
+        dealer={0}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
       />,
     )
 
@@ -118,10 +125,13 @@ describe('TrickPlayFlow (component)', () => {
         trumpSuit={Suit.Hearts}
         bidWinner={0}
         bid={300}
+        meldPointsByTeam={{ 0: 0, 1: 0 }}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
         scoresByTeam={SCORES}
+        dealer={0}
         onComplete={onComplete}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
       />,
     )
 

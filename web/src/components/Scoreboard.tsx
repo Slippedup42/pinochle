@@ -12,12 +12,14 @@ export interface ScoreboardProps {
   bidWinnerName?: string
   /** null while the auction (#34) hasn't settled on trump yet. */
   trumpSuit: Suit | null
+  /** Meld points of the bidding team, shown after meld declaration. */
+  meldPoints?: number
 }
 
 /** Top strip: cumulative team scores, the standing bid, and trump. Stays
  * mounted throughout bidding/passing/trick-play so those flows (separate
  * issues) can render alongside it without needing their own scoreboard. */
-export function Scoreboard({ scoresByTeam, teamNames, currentBid, bidWinnerName, trumpSuit }: ScoreboardProps) {
+export function Scoreboard({ scoresByTeam, teamNames, currentBid, bidWinnerName, trumpSuit, meldPoints }: ScoreboardProps) {
   const trumpColor = trumpSuit && RED_SUITS.includes(trumpSuit) ? 'text-red-400' : 'text-white'
 
   return (
@@ -38,6 +40,11 @@ export function Scoreboard({ scoresByTeam, teamNames, currentBid, bidWinnerName,
         Bid: <span className="font-semibold">{currentBid || '—'}</span>
         {bidWinnerName ? ` (${bidWinnerName})` : ''}
       </span>
+      {meldPoints !== undefined && (
+        <span>
+          Meld: <span className="font-semibold text-amber-300">{meldPoints}</span>
+        </span>
+      )}
     </div>
   )
 }

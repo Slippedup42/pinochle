@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { Card, Suit } from '../engine/card'
-import type { Hands, TeamId } from '../engine/round'
+import { teamOf, type Hands, type TeamId } from '../engine/round'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
 import type { PlayerIndex } from '../engine/trick'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
+import { AuctionLog } from './AuctionLog'
 import { TrickLog } from './TrickLog'
 import {
   buildTrick,
@@ -16,6 +17,7 @@ import {
   type TrickPlayState,
 } from './trickPlayReducer'
 import type { TrickPlayResult } from './trickPlayTypes'
+import type { AuctionLogEntry } from './auctionTypes'
 
 export interface TrickPlayFlowProps {
   hands: Hands
@@ -27,11 +29,21 @@ export interface TrickPlayFlowProps {
   seatNames: Record<PlayerIndex, string>
   humanPlayer: PlayerIndex
   scoresByTeam: Record<TeamId, number>
+  /** Meld points per team, computed during the meld phase, used to
+   * detect mathematically impossible contracts for the concede button. */
+  meldPointsByTeam: Record<TeamId, number>
+  /** Full auction/pass event log (#77), kept visible during trick-play so
+   * the human can review every bid, who bid, and the amounts. */
+  auctionLog?: readonly AuctionLogEntry[]
   /** Randomized per-game team display names (#73), threaded straight into
    * the TableState this component builds for Table/Scoreboard. Defaults to
    * scoreTypes.ts's DEFAULT_TEAM_NAMES ("Team A"/"Team B") when omitted —
    * GameFlow.tsx always supplies real per-game names in practice. */
   teamNames?: Record<TeamId, string>
+  /** Dealer seat (#76) — threaded through so the dealer badge shows on the
+   * table during trick-play too. AuctionFlow already tracks it; GameFlow
+   * passes it along. */
+  dealer: PlayerIndex
   /** Local autosave (#54): resume from a saved trick-play checkpoint
    * (GameFlowState.trickPlayCheckpoint) instead of dealing out `hands`
    * fresh via initTrickPlayState. Only ever set by GameFlow.tsx's "Continue"
@@ -83,10 +95,13 @@ export function TrickPlayFlow({
   trumpSuit,
   bidWinner,
   bid,
+  meldPointsByTeam,
+  auctionLog,
   seatNames,
   humanPlayer,
   scoresByTeam,
   teamNames = DEFAULT_TEAM_NAMES,
+  dealer,
   initialState,
   onCheckpoint,
   onOpenMenu,
@@ -115,9 +130,10 @@ export function TrickPlayFlow({
       const hand = state.hands[player]
       const trick = buildTrick(state.trumpSuit, state.currentTrick)
       const legal = trick.legalMoves(hand)
+      const isBidderFirstLead = state.trickNumber === 0 && player === state.bidWinner && state.currentTrick.length === 0
       const card =
         state.currentTrick.length === 0
-          ? chooseLeadCard(hand, state.trumpSuit, trackerRef.current)
+          ? chooseLeadCard(hand, state.trumpSuit, trackerRef.current, isBidderFirstLead)
           : chooseFollowCard(hand, legal, state.currentTrick, state.trumpSuit, teammatesOf(player), trackerRef.current)
       trackerRef.current.record(card)
       dispatch({ type: 'PLAY_CARD', player, card })
@@ -150,10 +166,23 @@ export function TrickPlayFlow({
     onCheckpoint?.(state)
   }, [state, onCheckpoint])
 
+  // Concede/fold (#83): show a fold button when the human won the bid, hide
+  // it after they play their first card or the hand ends.
+  const humanHasPlayedACard = state.log.some(
+    (e) => e.kind === 'card-play' && e.player === humanPlayer,
+  )
+  const canConcede = state.phase !== 'complete' && bidWinner === humanPlayer && !humanHasPlayedACard
+
   const legalMovesForHuman = useMemo(() => {
     if (state.phase !== 'playing' || state.turn !== humanPlayer) return null
     const trick = buildTrick(state.trumpSuit, state.currentTrick)
-    return trick.legalMoves(state.hands[humanPlayer])
+    let moves = trick.legalMoves(state.hands[humanPlayer])
+    // Bidder must lead trump on their first lead (#82)
+    if (state.trickNumber === 0 && state.turn === state.bidWinner && state.currentTrick.length === 0) {
+      const trumpCards = moves.filter((c) => c.suit === state.trumpSuit)
+      if (trumpCards.length > 0) moves = trumpCards
+    }
+    return moves
   }, [state, humanPlayer])
 
   const tableState: TableState = useMemo(() => {
@@ -179,16 +208,40 @@ export function TrickPlayFlow({
       scoresByTeam,
       teamNames,
       humanPlayable,
+      dealer,
+      meldPoints: meldPointsByTeam[teamOf(state.bidWinner)],
       trickWinner: state.phase === 'trick-complete' ? (state.trickWinners.at(-1) ?? null) : null,
     }
-  }, [state, seatNames, humanPlayer, bid, scoresByTeam, teamNames, legalMovesForHuman])
+  }, [state, seatNames, humanPlayer, bid, scoresByTeam, teamNames, meldPointsByTeam, legalMovesForHuman])
+
+  const handleConcede = useCallback(() => {
+    completedRef.current = true
+    onComplete?.({ trickPointsByTeam: state.trickPointsByTeam, trickWinners: state.trickWinners, conceded: true })
+  }, [state, onComplete])
 
   return (
-    <Table
-      state={tableState}
-      logPanel={<TrickLog entries={state.log} />}
-      onOpenMenu={onOpenMenu}
-      hideOpponentCards={options.hideOpponentCards}
-    />
+    <div className="relative">
+      {canConcede && (
+        <button
+          type="button"
+          onClick={handleConcede}
+          className="absolute top-2 right-2 z-20 rounded bg-red-800 px-3 py-1 text-xs font-semibold text-white hover:bg-red-900"
+        >
+          Concede
+        </button>
+      )}
+      <Table
+        state={tableState}
+        logPanel={
+          <div className="flex flex-col gap-2">
+            {auctionLog && auctionLog.length > 0 && <AuctionLog entries={auctionLog} />}
+            {!options.hideTrickLog && <TrickLog entries={state.log} />}
+          </div>
+        }
+        onOpenMenu={onOpenMenu}
+        hideOpponentCards={options.hideOpponentCards}
+        trickNumber={state.trickNumber + 1}
+      />
+    </div>
   )
 }

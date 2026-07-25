@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useReducer } from 'react'
 import { Deck } from '../engine/card'
 import { MISDEAL_NINE_THRESHOLD, nineCount } from '../engine/misdeal'
-import type { Hands } from '../engine/round'
+import { teamOf, type Hands, type TeamId } from '../engine/round'
+import { meldPointsByTeam } from './gameFlowReducer'
 import type { PlayerIndex } from '../engine/trick'
 import { clearSave, saveGame } from '../persistence/gameSave'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
@@ -11,10 +12,11 @@ import {
   gameFlowReducer,
   HUMAN_PLAYER,
   initGameFlowState,
-  INITIAL_DEALER,
+  randomDealer,
   type GameFlowState,
 } from './gameFlowReducer'
 import { GameOverScreen } from './GameOverScreen'
+import { MeldFlow } from './MeldFlow'
 import { MisdealPrompt } from './MisdealPrompt'
 import { RoundSummary } from './RoundSummary'
 import { Table } from './Table'
@@ -56,7 +58,7 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
   const [state, dispatch] = useReducer(
     gameFlowReducer,
     undefined,
-    () => initialState ?? initGameFlowState(INITIAL_DEALER),
+    () => initialState ?? initGameFlowState(randomDealer()),
   )
 
   // Deal (or redeal) a fresh shuffled 48-card hand whenever entering the
@@ -97,6 +99,21 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
     (result: AuctionResult) => dispatch({ type: 'AUCTION_COMPLETE', result }),
     [],
   )
+  const handleMeldComplete = useCallback(
+    (meldPointsByTeam: Record<0 | 1, number>) => dispatch({ type: 'MELD_COMPLETE', meldPointsByTeam }),
+    [],
+  )
+  const handleMeldConcede = useCallback(() => {
+    if (state.phase !== 'meld' || !state.auctionResult) return
+    const { hands, trumpSuit, bidWinner } = state.auctionResult
+    const mp = meldPointsByTeam(hands, trumpSuit)
+    const bidderTeam = teamOf(bidWinner)
+    // Fold: bidding team forfeits meld and loses the bid (-bid); opponents
+    // keep their meld but no trick points.
+    const adjusted: Record<TeamId, number> = { ...mp, [bidderTeam]: 0 }
+    dispatch({ type: 'MELD_COMPLETE', meldPointsByTeam: adjusted })
+    dispatch({ type: 'TRICK_COMPLETE', result: { trickPointsByTeam: { 0: 0, 1: 0 } as Record<0 | 1, number>, trickWinners: [], conceded: true } })
+  }, [state.phase, state.auctionResult])
   const handleTrickComplete = useCallback(
     (result: TrickPlayResult) => dispatch({ type: 'TRICK_COMPLETE', result }),
     [],
@@ -144,6 +161,27 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
     )
   }
 
+  if (state.phase === 'meld' && state.auctionResult) {
+    const { hands, trumpSuit, bidWinner, bid } = state.auctionResult
+    return (
+      <MeldFlow
+        hands={hands.map((h) => [...h]) as Hands}
+        trumpSuit={trumpSuit}
+        bidWinner={bidWinner}
+        bid={bid}
+        seatNames={state.seatNames}
+        humanPlayer={HUMAN_PLAYER}
+        scoresByTeam={state.scoresByTeam}
+        teamNames={state.teamNames}
+        dealer={state.dealer}
+        onOpenMenu={onOpenMenu}
+        options={options}
+        onComplete={handleMeldComplete}
+        onConcede={handleMeldConcede}
+      />
+    )
+  }
+
   if (state.phase === 'trick-play' && state.auctionResult) {
     const { hands, trumpSuit, bidWinner, bid } = state.auctionResult
     return (
@@ -152,6 +190,8 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
         trumpSuit={trumpSuit}
         bidWinner={bidWinner}
         bid={bid}
+        meldPointsByTeam={state.meldPointsByTeam ?? meldPointsByTeam(hands, trumpSuit)}
+        auctionLog={state.auctionResult?.log}
         seatNames={state.seatNames}
         humanPlayer={HUMAN_PLAYER}
         scoresByTeam={state.scoresByTeam}
@@ -164,6 +204,7 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
         onCheckpoint={handleTrickCheckpoint}
         onOpenMenu={onOpenMenu}
         options={options}
+        dealer={state.dealer}
         onComplete={handleTrickComplete}
       />
     )
@@ -185,7 +226,7 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
           // that window can't offer "Continue" back into a game that's
           // already over.
           clearSave()
-          dispatch({ type: 'NEW_GAME', dealer: INITIAL_DEALER })
+          dispatch({ type: 'NEW_GAME', dealer: randomDealer() })
         }}
       />
     )
@@ -205,6 +246,7 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
     bidWinner: null,
     scoresByTeam: state.scoresByTeam,
     teamNames: state.teamNames,
+    dealer: state.dealer,
   }
 
   const humanMisdealEligible =

@@ -1,19 +1,20 @@
-// Options panel (#54): exactly two toggles for this issue — hiding
-// opponents' face-down card fans (Seat.tsx) and the base-bid hint
-// (BiddingControls.tsx). Deliberately not here yet: an AI-difficulty picker
-// and a "bid window" hint based on assumed opponent skill, both out of
-// scope for #54 since they depend on AI difficulty tiers that don't exist
-// in the TS engine yet (bidding.ts only has the one Proficient strategy).
-// The layout below leaves room for those as a later addition rather than
-// stubbing UI for them now.
-
-import type { GameOptions } from '../persistence/options'
+import type { GameOptions, SkillLevel } from '../persistence/options'
 
 export interface OptionsPanelProps {
   options: GameOptions
   onChange: (options: GameOptions) => void
   onClose: () => void
 }
+
+const SKILL_LABELS: Record<SkillLevel, string> = {
+  easy: 'Novice',
+  medium: 'Apprentice',
+  hard: 'Journeyman',
+  proficient: 'Expert',
+  expert: 'Master',
+}
+
+const DISPLAYED_SKILLS: SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
 
 export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) {
   return (
@@ -38,11 +39,51 @@ export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) 
             />
             Show base-bid hint
           </label>
-        </div>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={options.showMeldHint}
+              onChange={(e) => onChange({ ...options, showMeldHint: e.target.checked })}
+            />
+            Show meld breakdown
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={!options.hideTrickLog}
+              onChange={(e) => onChange({ ...options, hideTrickLog: !e.target.checked })}
+            />
+            Show trick-play log
+          </label>
 
-        {/* Room for an AI-difficulty picker and a bid-window hint once AI
-            difficulty tiers exist — see the comment at the top of this
-            file. Deliberately left blank, not stubbed. */}
+          <hr className="my-1 border-neutral-200" />
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Skill Level</h3>
+
+          <label className="flex items-center justify-between gap-2">
+            <span>Opponents</span>
+            <select
+              className="rounded border border-neutral-300 px-2 py-1 text-sm"
+              value={options.opponentSkill}
+              onChange={(e) => onChange({ ...options, opponentSkill: e.target.value as SkillLevel })}
+            >
+              {DISPLAYED_SKILLS.map((s) => (
+                <option key={s} value={s}>{SKILL_LABELS[s]}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center justify-between gap-2">
+            <span>Teammate</span>
+            <select
+              className="rounded border border-neutral-300 px-2 py-1 text-sm"
+              value={options.teammateSkill}
+              onChange={(e) => onChange({ ...options, teammateSkill: e.target.value as SkillLevel })}
+            >
+              {DISPLAYED_SKILLS.map((s) => (
+                <option key={s} value={s}>{SKILL_LABELS[s]}</option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <button
           type="button"

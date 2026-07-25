@@ -5,6 +5,11 @@
 
 const OPTIONS_KEY = 'pinochle:options:v1'
 
+/** AI difficulty tiers. `'proficient'` is the current heuristic-based AI.
+ * The other levels will map to GeneralStrategy (Monte Carlo) parameters
+ * once ported from the Python engine (see issue #79). */
+export type SkillLevel = 'easy' | 'medium' | 'hard' | 'proficient' | 'expert'
+
 export interface GameOptions {
   /** Hide the West/Partner/East face-down card fans (Seat.tsx) entirely —
    * just player + board, to save screen space. Off (fans shown) by
@@ -13,32 +18,53 @@ export interface GameOptions {
   /** Show BiddingControls' "Your hand suggests up to N" hint during the
    * human's bidding turn. On by default, matching current behavior. */
   readonly showBaseBidHint: boolean
-  // Deliberately not here yet (#54 scope): an AI-difficulty picker and a
-  // "bid window" hint based on assumed opponent skill. Both depend on AI
-  // difficulty tiers that don't exist in the TS engine yet — bidding.ts
-  // only has the one Proficient strategy. OptionsPanel.tsx leaves layout
-  // room for these; this type just doesn't carry them yet.
+  /** AI skill level for the two opponents (#79). */
+  readonly opponentSkill: SkillLevel
+  /** AI skill level for the human's teammate (#79). */
+  readonly teammateSkill: SkillLevel
+  /** Show the per-card meld breakdown list in MeldFlow. Off by default
+   * (just shows total points) — players who want to verify the AI's meld
+   * detection can turn it on. */
+  readonly showMeldHint: boolean
+  /** Hide the trick-play event log (card plays, trick winners). Default on
+   * (#81) so the table is less cluttered; turn off to see every play logged
+   * in the right-hand panel. The bid/auction history is always shown. */
+  readonly hideTrickLog: boolean
 }
 
 export const DEFAULT_OPTIONS: GameOptions = {
   hideOpponentCards: false,
   showBaseBidHint: true,
+  opponentSkill: 'hard',
+  teammateSkill: 'hard',
+  showMeldHint: false,
+  hideTrickLog: true,
 }
 
 /** Reads saved options from localStorage, falling back to DEFAULT_OPTIONS
  * (whole-object or per-field) if nothing's saved yet or the saved value is
  * corrupt/unrecognized — never throws. */
+const VALID_SKILLS = new Set<SkillLevel>(['easy', 'medium', 'hard', 'proficient', 'expert'])
+
+function parseSkill(raw: unknown, fallback: SkillLevel): SkillLevel {
+  return VALID_SKILLS.has(raw as SkillLevel) ? (raw as SkillLevel) : fallback
+}
+
 export function loadOptions(): GameOptions {
   try {
     const raw = window.localStorage.getItem(OPTIONS_KEY)
     if (!raw) return DEFAULT_OPTIONS
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_OPTIONS
-    const { hideOpponentCards, showBaseBidHint } = parsed as Partial<GameOptions>
+    const { hideOpponentCards, showBaseBidHint, opponentSkill, teammateSkill, showMeldHint, hideTrickLog } = parsed as Partial<GameOptions>
     return {
       hideOpponentCards:
         typeof hideOpponentCards === 'boolean' ? hideOpponentCards : DEFAULT_OPTIONS.hideOpponentCards,
       showBaseBidHint: typeof showBaseBidHint === 'boolean' ? showBaseBidHint : DEFAULT_OPTIONS.showBaseBidHint,
+      opponentSkill: parseSkill(opponentSkill, DEFAULT_OPTIONS.opponentSkill),
+      teammateSkill: parseSkill(teammateSkill, DEFAULT_OPTIONS.teammateSkill),
+      showMeldHint: typeof showMeldHint === 'boolean' ? showMeldHint : DEFAULT_OPTIONS.showMeldHint,
+      hideTrickLog: typeof hideTrickLog === 'boolean' ? hideTrickLog : DEFAULT_OPTIONS.hideTrickLog,
     }
   } catch {
     return DEFAULT_OPTIONS

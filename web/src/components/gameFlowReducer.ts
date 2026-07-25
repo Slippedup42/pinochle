@@ -30,6 +30,7 @@ export type GameFlowPhase =
   | 'dealing'
   | 'misdeal-check'
   | 'auction'
+  | 'meld'
   | 'trick-play'
   | 'round-summary'
   | 'game-over'
@@ -45,6 +46,9 @@ export interface GameFlowState {
    * over `self.players` in fixed seat order. */
   readonly misdealCheckIndex: number
   readonly auctionResult: AuctionResult | null
+  /** Meld points per team, computed during the meld phase and carried into
+   * trick-play scoring. null until the meld phase completes. */
+  readonly meldPointsByTeam: Record<TeamId, number> | null
   readonly roundSummary: RoundSummaryData | null
   readonly gameOverData: GameOverData | null
   /** Local autosave (#54): a snapshot of TrickPlayFlow's internal state,
@@ -73,6 +77,7 @@ export type GameFlowAction =
   | { readonly type: 'MISDEAL_ADVANCE' }
   | { readonly type: 'MISDEAL_RESHUFFLE' }
   | { readonly type: 'AUCTION_COMPLETE'; readonly result: AuctionResult }
+  | { readonly type: 'MELD_COMPLETE'; readonly meldPointsByTeam: Record<TeamId, number> }
   | { readonly type: 'TRICK_COMPLETE'; readonly result: TrickPlayResult }
   | { readonly type: 'CONTINUE_ROUND' }
   | { readonly type: 'NEW_GAME'; readonly dealer: PlayerIndex }
@@ -91,6 +96,13 @@ export type GameFlowAction =
 // component+value exports since it breaks fast refresh (same reason these
 // don't live in AuctionFlow.tsx/TrickPlayFlow.tsx either).
 export const HUMAN_PLAYER: PlayerIndex = 0
+/** Random first dealer so each game starts with a different player shuffling.
+ * Seeded off Math.random — not cryptographically random, but good enough to
+ * avoid the same player always dealing first. */
+export function randomDealer(): PlayerIndex {
+  return Math.floor(Math.random() * 4) as PlayerIndex
+}
+
 export const INITIAL_DEALER: PlayerIndex = 3
 
 const TEAM_IDS: readonly TeamId[] = [0, 1]
@@ -117,6 +129,7 @@ export function initGameFlowState(dealer: PlayerIndex): GameFlowState {
     scoresByTeam: { 0: 0, 1: 0 },
     misdealCheckIndex: 0,
     auctionResult: null,
+    meldPointsByTeam: null,
     roundSummary: null,
     gameOverData: null,
     trickPlayCheckpoint: null,
@@ -128,7 +141,7 @@ export function initGameFlowState(dealer: PlayerIndex): GameFlowState {
 /** Melds each hand (post-pass, pre-trick, i.e. still the full 12 cards)
  * under trump, summed per team — the missing ingredient (alongside
  * TrickPlayResult's trick points) `scoreRound` needs. */
-function meldPointsByTeam(
+export function meldPointsByTeam(
   hands: AuctionResult['hands'],
   trumpSuit: AuctionResult['trumpSuit'],
 ): Record<TeamId, number> {
@@ -150,6 +163,7 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         misdealCheckIndex: 0,
         phase: 'misdeal-check',
         auctionResult: null,
+        meldPointsByTeam: null,
         roundSummary: null,
         trickPlayCheckpoint: null,
       }
@@ -168,20 +182,29 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
     }
     case 'AUCTION_COMPLETE': {
       if (state.phase !== 'auction') return state
-      // trickPlayCheckpoint is cleared (not carried over) here: this is a
-      // genuinely fresh trick-play phase driven by a real auction just
-      // finishing, not a resume-from-save — TrickPlayFlow.tsx will mount
-      // and re-checkpoint at trick 0 on its own once it does.
-      return { ...state, phase: 'trick-play', auctionResult: action.result, trickPlayCheckpoint: null }
+      return { ...state, phase: 'meld', auctionResult: action.result, trickPlayCheckpoint: null }
+    }
+    case 'MELD_COMPLETE': {
+      if (state.phase !== 'meld' || state.auctionResult === null) return state
+      return {
+        ...state,
+        phase: 'trick-play',
+        meldPointsByTeam: action.meldPointsByTeam,
+      }
     }
     case 'TRICK_COMPLETE': {
       if (state.phase !== 'trick-play' || state.auctionResult === null) return state
-      const { hands, trumpSuit, bidWinner, bid } = state.auctionResult
-      const meldPoints = meldPointsByTeam(hands, trumpSuit)
+      const { bidWinner, bid } = state.auctionResult
+      const meldPoints = state.meldPointsByTeam ?? meldPointsByTeam(state.auctionResult.hands, state.auctionResult.trumpSuit)
+      // When the bidding team concedes/folds, they forfeit their meld and
+      // lose the bid; opponents keep their meld but get no trick points.
+      const adjustedMeld = action.result.conceded
+        ? { ...meldPoints, [teamOf(bidWinner)]: 0 }
+        : meldPoints
       const bidWinnerTeam = teamOf(bidWinner)
       const roundScoreByTeam = scoreRound({
-        meldPointsByTeam: meldPoints,
-        trickPointsByTeam: action.result.trickPointsByTeam,
+        meldPointsByTeam: adjustedMeld,
+        trickPointsByTeam: action.result.conceded ? { 0: 0, 1: 0 } as Record<TeamId, number> : action.result.trickPointsByTeam,
         bidWinnerTeam,
         bid,
       })
@@ -221,6 +244,7 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         phase: 'dealing',
         dealer: ((state.dealer + 1) % 4) as PlayerIndex,
         auctionResult: null,
+        meldPointsByTeam: null,
         roundSummary: null,
       }
     }
@@ -231,11 +255,10 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         dealer: action.dealer,
         scoresByTeam: { 0: 0, 1: 0 },
         auctionResult: null,
+        meldPointsByTeam: null,
         roundSummary: null,
         gameOverData: null,
         trickPlayCheckpoint: null,
-        // Fresh names per new game (#73) — a brand new game, not a resume,
-        // so opponents/teams should be redrawn rather than carried over.
         seatNames: randomSeatNames(),
         teamNames: randomTeamNames(),
       }
