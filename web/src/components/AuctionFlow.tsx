@@ -8,6 +8,7 @@ import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { auctionReducer, initAuctionState } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
 import { partnerOf } from './auctionTypes'
+import { AuctionLog } from './AuctionLog'
 import { BiddingControls } from './BiddingControls'
 import { PassRevealDialog } from './PassRevealDialog'
 import { PassSelector } from './PassSelector'
@@ -220,10 +221,24 @@ export function AuctionFlow({
     return null
   }, [state, humanPlayer, options.showBaseBidHint])
 
+  const logPanel = useMemo(() => {
+    const bidWinner = state.bidding.bidWinner
+    return (
+      <AuctionLog
+        entries={state.log}
+        currentBid={state.bid || state.bidding.currentBid}
+        bidWinner={bidWinner ?? undefined}
+        bidWinnerName={bidWinner !== null ? state.seatNames[bidWinner] : undefined}
+        dealerName={state.seatNames[state.dealer]}
+      />
+    )
+  }, [state.log, state.bid, state.bidding.currentBid, state.bidding.bidWinner, state.seatNames, state.dealer])
+
   return (
     <Table
       state={tableState}
       overlay={overlay}
+      logPanel={logPanel}
       onOpenMenu={onOpenMenu}
       hideOpponentCards={options.hideOpponentCards}
     />
