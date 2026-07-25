@@ -5,8 +5,10 @@
 // is the entry point; bidderPassSelection / partnerPassSelection hold
 // the tiered priority logic for each role.
 
+import type { SkillLevel } from '../persistence/options'
 import { type Card, type Rank, Suit, SUITS } from './card'
 import { scoreMelds } from './melds'
+import { SKILL_PARAMS } from './skills'
 
 export type PassCategory = 'DS' | 'HC'
 
@@ -259,20 +261,54 @@ function sampleRandom(pool: readonly Card[], count: number): Card[] {
   return result
 }
 
+/** Cheap per-card "keep value" for skill 1's simplified passing logic,
+ *  matching Python's `_easy_card_worth`. */
+function easyCardWorth(card: Card, trump: Suit): number {
+  let worth = 0
+  if (card.suit === trump) worth += 5
+  if (card.rank === 'A' || card.rank === '10' || card.rank === 'K') worth += 2
+  if (card.rank === 'Q' || card.rank === 'J') worth += 1
+  return worth
+}
+
 /**
  * Skill-level-proficient passing strategy, split by trump category
  * (Diamonds/Spades vs Hearts/Clubs) and role (bidder vs partner). Falls
  * back to random selection if trumpSuit/isBidWinner aren't supplied
  * (keeps the function usable in isolation / old call sites).
+ *
+ * @param skill Skill level — skill 1 (easy) uses simplified
+ *   meld-only passing logic; 2-5 use the full Proficient tiers.
  */
 export function choosePassCards(
   hand: readonly Card[],
   count: number,
   trumpSuit?: Suit,
   isBidWinner?: boolean,
+  skill: SkillLevel = 'hard',
 ): Card[] {
   if (trumpSuit === undefined || isBidWinner === undefined) {
     return sampleRandom(hand, count)
+  }
+
+  // Skill 1 (easy): simplified meld-only passing logic matching Python's EasyPlayer
+  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
+    if (!isBidWinner) {
+      const ranked = [...hand].sort((a, b) => easyCardWorth(a, trumpSuit!) - easyCardWorth(b, trumpSuit!))
+      return ranked.slice(0, count)
+    }
+    // Bidder: ship non-trump 10s first, then lowest-worth filler
+    const pool = [...hand]
+    const chosen = pool.filter((c) => c.suit !== trumpSuit && c.rank === '10').slice(0, count)
+    for (const c of chosen) {
+      const idx = pool.indexOf(c)
+      if (idx !== -1) pool.splice(idx, 1)
+    }
+    if (chosen.length < count) {
+      const filler = [...pool].sort((a, b) => easyCardWorth(a, trumpSuit!) - easyCardWorth(b, trumpSuit!))
+      chosen.push(...filler.slice(0, count - chosen.length))
+    }
+    return chosen
   }
 
   const category: PassCategory = trumpSuit === Suit.Spades || trumpSuit === Suit.Diamonds ? 'DS' : 'HC'

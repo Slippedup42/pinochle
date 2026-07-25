@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Card, Suit } from '../engine/card'
-import { teamOf, type Hands, type TeamId } from '../engine/round'
+import { partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
 import type { PlayerIndex } from '../engine/trick'
+import type { SkillLevel } from '../persistence/options'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
@@ -74,6 +75,11 @@ export interface TrickPlayFlowProps {
 export const AI_PLAY_DELAY_MS = 700
 export const TRICK_SETTLE_MS = 1200
 
+/** Returns the SkillLevel to use for a given AI player, based on options. */
+function skillForPlayer(player: PlayerIndex, humanPlayer: PlayerIndex, options: GameOptions): SkillLevel {
+  return partnerOf(player) === humanPlayer ? options.teammateSkill : options.opponentSkill
+}
+
 /**
  * Drives the trick-taking phase (#35): legal-move highlighting on the
  * human's hand, playing a card into the center trick area, settling a
@@ -133,10 +139,11 @@ export function TrickPlayFlow({
       const trick = buildTrick(state.trumpSuit, state.currentTrick)
       const legal = trick.legalMoves(hand)
       const isBidderFirstLead = state.trickNumber === 0 && player === state.bidWinner && state.currentTrick.length === 0
+      const skill = skillForPlayer(player, humanPlayer, options)
       const card =
         state.currentTrick.length === 0
-          ? chooseLeadCard(hand, state.trumpSuit, trackerRef.current, isBidderFirstLead)
-          : chooseFollowCard(hand, legal, state.currentTrick, state.trumpSuit, teammatesOf(player), trackerRef.current)
+          ? chooseLeadCard(hand, state.trumpSuit, trackerRef.current, isBidderFirstLead, skill)
+          : chooseFollowCard(hand, legal, state.currentTrick, state.trumpSuit, teammatesOf(player), trackerRef.current, skill)
       trackerRef.current.record(card)
       dispatch({ type: 'PLAY_CARD', player, card })
     }, AI_PLAY_DELAY_MS)

@@ -2,8 +2,9 @@ import { useEffect, useMemo, useReducer, useRef } from 'react'
 import { bestBaseBid, chooseBid, chooseTrump, type AuctionContext } from '../engine/bidding'
 import { OPENING_BID } from '../engine/card'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
-import { teamOf, type Hands, type TeamId } from '../engine/round'
+import { partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
+import type { SkillLevel } from '../persistence/options'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { auctionReducer, initAuctionState } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
@@ -20,6 +21,11 @@ import { TrumpSelector } from './TrumpSelector'
 export const AI_BID_DELAY_MS = 600
 
 const MIN_INCREMENT = 10
+
+/** Returns the SkillLevel to use for a given AI player, based on options. */
+function skillForPlayer(player: PlayerIndex, humanPlayer: PlayerIndex, options: GameOptions): SkillLevel {
+  return partnerOf(player) === humanPlayer ? options.teammateSkill : options.opponentSkill
+}
 
 export interface AuctionFlowProps {
   initialHands: Hands
@@ -65,7 +71,8 @@ export function AuctionFlow({
           (_, i) => !state.bidding.active[i],
         ),
       }
-      const decision = chooseBid(turn, state.hands[turn], state.bidding.currentBid, MIN_INCREMENT, context)
+      const skill = skillForPlayer(turn, humanPlayer, options)
+      const decision = chooseBid(turn, state.hands[turn], state.bidding.currentBid, MIN_INCREMENT, context, skill)
       const timer = setTimeout(() => {
         if (decision === null) dispatch({ type: 'PASS_BID', player: turn })
         else dispatch({ type: 'BID', player: turn, amount: decision })
@@ -76,7 +83,8 @@ export function AuctionFlow({
     if (state.phase === 'trump') {
       if (state.bidWinner === null || state.bidWinner === humanPlayer) return
       const bidWinner = state.bidWinner
-      const suit = chooseTrump(state.hands[bidWinner])
+      const skill = skillForPlayer(bidWinner, humanPlayer, options)
+      const suit = chooseTrump(state.hands[bidWinner], skill)
       const timer = setTimeout(() => {
         dispatch({ type: 'CHOOSE_TRUMP', player: bidWinner, suit })
       }, AI_BID_DELAY_MS)
@@ -104,11 +112,13 @@ export function AuctionFlow({
 
       const timer = setTimeout(() => {
         if (bidder !== humanPlayer && !bidderReady) {
-          const cards = choosePassCards(state.hands[bidder], PASS_COUNT, state.trumpSuit!, true)
+          const skill = skillForPlayer(bidder, humanPlayer, options)
+          const cards = choosePassCards(state.hands[bidder], PASS_COUNT, state.trumpSuit!, true, skill)
           dispatch({ type: 'PASS_CARDS', from: bidder, cards })
         }
         if (partner !== humanPlayer && !partnerReady) {
-          const cards = choosePassCards(state.hands[partner], PASS_COUNT, state.trumpSuit!, false)
+          const skill = skillForPlayer(partner, humanPlayer, options)
+          const cards = choosePassCards(state.hands[partner], PASS_COUNT, state.trumpSuit!, false, skill)
           dispatch({ type: 'PASS_CARDS', from: partner, cards })
         }
       }, AI_BID_DELAY_MS)

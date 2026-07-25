@@ -7,8 +7,10 @@
 // tracker instance. Its public shape is kept deliberately small -
 // `record` / `playedCount` are all either strategy currently needs.
 
+import type { SkillLevel } from '../persistence/options'
 import { type Card, RANK_VALUE, RANKS, type Rank, type Suit } from './card'
 import type { PlayerIndex, TrickPlay } from './trick'
+import { SKILL_PARAMS } from './skills'
 
 const POINT_RANKS = new Set(['A', '10', 'K'])
 
@@ -78,8 +80,17 @@ function isUnsecuredAce(card: Card, hand: readonly Card[], tracker: PlayTracker)
  *
  * @param isBidderFirstLead - When true (bidder opening the first trick of the
  *   round), forces a trump lead if the player has any trump cards remaining.
+ * @param skill - Skill level. Skill 1 (easy) uses simplified logic: prefers
+ *   low non-trump non-count cards. Defaults to 'hard' (full Proficient cascade).
  */
-export function chooseLeadCard(hand: readonly Card[], trump: Suit, tracker: PlayTracker, isBidderFirstLead = false): Card {
+export function chooseLeadCard(hand: readonly Card[], trump: Suit, tracker: PlayTracker, isBidderFirstLead = false, skill: SkillLevel = 'hard'): Card {
+  // Skill 1 (easy): simplified leading — prefer low non-trump non-count cards
+  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
+    const safeLeads = hand.filter((c) => c.suit !== trump && c.rank !== 'A' && c.rank !== '10' && c.rank !== 'K')
+    const pool = safeLeads.length > 0 ? safeLeads : hand
+    return pool.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
+  }
+
   // Bidder's first lead must be trump if they have any — rule #82
   if (isBidderFirstLead) {
     const trumps = hand.filter((c) => c.suit === trump)
@@ -176,6 +187,9 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *   - Sluff (void in both lead suit and trump): free choice across
  *     suits - work toward voiding the shortest suit, lowest rank within
  *     it.
+ *
+ * @param skill Skill level. Skill 1 (easy) plays the lowest legal card.
+ *   Defaults to 'hard' (full Proficient tiered logic).
  */
 export function chooseFollowCard(
   hand: readonly Card[],
@@ -184,8 +198,14 @@ export function chooseFollowCard(
   trump: Suit,
   myTeamPlayers: readonly PlayerIndex[],
   tracker?: PlayTracker,
+  skill: SkillLevel = 'hard',
 ): Card {
   if (legalMoves.length === 1) return legalMoves[0]
+
+  // Skill 1 (easy): always play the lowest legal card
+  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
+    return legalMoves.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
+  }
 
   const leadSuit = trickPlays.length > 0 ? trickPlays[0].card.suit : undefined
   const winner = trickPlays.length > 0 ? currentWinner(trickPlays, trump) : undefined
