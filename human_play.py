@@ -133,7 +133,8 @@ class HumanPlayer(Player):
             "role": "bidder" if is_bid_winner else "partner",
         })
 
-    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
+    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None,
+                    is_bidder_first_lead=False):
         if self.pending_answer != _NO_ANSWER:
             tok = self.pending_answer
             self.pending_answer = _NO_ANSWER

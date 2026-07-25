@@ -1920,24 +1920,28 @@ GENERAL_STRATEGY_SKILL_PARAMS = {
     #   "base_bid"  - Player's existing Base-Bid formula, itself a blend of
     #                 meld + heuristic trick-potential (skill 2-3).
     #   "rollout_ev"- pinochle_rollout.bid_ev/choose_bid_by_ev (skill 4-5).
+    # pass_logic: controls which pass logic the skill level uses.
+    #   "easy"      - EasyPlayer-like flat pass (skill 1).
+    #   "proficient"- Player's existing tiered pass logic (skill 2-3).
+    #   "expert"    - choose_return_pass_cards / choose_forward_pass_cards
+    #                 from #61, the full knapsack-tier logic (skill 4-5).
+    # trick_logic: controls which trick-play logic the skill level uses.
+    #   "proficient"- Player's existing choose_lead_card/choose_follow_card
+    #                 (skill 1-3).
+    #   "expert"    - choose_expert_lead_card/choose_expert_follow_card
+    #                 from #62 (skill 4-5).
     # use_rollout: the shared static-vs-rollout switch for forward-pass
     #   shedding (#61) and the defender trump-lead question (#62) - must
     #   move together with hand_valuation == "rollout_ev" (both flip at
     #   the same skill threshold), per the issue's consistency note.
-    # *_samples: Monte Carlo sample counts fed to the rollout machinery.
-    #   Deliberately small even at skill 5 relative to the doc's suggested
-    #   ~100-150/~300+ starting point - kept cheap enough for real games
-    #   and test suites to run in reasonable time. Treat as a starting
-    #   point, not final; the tuning-pass child issue of #57 will adjust
-    #   these (and possibly hand_valuation/use_rollout's exact thresholds)
-    #   based on simulated win rates, per the doc's Section 8 validation
-    #   plan.
+    # *_samples: Monte Carlo sample counts fed to the rollout machinery,
+    #   tuned empirically via tournament_sim (issue #65).
     # deception: whether choose_expert_follow_card gets a deception_evaluator.
-    1: {"hand_valuation": "meld_only",  "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
-    2: {"hand_valuation": "base_bid",   "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
-    3: {"hand_valuation": "base_bid",   "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
-    4: {"hand_valuation": "rollout_ev", "use_rollout": True,  "bid_samples": 8,  "pass_samples": 8,  "trick_samples": 6,  "deception": False},
-    5: {"hand_valuation": "rollout_ev", "use_rollout": True,  "bid_samples": 15, "pass_samples": 15, "trick_samples": 10, "deception": True},
+    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
+    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
+    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
+    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "deception": False},
+    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "deception": False},
 }
 
 MELD_ONLY_TRICK_ESTIMATE = EASY_FLAT_TRICK_ESTIMATE  # same flat, non-hand-shape-aware stand-in EasyPlayer uses for skill 1's meld-only bidding (doc Section 8) - reused rather than redefined, since it's the same judgment call.
@@ -2015,10 +2019,11 @@ class GeneralStrategy(Player):
         """Skill 1: meld-only static formula (doc Section 8), same shape
         as EasyPlayer's bidding logic but implemented independently here
         (GeneralStrategy skill 1 is its own bottom-of-the-dial behavior,
-        not literally EasyPlayer) - no noise, no positional/score-context
-        awareness, matching skill 1's "None" risk column."""
+        not literally EasyPlayer) - adds noise matching EasyPlayer's ±30
+        (EASY_BID_NOISE) so skill 1 is comparably erratic/weak."""
         best_meld_value = max(score_melds(self.hand, t)[0] for t in Suit)
-        ceiling = best_meld_value + MELD_ONLY_TRICK_ESTIMATE
+        noise = random.uniform(-EASY_BID_NOISE, EASY_BID_NOISE)
+        ceiling = best_meld_value + MELD_ONLY_TRICK_ESTIMATE + noise
         next_bid = current_bid + min_increment
         if not context["ever_bid"]:
             return OPENING_BID if ceiling >= OPENING_BID else None
@@ -2065,11 +2070,26 @@ class GeneralStrategy(Player):
             return random.sample(self.hand, count)
 
         params = GENERAL_STRATEGY_SKILL_PARAMS[self.skill_level]
+        pass_logic = params.get("pass_logic", "expert")
 
+        if pass_logic == "easy":
+            if not is_bid_winner:
+                ranked = sorted(self.hand, key=lambda c: _easy_card_worth(c, trump_suit))
+                return ranked[:count]
+            pool = list(self.hand)
+            chosen = [c for c in pool if c.suit != trump_suit and c.rank == "10"][:count]
+            for c in chosen:
+                pool.remove(c)
+            if len(chosen) < count:
+                ranked = sorted(pool, key=lambda c: _easy_card_worth(c, trump_suit))
+                chosen += ranked[:count - len(chosen)]
+            return chosen[:count]
+
+        if pass_logic == "proficient":
+            return Player.choose_pass_cards(self, count, trump_suit, is_bid_winner)
+
+        # Expert-tier pass logic (skill 4-5).
         if is_bid_winner:
-            # Return pass (Section 3): no static/rollout switch exists for
-            # this function (the knapsack triage has no rollout_evaluator
-            # hook, per #61) - same logic at every skill level.
             chosen = choose_return_pass_cards(self.hand, trump_suit, count)
         else:
             evaluator = None
@@ -2077,7 +2097,6 @@ class GeneralStrategy(Player):
                 evaluator = self._make_forward_pass_evaluator(self.team.round_bid, params["pass_samples"])
             chosen = choose_forward_pass_cards(self.hand, trump_suit, count, rollout_evaluator=evaluator)
 
-        # Fallback safety net, same as Player/EasyPlayer's own.
         if len(chosen) < count:
             remaining = [c for c in self.hand if c not in chosen]
             chosen = list(chosen) + random.sample(remaining, count - len(chosen))
@@ -2141,6 +2160,15 @@ class GeneralStrategy(Player):
 
         tracker = tracker if tracker is not None else PlayTracker()
         params = GENERAL_STRATEGY_SKILL_PARAMS[self.skill_level]
+        trick_logic = params.get("trick_logic", "expert")
+
+        if trick_logic == "proficient":
+            team_set = my_team_players if my_team_players is not None else (
+                set(self.team.players) if self.team is not None else set()
+            )
+            return Player.choose_card(self, legal_moves, trick=trick, trump=trump,
+                                       tracker=tracker, my_team_players=team_set,
+                                       is_bidder_first_lead=is_bidder_first_lead)
 
         if not trick.plays:
             is_bidding_team = bool(self.team is not None and self.team.is_bidding_team)
