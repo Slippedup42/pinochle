@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Card, Suit } from '../engine/card'
 import type { Hands, TeamId } from '../engine/round'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
@@ -7,6 +7,7 @@ import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
+import { ConfirmDialog } from './ConfirmDialog'
 import { TrickLog } from './TrickLog'
 import {
   buildTrick,
@@ -104,6 +105,7 @@ export function TrickPlayFlow({
   // strategy input the AI reads, not something any render needs back.
   const trackerRef = useRef(new PlayTracker())
   const completedRef = useRef(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   // Resolve AI turns automatically, after a brief delay so the play reads
   // as a real decision rather than an instant jump. Runs after every state
@@ -133,11 +135,16 @@ export function TrickPlayFlow({
     return () => clearTimeout(timer)
   }, [state.phase, state.trickWinners.length])
 
-  // Fire onComplete exactly once, when all 12 tricks are done.
+  // Fire onComplete exactly once, when all 12 tricks are done (or human conceded).
   useEffect(() => {
     if (state.phase !== 'complete' || completedRef.current) return
     completedRef.current = true
-    onComplete?.({ trickPointsByTeam: state.trickPointsByTeam, trickWinners: state.trickWinners })
+    const result: TrickPlayResult = {
+      trickPointsByTeam: state.trickPointsByTeam,
+      trickWinners: state.trickWinners,
+    }
+    if (state.conceded) result.conceded = true
+    onComplete?.(result)
   }, [state, onComplete])
 
   // Local autosave (#54): checkpoint after each completed trick — i.e.
@@ -149,6 +156,13 @@ export function TrickPlayFlow({
     if (state.currentTrick.length > 0) return
     onCheckpoint?.(state)
   }, [state, onCheckpoint])
+
+  // Concede/fold (#83): show a fold button when the human won the bid, hide
+  // it after they play their first card or the hand ends.
+  const humanHasPlayedACard = state.log.some(
+    (e) => e.kind === 'card-play' && e.player === humanPlayer,
+  )
+  const canConcede = state.phase !== 'complete' && bidWinner === humanPlayer && !humanHasPlayedACard
 
   const legalMovesForHuman = useMemo(() => {
     if (state.phase !== 'playing' || state.turn !== humanPlayer) return null
@@ -183,12 +197,38 @@ export function TrickPlayFlow({
     }
   }, [state, seatNames, humanPlayer, bid, scoresByTeam, teamNames, legalMovesForHuman])
 
+  const handleConcede = useCallback(() => {
+    dispatch({ type: 'CONCEDE' })
+    setShowConfirmDialog(false)
+  }, [])
+
   return (
-    <Table
-      state={tableState}
-      logPanel={<TrickLog entries={state.log} />}
-      onOpenMenu={onOpenMenu}
-      hideOpponentCards={options.hideOpponentCards}
-    />
+    <div className="relative">
+      {canConcede && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowConfirmDialog(true)}
+            className="absolute top-2 right-2 z-20 rounded bg-red-800 px-3 py-1 text-xs font-semibold text-white hover:bg-red-900"
+          >
+            Concede hand
+          </button>
+          {showConfirmDialog && (
+            <ConfirmDialog
+              message={`Are you sure? Your team will score -${bid} points`}
+              confirmLabel="Concede"
+              onConfirm={handleConcede}
+              onCancel={() => setShowConfirmDialog(false)}
+            />
+          )}
+        </>
+      )}
+      <Table
+        state={tableState}
+        logPanel={<TrickLog entries={state.log} />}
+        onOpenMenu={onOpenMenu}
+        hideOpponentCards={options.hideOpponentCards}
+      />
+    </div>
   )
 }

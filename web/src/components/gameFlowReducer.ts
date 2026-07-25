@@ -178,10 +178,15 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
       if (state.phase !== 'trick-play' || state.auctionResult === null) return state
       const { hands, trumpSuit, bidWinner, bid } = state.auctionResult
       const meldPoints = meldPointsByTeam(hands, trumpSuit)
+      // When the bidding team concedes/folds, they forfeit their meld and
+      // lose the bid; opponents keep their meld but get no trick points.
+      const adjustedMeld = action.result.conceded
+        ? { ...meldPoints, [teamOf(bidWinner)]: 0 }
+        : meldPoints
       const bidWinnerTeam = teamOf(bidWinner)
       const roundScoreByTeam = scoreRound({
-        meldPointsByTeam: meldPoints,
-        trickPointsByTeam: action.result.trickPointsByTeam,
+        meldPointsByTeam: adjustedMeld,
+        trickPointsByTeam: action.result.conceded ? { 0: 0, 1: 0 } as Record<TeamId, number> : action.result.trickPointsByTeam,
         bidWinnerTeam,
         bid,
       })
