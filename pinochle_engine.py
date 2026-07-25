@@ -466,15 +466,31 @@ def is_unsecured_ace(card, hand, tracker):
     return tracker.played_count(card.suit, "A") == 0
 
 
-def choose_lead_card(hand, trump, tracker):
+def choose_lead_card(hand, trump, tracker, is_bidder_first_lead=False):
     """
     Choose what to lead when you have control. Priority:
+      0. Bidder's first lead (#82) — must lead trump if any is held
       1. Unsecured trump Ace
       2. Other unsecured Aces (longest suit first)
       3. Safe cards, cascading top-down by rank (longest suit first within a rank)
       4. Junk lead (non-point, non-trump) to surrender - shortest suit first
       5. Non-point trump as a last resort before giving up a point card
+
+    @param is_bidder_first_lead - When True (bidder opening the first trick of the
+      round), forces a trump lead if the player has any trump cards remaining.
     """
+    # Bidder's first lead must be trump if they have any — rule #82
+    if is_bidder_first_lead:
+        trumps = [c for c in hand if c.suit == trump]
+        if trumps:
+            unsecured_ace = next((c for c in trumps if c.rank == "A" and is_unsecured_ace(c, hand, tracker)), None)
+            if unsecured_ace:
+                return unsecured_ace
+            ace = next((c for c in trumps if c.rank == "A"), None)
+            if ace:
+                return ace
+            return max(trumps, key=lambda c: RANK_VALUE[c.rank])
+
     trump_aces = [c for c in hand if c.suit == trump and c.rank == "A" and is_unsecured_ace(c, hand, tracker)]
     if trump_aces:
         return trump_aces[0]
@@ -620,12 +636,16 @@ def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_
         for play_pos in range(4):
             player = players[idx]
             legal = trick.legal_moves(player.hand)
+            is_bidder_first_lead_this_play = (
+                trick_num_offset == 0 and i == 0 and play_pos == 0
+            )
             if i == 0 and play_pos == 0 and forced_lead_card is not None:
                 card = forced_lead_card
             else:
                 card = player.choose_card(
                     legal, trick=trick, trump=trump,
                     tracker=tracker, my_team_players=set(player.team.players),
+                    is_bidder_first_lead=is_bidder_first_lead_this_play,
                 )
             player.hand.remove(card)
             trick.play(player, card)
@@ -1358,11 +1378,14 @@ def _defender_lead(hand, trump, tracker, rollout_evaluator=None):
     return trump_pick if ev_trump > ev_static else static_pick
 
 
-def choose_expert_lead_card(hand, trump, tracker, is_bidding_team, rollout_evaluator=None):
+def choose_expert_lead_card(hand, trump, tracker, is_bidding_team,
+                            is_bidder_first_lead=False, rollout_evaluator=None):
     """
     Section 4 entry point for leading (having table control). Order of
     decisions:
 
+      0. Bidder's first lead (#82) — must lead trump if any is held,
+         overriding all other considerations.
       1. Endgame sequencing (doc "Endgame sequencing — protect the
          last-trick bonus"): once no trump remains live among opponents
          (see `_trump_fully_accounted` for exactly what that means here)
@@ -1379,7 +1402,20 @@ def choose_expert_lead_card(hand, trump, tracker, is_bidding_team, rollout_evalu
     `rollout_evaluator` is only consulted for a defending-team lead (see
     `_defender_lead`) — the offense side's Ace-first rule has no
     static/compare split (doc Section 4 point 1 is unconditional).
+
+    @param is_bidder_first_lead - When True (bidder opening the first trick of
+      the round), forces a trump lead if the player has any trump cards, per
+      rule #82.
     """
+    # Bidder's first lead must be trump if they have any — rule #82
+    if is_bidder_first_lead:
+        trumps = [c for c in hand if c.suit == trump]
+        if trumps:
+            ace = next((c for c in trumps if c.rank == "A"), None)
+            if ace:
+                return ace
+            return max(trumps, key=lambda c: RANK_VALUE[c.rank])
+
     non_trump = [c for c in hand if c.suit != trump]
     trump_cards = [c for c in hand if c.suit == trump]
 
@@ -1682,7 +1718,8 @@ class Player:
             chosen += random.sample(remaining, count - len(chosen))
         return chosen[:count]
 
-    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
+    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None,
+                    is_bidder_first_lead=False):
         """
         Uses the real trick-play strategy (safe-card cascade when leading,
         feed/withhold/conserve logic when following) if given full context.
@@ -1693,7 +1730,8 @@ class Player:
             return legal_moves[0]
 
         if not trick.plays:
-            return choose_lead_card(self.hand, trump, tracker if tracker else PlayTracker())
+            return choose_lead_card(self.hand, trump, tracker if tracker else PlayTracker(),
+                                    is_bidder_first_lead=is_bidder_first_lead)
 
         team_set = my_team_players if my_team_players is not None else set(self.team.players)
         return choose_follow_card(self.hand, legal_moves, trick.plays, trump, team_set, tracker)
@@ -1826,7 +1864,8 @@ class EasyPlayer(Player):
             chosen += ranked[:count - len(chosen)]
         return chosen[:count]
 
-    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
+    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None,
+                    is_bidder_first_lead=False):
         if trick is None or trump is None:
             return legal_moves[0]
 
@@ -2095,7 +2134,8 @@ class GeneralStrategy(Player):
 
     # -- Trick play (doc Section 4 + Section 7) --
 
-    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
+    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None,
+                    is_bidder_first_lead=False):
         if trick is None or trump is None:
             return legal_moves[0]
 
@@ -2113,7 +2153,9 @@ class GeneralStrategy(Player):
                         bid, bidding_meld=opponent.meld_points, defending_meld=self.team.meld_points,
                         num_samples=params["trick_samples"],
                     )
-            return choose_expert_lead_card(self.hand, trump, tracker, is_bidding_team, rollout_evaluator=evaluator)
+            return choose_expert_lead_card(self.hand, trump, tracker, is_bidding_team,
+                                           is_bidder_first_lead=is_bidder_first_lead,
+                                           rollout_evaluator=evaluator)
 
         team_set = my_team_players if my_team_players is not None else (
             set(self.team.players) if self.team is not None else set()
