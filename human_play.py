@@ -285,21 +285,26 @@ class InteractiveRound(Round):
         if not hasattr(self, "_pass_stage"):
             self._pass_stage = 0
             self._pass_partner = next(p for p in self.bid_winner.team.players if p is not self.bid_winner)
+            self._pass_to_bidder = None
+            self._pass_to_partner = None
 
         partner = self._pass_partner
 
         if self._pass_stage == 0:
-            to_bidder = partner.choose_pass_cards(PASS_COUNT, self.trump_suit, is_bid_winner=False)
-            for c in to_bidder:
-                partner.hand.remove(c)
-            self.bid_winner.hand.extend(to_bidder)
-            self._pass_stage = 1
+            if self._pass_to_bidder is None:
+                self._pass_to_bidder = partner.choose_pass_cards(
+                    PASS_COUNT, self.trump_suit, is_bid_winner=False)
+            if self._pass_to_partner is None:
+                self._pass_to_partner = self.bid_winner.choose_pass_cards(
+                    PASS_COUNT, self.trump_suit, is_bid_winner=True)
 
-        if self._pass_stage == 1:
-            back_to_partner = self.bid_winner.choose_pass_cards(PASS_COUNT, self.trump_suit, is_bid_winner=True)
-            for c in back_to_partner:
+            # Both choices obtained; exchange atomically (#80).
+            for c in self._pass_to_bidder:
+                partner.hand.remove(c)
+            self.bid_winner.hand.extend(self._pass_to_bidder)
+            for c in self._pass_to_partner:
                 self.bid_winner.hand.remove(c)
-            partner.hand.extend(back_to_partner)
+            partner.hand.extend(self._pass_to_partner)
             self._pass_stage = 2
 
     def _trick_taking_loop(self):

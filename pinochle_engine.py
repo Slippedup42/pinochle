@@ -600,6 +600,21 @@ def run_return_pass(bid_winner, partner, trump_suit):
     partner.hand.extend(back_to_partner)
 
 
+def run_simultaneous_pass(bid_winner, partner, trump_suit):
+    """Simultaneous PASS_COUNT exchange (#80): both players choose their
+    cards independently; once both selections are made the cards move
+    atomically so neither sees what they will receive before committing
+    their own selection. Mutates both players' hands in place."""
+    to_bidder = partner.choose_pass_cards(PASS_COUNT, trump_suit, is_bid_winner=False)
+    back_to_partner = bid_winner.choose_pass_cards(PASS_COUNT, trump_suit, is_bid_winner=True)
+    for c in to_bidder:
+        partner.hand.remove(c)
+    bid_winner.hand.extend(to_bidder)
+    for c in back_to_partner:
+        bid_winner.hand.remove(c)
+    partner.hand.extend(back_to_partner)
+
+
 def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_offset=0,
                  forced_lead_card=None):
     """
@@ -2390,8 +2405,7 @@ class Round:
 
     def _passing_phase(self):
         partner = next(p for p in self.bid_winner.team.players if p is not self.bid_winner)
-        run_forward_pass(self.bid_winner, partner, self.trump_suit)
-        run_return_pass(self.bid_winner, partner, self.trump_suit)
+        run_simultaneous_pass(self.bid_winner, partner, self.trump_suit)
 
     def _meld_phase(self):
         for team in self.teams:
