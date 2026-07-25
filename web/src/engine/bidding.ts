@@ -336,9 +336,35 @@ export interface AuctionContext {
 }
 
 /**
+ * Meld-only bid valuation for skill 1 (easy). Mirrors EasyPlayer's
+ * approach from Python: uses actual `scoreMelds` (not speculative Base
+ * Bid), adds a flat trick-point constant plus uniform noise, then applies
+ * the minimal positional filter. No dealer-protection, no partner-bid-count
+ * tracking, no score-differential awareness — pure "meld value + guess".
+ */
+function meldOnlyBid(
+  hand: readonly Card[],
+  currentBid: number,
+  minIncrement: number,
+  context: AuctionContext,
+): number | null {
+  const bestMeldValue = Math.max(...SUITS.map((t) => scoreMelds(hand, t).total))
+  const noise = (Math.random() * 2 - 1) * MELD_ONLY_BID_NOISE
+  const ceiling = bestMeldValue + MELD_ONLY_TRICK_ESTIMATE + noise
+  const nextBid = currentBid + minIncrement
+  if (!context.everBid) {
+    return ceiling >= OPENING_BID ? OPENING_BID : null
+  }
+  return nextBid <= ceiling ? nextBid : null
+}
+
+/**
  * Proficient bidding logic, built on Base Bid plus positional and
  * score-context rules. Falls back to the old coin-flip placeholder if
  * called without a context (keeps old call sites/tests working).
+ *
+ * @param skill Skill level from options — controls hand-valuation formula.
+ *   Defaults to 'hard' (base_bid, the current Proficient behavior).
  *
  * Decision tiers:
  *   - No one has bid yet this auction:
@@ -367,9 +393,14 @@ export function chooseBid(
   currentBid: number,
   minIncrement: number,
   context?: AuctionContext,
+  skill: SkillLevel = 'hard',
 ): number | null {
   if (context === undefined) {
     return Math.random() < 0.6 ? null : currentBid + minIncrement
+  }
+
+  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
+    return meldOnlyBid(hand, currentBid, minIncrement, context)
   }
 
   const myTeam = teamOf(player)
@@ -448,9 +479,24 @@ export function chooseBid(
 /**
  * Uses the same per-suit Base Bid comparison as chooseBid, so trump
  * selection reflects real speculative hand strength rather than raw card
- * count.
+ * count. For skill 1 (easy), picks the suit with the highest actual meld.
+ *
+ * @param skill Skill level — controls trump selection formula. Defaults
+ *   to 'hard' (base_bid, current Proficient behavior).
  */
-export function chooseTrump(hand: readonly Card[]): Suit {
+export function chooseTrump(hand: readonly Card[], skill: SkillLevel = 'hard'): Suit {
+  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
+    let best: Suit = Suit.Spades
+    let bestValue = -1
+    for (const t of SUITS) {
+      const { total } = scoreMelds(hand, t)
+      if (total > bestValue) {
+        best = t
+        bestValue = total
+      }
+    }
+    return best
+  }
   const { trump } = bestBaseBid(hand)
   return trump
 }
