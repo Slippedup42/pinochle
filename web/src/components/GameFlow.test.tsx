@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Card, Deck, Suit } from '../engine/card'
 import { GameFlow } from './GameFlow'
+import { initGameFlowState } from './gameFlowReducer'
 
 // Deterministic dealt hands, standing in for Deck.deal()'s real (shuffled)
 // output — these tests care about the misdeal-check wiring and the
@@ -46,9 +47,9 @@ describe('GameFlow (component)', () => {
   it('deals straight into the auction when no seat is misdeal-eligible', async () => {
     mockDeals([weakHand(), weakHand(), weakHand(), weakHand()])
 
-    render(<GameFlow />)
+    // Fixed dealer=3 so the human (seat 0, left of dealer) bids first.
+    render(<GameFlow initialState={initGameFlowState(3)} />)
 
-    // Dealer is East (3); left of dealer is the human (0) — they bid first.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
     expect(screen.queryByText('Misdeal?')).toBeNull()
   })
@@ -56,7 +57,7 @@ describe('GameFlow (component)', () => {
   it('asks the human to confirm a reshuffle when they hold 5+ nines, and proceeds on decline', async () => {
     mockDeals([handWithNines(5), weakHand(), weakHand(), weakHand()])
 
-    render(<GameFlow />)
+    render(<GameFlow initialState={initGameFlowState(3)} />)
 
     await waitFor(() => expect(screen.getByText('Misdeal?')).not.toBeNull())
     expect(screen.getByText(/You have 5 nines/)).not.toBeNull()
@@ -73,7 +74,7 @@ describe('GameFlow (component)', () => {
       [weakHand(), weakHand(), weakHand(), weakHand()],
     )
 
-    render(<GameFlow />)
+    render(<GameFlow initialState={initGameFlowState(3)} />)
 
     await waitFor(() => expect(screen.getByText('Misdeal?')).not.toBeNull())
     expect(screen.getByText(/You have 6 nines/)).not.toBeNull()
@@ -91,7 +92,8 @@ describe('GameFlow (component)', () => {
       [weakHand(), weakHand(), weakHand(), weakHand()],
     )
 
-    render(<GameFlow />)
+    // Fixed dealer=3 so the human bids first after the auto-reshuffle.
+    render(<GameFlow initialState={initGameFlowState(3)} />)
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
     expect(screen.queryByText('Misdeal?')).toBeNull()

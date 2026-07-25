@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Card, FORCED_BID, Suit } from '../engine/card'
 import type { PlayerIndex } from '../engine/trick'
-import { AuctionFlow } from './AuctionFlow'
+import { AI_BID_DELAY_MS, AuctionFlow } from './AuctionFlow'
 import type { AuctionState } from './auctionReducer'
 import { auctionReducer, initAuctionState } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
@@ -86,9 +86,6 @@ describe('auctionReducer', () => {
     const afterFirstPass = auctionReducer(state, { type: 'PASS_BID', player: 0 })
     expect(afterFirstPass.bidding.passes).toBe(1)
     expect(afterFirstPass.bidding.turn).toBe(1)
-    // A duplicate dispatch for seat 0 (e.g. StrictMode re-firing an AI
-    // decision effect against a stale closure) must not double-count the
-    // pass or log it twice, now that seat 1 is up.
     const stale = auctionReducer(afterFirstPass, { type: 'PASS_BID', player: 0 })
     expect(stale).toBe(afterFirstPass)
   })
@@ -101,39 +98,53 @@ describe('auctionReducer', () => {
     expect(stale).toBe(afterFirstBid)
   })
 
-  it('records a trump call and moves to the partner-to-bidder pass step', () => {
+  it('records a trump call and moves to the passing phase', () => {
     let state = baseState(3)
     state = auctionReducer(state, { type: 'PASS_BID', player: 0 })
     state = auctionReducer(state, { type: 'PASS_BID', player: 1 })
     state = auctionReducer(state, { type: 'PASS_BID', player: 2 }) // forces dealer (3)
     state = auctionReducer(state, { type: 'CHOOSE_TRUMP', player: 3, suit: Suit.Hearts })
     expect(state.trumpSuit).toBe(Suit.Hearts)
-    expect(state.phase).toBe('passing-partner-to-bidder')
+    expect(state.phase).toBe('passing')
     expect(state.log.at(-1)).toEqual({ kind: 'trump', player: 3, name: 'East', suit: Suit.Hearts })
   })
 
-  it('moves cards between hands and logs a count-only card-pass entry', () => {
+  it('simultaneously exchanges cards when both passers have selected — both log entries appear at once', () => {
     let state = baseState(3)
-    const card = new Card(Suit.Spades, 'A', 1)
-    state = { ...state, hands: [[card], [], [], []] as [Card[], Card[], Card[], Card[]], phase: 'passing-partner-to-bidder' }
-    state = auctionReducer(state, { type: 'PASS_CARDS', from: 0, to: 1, cards: [card] })
-    expect(state.hands[0]).toEqual([])
-    expect(state.hands[1]).toEqual([card])
-    expect(state.phase).toBe('passing-bidder-to-partner')
-    expect(state.log.at(-1)).toEqual({
-      kind: 'card-pass',
-      fromPlayer: 0,
-      fromName: 'You',
-      toPlayer: 1,
-      toName: 'West',
-      count: 1,
-    })
+    const card1 = new Card(Suit.Spades, 'A', 1)
+    const card2 = new Card(Suit.Clubs, 'K', 1)
+    state = { ...state, hands: [[card1], [], [card2], []] as [Card[], Card[], Card[], Card[]], phase: 'passing', bidWinner: 0 }
+
+    // Partner (2) passes first — cards are stored but hand isn't modified yet
+    state = auctionReducer(state, { type: 'PASS_CARDS', from: 2, cards: [card2] })
+    expect(state.phase).toBe('passing')
+    expect(state.passing.fromBidderCards).toBeNull()
+    expect(state.passing.fromPartnerCards).toEqual([card2])
+    expect(state.log).toHaveLength(0)
+
+    // Bidder (0) passes too — exchange happens atomically
+    state = auctionReducer(state, { type: 'PASS_CARDS', from: 0, cards: [card1] })
+    expect(state.phase).toBe('pass-reveal')
+    expect(state.hands[0]).toEqual([card2])
+    expect(state.hands[2]).toEqual([card1])
+    expect(state.log).toEqual([
+      { kind: 'card-pass', fromPlayer: 2, fromName: 'Partner', toPlayer: 0, toName: 'You', count: 1 },
+      { kind: 'card-pass', fromPlayer: 0, fromName: 'You', toPlayer: 2, toName: 'Partner', count: 1 },
+    ])
+
+    // Confirm reveal to reach complete
+    state = auctionReducer(state, { type: 'CONFIRM_PASS_REVEAL' })
+    expect(state.phase).toBe('complete')
   })
 
-  it('completes the auction after the second (bidder-to-partner) pass', () => {
+  it('completes the auction when both passers have selected their cards', () => {
     let state = baseState(3)
-    state = { ...state, phase: 'passing-bidder-to-partner' }
-    state = auctionReducer(state, { type: 'PASS_CARDS', from: 0, to: 2, cards: [] })
+    state = { ...state, phase: 'passing', bidWinner: 0 }
+    state = auctionReducer(state, { type: 'PASS_CARDS', from: 2, cards: [] })
+    expect(state.phase).toBe('passing')
+    state = auctionReducer(state, { type: 'PASS_CARDS', from: 0, cards: [] })
+    expect(state.phase).toBe('pass-reveal')
+    state = auctionReducer(state, { type: 'CONFIRM_PASS_REVEAL' })
     expect(state.phase).toBe('complete')
   })
 })
@@ -162,10 +173,14 @@ function buildTestHands(): [Card[], Card[], Card[], Card[]] {
   return [human, west, partner, east]
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 describe('AuctionFlow (component)', () => {
   it('walks the human through bidding, naming trump, and passing cards, then reports the result', () => {
+    vi.useFakeTimers()
     const hands = buildTestHands()
     const onComplete = vi.fn()
 
@@ -183,14 +198,19 @@ describe('AuctionFlow (component)', () => {
     // Left of dealer (3) is seat 0 — the human bids first.
     fireEvent.click(screen.getByRole('button', { name: 'Bid' }))
 
-    // West, Partner, and East all pass automatically (weak hands) — the
-    // auction should already have resolved to trump selection.
+    // West, Partner, and East all pass automatically (weak hands) after delays.
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+
     expect(screen.getByText('Name trump')).not.toBeNull()
 
     fireEvent.click(screen.getByText('Hearts'))
 
-    // Partner (AI) passes 3 cards to the human automatically; the human is
-    // now on the bidder-to-partner leg and sees the pass selector.
+    // Partner (AI) passes 3 cards to the human automatically after a delay.
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+
+    // The human (bidder) sees the pass selector for their send-back.
     const passHeading = screen.getByRole('heading', { name: /Choose 3 cards to pass/ })
     const passPanel = within(passHeading.closest('div') as HTMLElement)
 
@@ -198,6 +218,10 @@ describe('AuctionFlow (component)', () => {
     fireEvent.click(passPanel.getByRole('img', { name: 'K of D' }))
     fireEvent.click(passPanel.getByRole('img', { name: 'Q of H' }))
     fireEvent.click(passPanel.getByRole('button', { name: 'Confirm pass' }))
+
+    // Pass-reveal dialog shows before completing
+    expect(screen.getByText('Partner passed you 3 cards')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(onComplete).toHaveBeenCalledOnce()
     const result = onComplete.mock.calls[0][0] as AuctionResult
@@ -208,19 +232,10 @@ describe('AuctionFlow (component)', () => {
     expect(result.hands[0].some((c) => c.suit === Suit.Clubs && c.rank === 'A')).toBe(false)
     expect(result.hands[0].some((c) => c.suit === Suit.Diamonds && c.rank === 'K')).toBe(false)
     expect(result.hands[0].some((c) => c.suit === Suit.Hearts && c.rank === 'Q')).toBe(false)
-
-    // The auction/pass log surfaced every AI decision along the way.
-    expect(screen.getByText('West passed')).not.toBeNull()
-    expect(screen.getByText('Partner passed 3 cards to You')).not.toBeNull()
   })
 
-  it('lets a weak-handed AI 3rd bidder open anyway, per chooseBid\'s "3rd bidder opens cheap" rule', () => {
-    // All 4 hands here are weak (bestBaseBid ceiling well under
-    // OPENER_THRESHOLD) — under the old mock/aiDecisions.ts stand-in every
-    // seat would just pass. The real chooseBid wrapper (#29) still opens
-    // for the 3rd bidder (2 prior passes, nobody's bid yet, score under
-    // 800) regardless of hand strength, so this exercises a decision the
-    // mock never made.
+  it('lets a weak-handed AI open as first bidder (partner has not yet had a turn)', () => {
+    vi.useFakeTimers()
     const hands = buildTestHands()
     const onComplete = vi.fn()
 
@@ -229,30 +244,31 @@ describe('AuctionFlow (component)', () => {
         initialHands={hands}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
-        dealer={3}
+        dealer={1}
         scoresByTeam={SCORES}
         onComplete={onComplete}
       />,
     )
 
-    // Left of dealer (3) is seat 0 — the human passes first, then West
-    // (weak hand, not yet the 3rd bidder) passes too. Partner is now the
-    // 3rd bidder (2 passes so far, nobody's bid) and opens at OPENING_BID
-    // despite a weak hand; East (opponent, weak hand) then passes, ending
-    // the auction with Partner as bid winner.
+    // Left of dealer (1) is seat 2 (Partner) — always opens as first bidder.
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+    // Bid amount visible in Scoreboard
+    expect(screen.getByText('300')).not.toBeNull()
+
+    // East (seat 3, opponent holds the bid) passes automatically — the human's turn now.
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+    expect(screen.getByRole('button', { name: 'Pass' })).not.toBeNull()
+
+    // Human (seat 0, teammate holds the bid) manually passes.
     fireEvent.click(screen.getByRole('button', { name: 'Pass' }))
 
-    expect(screen.getByText('You passed')).not.toBeNull()
-    expect(screen.getByText('West passed')).not.toBeNull()
-    expect(screen.getByText('Partner bid 300')).not.toBeNull()
-    expect(screen.getByText('East passed')).not.toBeNull()
+    // West (seat 1, opponent holds the bid, weak hand) passes — 3 passes
+    // after a bid ends the auction. The AI bid winner (Partner) chooses trump
+    // automatically after a delay, then the AI selects pass cards.
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
 
-    // Partner's own hand (9C, JD, 10S) values highest at Clubs (the lone
-    // Dix) — chooseTrump picks it automatically since the bid winner is AI.
-    expect(screen.getByText('Partner named Clubs trump')).not.toBeNull()
-
-    // Bid winner is Partner (AI) — the human is Partner's partner, so the
-    // human is the sender on the first (partner-to-bidder) pass leg.
+    // The human (Partner's partner) sees the pass selector to send cards to the bidder.
     const passHeading = screen.getByRole('heading', { name: /Choose 3 cards to pass/ })
     const passPanel = within(passHeading.closest('div') as HTMLElement)
 
@@ -260,6 +276,13 @@ describe('AuctionFlow (component)', () => {
     fireEvent.click(passPanel.getByRole('img', { name: 'K of D' }))
     fireEvent.click(passPanel.getByRole('img', { name: 'Q of H' }))
     fireEvent.click(passPanel.getByRole('button', { name: 'Confirm pass' }))
+
+    // AI bidder passes 3 cards back to the human (simultaneous — already queued).
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+
+    // Pass-reveal: human sees what the bidder sent back
+    expect(screen.getByText('Partner passed you 3 cards')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(onComplete).toHaveBeenCalledOnce()
     const result = onComplete.mock.calls[0][0] as AuctionResult

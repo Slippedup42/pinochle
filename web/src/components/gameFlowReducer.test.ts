@@ -84,18 +84,36 @@ describe('gameFlowReducer', () => {
   })
 
   describe('AUCTION_COMPLETE', () => {
-    it('stores the auction result and moves to trick-play', () => {
+    it('stores the auction result and moves to the meld phase', () => {
       const state = { ...initGameFlowState(3), phase: 'auction' as const }
-      const result: AuctionResult = { hands: emptyHands(), trumpSuit: Suit.Hearts, bidWinner: 0, bid: 300 }
+      const result: AuctionResult = { hands: emptyHands(), trumpSuit: Suit.Hearts, bidWinner: 0, bid: 300, log: [] }
       const next = gameFlowReducer(state, { type: 'AUCTION_COMPLETE', result })
-      expect(next.phase).toBe('trick-play')
+      expect(next.phase).toBe('meld')
       expect(next.auctionResult).toBe(result)
     })
 
     it('is ignored outside the auction phase', () => {
       const state = initGameFlowState(3)
-      const result: AuctionResult = { hands: emptyHands(), trumpSuit: Suit.Hearts, bidWinner: 0, bid: 300 }
+      const result: AuctionResult = { hands: emptyHands(), trumpSuit: Suit.Hearts, bidWinner: 0, bid: 300, log: [] }
       expect(gameFlowReducer(state, { type: 'AUCTION_COMPLETE', result })).toBe(state)
+    })
+  })
+
+  describe('MELD_COMPLETE', () => {
+    it('stores meld points and moves to trick-play', () => {
+      const state: GameFlowState = {
+        ...initGameFlowState(3),
+        phase: 'meld',
+        auctionResult: { hands: emptyHands(), trumpSuit: Suit.Hearts, bidWinner: 0, bid: 300, log: [] },
+      }
+      const next = gameFlowReducer(state, { type: 'MELD_COMPLETE', meldPointsByTeam: { 0: 190, 1: 0 } })
+      expect(next.phase).toBe('trick-play')
+      expect(next.meldPointsByTeam).toEqual({ 0: 190, 1: 0 })
+    })
+
+    it('is ignored outside the meld phase', () => {
+      const state = initGameFlowState(3)
+      expect(gameFlowReducer(state, { type: 'MELD_COMPLETE', meldPointsByTeam: { 0: 0, 1: 0 } })).toBe(state)
     })
   })
 
@@ -113,7 +131,7 @@ describe('gameFlowReducer', () => {
         new Card(Suit.Hearts, 'J', 1),
       ]
       hands[1] = [new Card(Suit.Spades, '9', 1)]
-      const result: AuctionResult = { hands, trumpSuit: Suit.Hearts, bidWinner: 0, bid: 300, ...overrides }
+      const result: AuctionResult = { hands, trumpSuit: Suit.Hearts, bidWinner: 0, bid: 300, log: [], ...overrides }
       return {
         ...initGameFlowState(3),
         phase: 'trick-play',

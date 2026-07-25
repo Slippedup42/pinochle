@@ -1,20 +1,6 @@
-// Auction/pass state machine backing AuctionFlow.tsx (#34). Split into its
-// own module (rather than living in AuctionFlow.tsx) so the component file
-// only exports the component — oxlint's react/only-export-components rule
-// flags mixed component+logic exports since it breaks fast refresh.
-//
-// Mirrors pinochle_engine.py's Round._bidding_loop / _passing_phase (frozen
-// Python reference; see round.ts's module docstring — the TS engine
-// doesn't reimplement bidding/passing itself, so this is UI-layer state,
-// not engine state). Turn order rotates clockwise from left of dealer; a
-// player who passes is out for the rest of the auction; the auction ends
-// after 3 passes, or the moment only one active bidder is left once
-// someone has actually bid. If nobody ever bids, the dealer is forced to
-// take it at FORCED_BID (card.ts).
-
 import type { BidRecord } from '../engine/bidding'
 import { FORCED_BID, type Card, type Suit } from '../engine/card'
-import type { Hands, TeamId } from '../engine/round'
+import { partnerOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
 import type { AuctionLogEntry } from './auctionTypes'
 
@@ -26,16 +12,24 @@ interface BiddingSubstate {
   readonly passes: number
   readonly bidWinner: PlayerIndex | null
   readonly lastBidder: PlayerIndex | null
-  /** Every bid placed this auction, in order — feeds chooseBid's AuctionContext. */
   readonly bidHistory: readonly BidRecord[]
 }
 
 export type AuctionPhase =
   | 'bidding'
   | 'trump'
-  | 'passing-partner-to-bidder'
-  | 'passing-bidder-to-partner'
+  | 'passing'
+  | 'pass-reveal'
   | 'complete'
+
+/** Tracks the 3-card pass state for simultaneous exchange (#80). Both
+ * players choose their cards independently; once both have chosen, the
+ * cards move atomically so neither sees what they will receive before
+ * committing their own selection. */
+interface PassingSubstate {
+  readonly fromBidderCards: readonly Card[] | null
+  readonly fromPartnerCards: readonly Card[] | null
+}
 
 export interface AuctionState {
   readonly hands: Hands
@@ -47,6 +41,7 @@ export interface AuctionState {
   readonly bid: number
   readonly trumpSuit: Suit | null
   readonly phase: AuctionPhase
+  readonly passing: PassingSubstate
   readonly log: readonly AuctionLogEntry[]
 }
 
@@ -54,7 +49,8 @@ export type AuctionAction =
   | { readonly type: 'BID'; readonly player: PlayerIndex; readonly amount: number }
   | { readonly type: 'PASS_BID'; readonly player: PlayerIndex }
   | { readonly type: 'CHOOSE_TRUMP'; readonly player: PlayerIndex; readonly suit: Suit }
-  | { readonly type: 'PASS_CARDS'; readonly from: PlayerIndex; readonly to: PlayerIndex; readonly cards: readonly Card[] }
+  | { readonly type: 'PASS_CARDS'; readonly from: PlayerIndex; readonly cards: readonly Card[] }
+  | { readonly type: 'CONFIRM_PASS_REVEAL' }
 
 export function initAuctionState(
   hands: Hands,
@@ -81,6 +77,7 @@ export function initAuctionState(
     bid: 0,
     trumpSuit: null,
     phase: 'bidding',
+    passing: { fromBidderCards: null, fromPartnerCards: null },
     log: [],
   }
 }
@@ -89,7 +86,6 @@ function isBiddingOver(b: BiddingSubstate): boolean {
   return b.passes >= 3 || (b.everBid && b.active.filter(Boolean).length === 1)
 }
 
-/** Next active seat starting from (and including) `from`, wrapping clockwise. */
 function nextActiveTurn(active: readonly boolean[], from: PlayerIndex): PlayerIndex {
   let idx = from
   for (let i = 0; i < 4; i++) {
@@ -99,10 +95,6 @@ function nextActiveTurn(active: readonly boolean[], from: PlayerIndex): PlayerIn
   return from
 }
 
-/** After a BID/PASS_BID updates `bidding`, checks whether the auction is
- * over and, if so, finalizes the contract (including the forced-bid
- * fallback) and advances to the trump phase; otherwise just hands the
- * turn to the next active seat. */
 function resolveBiddingOutcome(state: AuctionState): AuctionState {
   const { bidding } = state
   if (!isBiddingOver(bidding)) {
@@ -119,16 +111,6 @@ function resolveBiddingOutcome(state: AuctionState): AuctionState {
   return { ...state, phase: 'trump', bidWinner: state.dealer, bid: FORCED_BID, log }
 }
 
-// BID/PASS_BID both require action.player === state.bidding.turn (unlike
-// CHOOSE_TRUMP/PASS_CARDS below, which are adequately guarded by their
-// phase check alone, since only one player can ever act in those phases at
-// a time). Bidding cycles through several players within the same
-// 'bidding' phase, so a phase-only guard would let a stale/duplicate
-// dispatch for a player who isn't up re-apply itself once turn has already
-// moved on — e.g. React StrictMode's dev-mode double effect invocation
-// firing an AI seat's decision twice on mount, which without this guard
-// double-counted that seat's pass and logged it twice. Mirrors
-// trickPlayReducer.ts's PLAY_CARD guard (`action.player !== state.turn`).
 export function auctionReducer(state: AuctionState, action: AuctionAction): AuctionState {
   switch (action.type) {
     case 'BID': {
@@ -170,30 +152,37 @@ export function auctionReducer(state: AuctionState, action: AuctionAction): Auct
         ...state.log,
         { kind: 'trump', player, name: state.seatNames[player], suit },
       ]
-      return { ...state, trumpSuit: suit, phase: 'passing-partner-to-bidder', log }
+      return { ...state, trumpSuit: suit, phase: 'passing', passing: { fromBidderCards: null, fromPartnerCards: null }, log }
     }
     case 'PASS_CARDS': {
-      if (state.phase !== 'passing-partner-to-bidder' && state.phase !== 'passing-bidder-to-partner') return state
-      const { from, to, cards } = action
-      const hands = state.hands.map((h, i) => {
-        if (i === from) return h.filter((c) => !cards.includes(c))
-        if (i === to) return [...h, ...cards]
-        return h
-      }) as Hands
-      const log: AuctionLogEntry[] = [
-        ...state.log,
-        {
-          kind: 'card-pass',
-          fromPlayer: from,
-          fromName: state.seatNames[from],
-          toPlayer: to,
-          toName: state.seatNames[to],
-          count: cards.length,
-        },
-      ]
-      const nextPhase: AuctionPhase =
-        state.phase === 'passing-partner-to-bidder' ? 'passing-bidder-to-partner' : 'complete'
-      return { ...state, hands, log, phase: nextPhase }
+      if (state.phase !== 'passing' || state.bidWinner === null) return state
+      const { from, cards } = action
+      const isBidder = from === state.bidWinner
+      const fromBidderCards = isBidder ? cards : state.passing.fromBidderCards
+      const fromPartnerCards = isBidder ? state.passing.fromPartnerCards : cards
+      const passing: PassingSubstate = { fromBidderCards, fromPartnerCards }
+
+      if (fromBidderCards !== null && fromPartnerCards !== null) {
+        const bidder = state.bidWinner
+        const partner = partnerOf(bidder)
+        const hands = state.hands.map((h, i) => {
+          if (i === bidder) return [...h.filter((c) => !fromBidderCards.includes(c)), ...fromPartnerCards]
+          if (i === partner) return [...h.filter((c) => !fromPartnerCards.includes(c)), ...fromBidderCards]
+          return h
+        }) as Hands
+        const log: AuctionLogEntry[] = [
+          ...state.log,
+          { kind: 'card-pass', fromPlayer: partner, fromName: state.seatNames[partner], toPlayer: bidder, toName: state.seatNames[bidder], count: fromPartnerCards.length },
+          { kind: 'card-pass', fromPlayer: bidder, fromName: state.seatNames[bidder], toPlayer: partner, toName: state.seatNames[partner], count: fromBidderCards.length },
+        ]
+        return { ...state, hands, passing, log, phase: 'pass-reveal' }
+      }
+
+      return { ...state, passing, log: state.log }
+    }
+    case 'CONFIRM_PASS_REVEAL': {
+      if (state.phase !== 'pass-reveal') return state
+      return { ...state, phase: 'complete' }
     }
     default:
       return state

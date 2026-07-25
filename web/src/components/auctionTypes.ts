@@ -60,13 +60,17 @@ export function formatAuctionLogEntry(entry: AuctionLogEntry): string {
 }
 
 /** Everything a live Round orchestrator needs once the auction and pass
- * phases finish: the post-pass hands, the agreed contract, and who holds
- * it — the inputs `playTrickTakingPhase` (round.ts) expects. */
+ * phases finish: the post-pass hands, the agreed contract, who holds
+ * it, and the full event log — the inputs `playTrickTakingPhase` (round.ts)
+ * expects, plus the auction history for display during later phases. */
 export interface AuctionResult {
   readonly hands: readonly [readonly Card[], readonly Card[], readonly Card[], readonly Card[]]
   readonly trumpSuit: Suit
   readonly bidWinner: PlayerIndex
   readonly bid: number
+  /** Full auction/pass event log, kept visible during meld and trick-play
+   * so the human can review every bid, who bid, and the amounts (#77). */
+  readonly log: readonly AuctionLogEntry[]
 }
 
 /** Fixed team pairing, matches round.ts's `teamOf`. */

@@ -55,4 +55,7 @@ export function formatTrickPlayLogEntry(entry: TrickPlayLogEntry): string {
 export interface TrickPlayResult {
   readonly trickPointsByTeam: Record<TeamId, number>
   readonly trickWinners: readonly PlayerIndex[]
+  /** True when the bidding team conceded/folded. The bidding team's meld
+   * is forfeited (they score -bid) and opponents get meld but no tricks. */
+  readonly conceded?: boolean
 }

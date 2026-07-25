@@ -5,7 +5,7 @@
       "name": "pinochle-web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "cwd": "web",
+      "cwd": "C:\\Users\\paulr\\source\\repos\\pinochle\\web",
       "port": 5173
     }
   ]

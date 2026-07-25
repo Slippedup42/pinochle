@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Scoreboard } from './Scoreboard'
 import { Seat } from './Seat'
 import { seatPosition, type SeatPosition, type TableState } from './tableTypes'
 import { TrickArea } from './TrickArea'
+import { useDraggable } from './useDraggable'
 
 export interface TableProps {
   state: TableState
@@ -23,6 +24,13 @@ export interface TableProps {
    * screen space. UI-only preference, not game state, so it lives here
    * rather than on TableState. */
   hideOpponentCards?: boolean
+  /** 1-based trick number for display (e.g. "Trick 3 of 12"). Omitted outside
+   * trick-play so TrickArea doesn't show a counter during the auction/meld
+   * phases. */
+  trickNumber?: number
+  /** Meld phase: when true, non-human seats render their cards face-up (meld
+   * cards on the table) instead of face-down or hidden. */
+  exposeCards?: boolean
 }
 
 const POSITION_GRID_CLASS: Record<SeatPosition, string> = {
@@ -38,7 +46,21 @@ const POSITION_GRID_CLASS: Record<SeatPosition, string> = {
  * and trick-play controls (separate issues) will mount into this shell,
  * most likely inside/near the human seat and the TrickArea respectively.
  */
-export function Table({ state, overlay, logPanel, onOpenMenu, hideOpponentCards }: TableProps) {
+export function Table({ state, overlay, logPanel, onOpenMenu, hideOpponentCards, trickNumber, exposeCards }: TableProps) {
+  const { onMouseDown, onMouseMove, onMouseUp } = useDraggable()
+
+  useEffect(() => {
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('touchmove', onMouseMove as EventListener, { passive: false })
+    document.addEventListener('touchend', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('touchmove', onMouseMove as EventListener)
+      document.removeEventListener('touchend', onMouseUp)
+    }
+  }, [onMouseMove, onMouseUp])
   const {
     seats,
     humanPlayer,
@@ -50,6 +72,7 @@ export function Table({ state, overlay, logPanel, onOpenMenu, hideOpponentCards 
     teamNames,
     humanPlayable,
     trickWinner,
+    meldPoints,
   } = state
   const bidWinnerSeat = bidWinner === null ? undefined : seats.find((seat) => seat.player === bidWinner)
 
@@ -71,6 +94,7 @@ export function Table({ state, overlay, logPanel, onOpenMenu, hideOpponentCards 
         currentBid={currentBid}
         bidWinnerName={bidWinnerSeat?.name}
         trumpSuit={trumpSuit}
+        meldPoints={meldPoints}
       />
       <div className="grid flex-1 grid-cols-[1fr_2fr_1fr] grid-rows-[1fr_2fr_1fr] items-center justify-items-center gap-4 p-4">
         {seats.map((seat) => (
@@ -83,18 +107,25 @@ export function Table({ state, overlay, logPanel, onOpenMenu, hideOpponentCards 
               position={seatPosition(seat.player, humanPlayer)}
               isHuman={seat.player === humanPlayer}
               isBidWinner={seat.player === bidWinner}
+              isDealer={seat.player === state.dealer}
               playable={seat.player === humanPlayer ? humanPlayable : undefined}
               hideOpponentHand={hideOpponentCards}
+              exposeCards={seat.player !== humanPlayer ? exposeCards : undefined}
             />
           </div>
         ))}
         <div className="col-start-2 row-start-2">
-          <TrickArea trick={trick} humanPlayer={humanPlayer} winningPlayer={trickWinner} />
+          <TrickArea trick={trick} humanPlayer={humanPlayer} winningPlayer={trickWinner} trickNumber={trickNumber} />
         </div>
       </div>
-      {logPanel && <div className="absolute top-16 right-2">{logPanel}</div>}
+      {logPanel && <div className="fixed top-16 right-2 z-30">{logPanel}</div>}
       {overlay && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4">{overlay}</div>
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onMouseDown={onMouseDown} onTouchStart={onMouseDown}>
+          <div data-draggable className="inline-block cursor-grab">
+            {overlay}
+          </div>
+        </div>
       )}
     </div>
   )

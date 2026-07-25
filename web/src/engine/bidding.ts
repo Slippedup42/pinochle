@@ -32,8 +32,8 @@ import type { PlayerIndex } from './trick'
 // near-double-pinochle, remaining-card trick-taking potential, partner
 // estimate), not the actual guaranteed meld. ------------------------------
 
-export const NEAR_RUN_VALUE = 120
-export const NEAR_DOUBLE_PINOCHLE_VALUE = 225
+export const NEAR_RUN_VALUE = 60
+export const NEAR_DOUBLE_PINOCHLE_VALUE = 60
 export const ACE_VALUE = 20
 // Proficient AI draws randomly in this range each bid (partner-strength
 // estimate). Not consumed by the pure valuation functions below — ported
@@ -329,6 +329,10 @@ export interface AuctionContext {
   readonly dealer: PlayerIndex
   /** Cumulative game score per team, going into this round. */
   readonly scores: Record<TeamId, number>
+  /** Players who have passed so far this auction. Used to detect when a
+   * partner has passed so the remaining bidder knows to raise the floor to
+   * 320. */
+  readonly passedPlayers: readonly PlayerIndex[]
 }
 
 /**
@@ -378,24 +382,36 @@ export function chooseBid(
   const ceiling = cap === null ? baseBid : Math.min(baseBid, cap)
 
   const partner = partnerOf(player)
-  const partnerIsDealer = partner === context.dealer
+  const partnerPassed = context.passedPlayers.includes(partner)
+
+  // Raise the floor to 320 when partner has already passed this auction
+  // (they declined to bid, so the remaining bidder must cover the gap).
+  const effectiveCeiling = partnerPassed ? Math.max(321, ceiling) : ceiling
+  // The minimum bid amount when partner passed: at least 321 (strictly > 320).
+  const minBidAfterPartnerPass = Math.max(321, currentBid + minIncrement)
 
   if (!context.everBid) {
-    // Dealer-protection.
-    if (partnerIsDealer && myScore >= 850 && oppScore < 500) {
+    // If partner hasn't had their turn yet (first two bidders), always open
+    // to protect against the auction passing out cheaply.
+    if (context.passesSoFar < 2) {
       return OPENING_BID
     }
 
     // 3rd bidder opens cheap.
     if (context.passesSoFar === 2) {
       if (myScore > 800) {
-        return ceiling >= OPENER_THRESHOLD ? OPENING_BID : null
+        return (partnerPassed ? ceiling > 320 : effectiveCeiling >= OPENER_THRESHOLD)
+          ? (partnerPassed ? minBidAfterPartnerPass : OPENING_BID)
+          : null
       }
-      return OPENING_BID
+      return partnerPassed ? (ceiling > 320 ? minBidAfterPartnerPass : null) : OPENING_BID
     }
 
-    // Normal opener threshold.
-    return ceiling >= OPENER_THRESHOLD ? OPENING_BID : null
+    // Normal opener threshold (4th bidder / dealer — partner has already
+    // had their turn, so no pass-out protection needed).
+    return (partnerPassed ? ceiling > 320 : effectiveCeiling >= OPENER_THRESHOLD)
+      ? (partnerPassed ? minBidAfterPartnerPass : OPENING_BID)
+      : null
   }
 
   // Someone has already bid this auction.
@@ -410,7 +426,7 @@ export function chooseBid(
 
     if (lastBidder === partner && myOwnBids.length > 0 && currentBid > myOwnBids[myOwnBids.length - 1]) {
       // partner raised over my own earlier bid
-      return ceiling < 340 ? null : currentBid + minIncrement
+      return effectiveCeiling < 340 ? null : currentBid + minIncrement
     }
 
     return null // our own bid already stands, no need to raise ourselves
@@ -418,13 +434,15 @@ export function chooseBid(
 
   // Opponent currently holds the bid.
   const partnerHasBid = context.bidHistory.some((b) => b.player === partner)
-  let effectiveCeiling = partnerHasBid ? Math.max(ceiling, 330) : ceiling
+  let competitiveCeiling = partnerHasBid ? Math.max(effectiveCeiling, 330) : effectiveCeiling
   if (cap !== null) {
-    effectiveCeiling = Math.min(effectiveCeiling, cap)
+    competitiveCeiling = Math.min(competitiveCeiling, cap)
   }
 
   const nextBid = currentBid + minIncrement
-  return nextBid <= effectiveCeiling ? nextBid : null
+  // When partner passed, the bid must be at least 320 regardless of ceiling.
+  if (partnerPassed && nextBid < 321) return competitiveCeiling >= 321 ? 321 : null
+  return nextBid <= competitiveCeiling ? nextBid : null
 }
 
 /**

@@ -16,6 +16,9 @@ export interface SeatState {
   readonly player: PlayerIndex
   readonly name: string
   readonly hand: readonly Card[]
+  /** Auction-phase status shown under the player name:
+   * "Pass", "(300)", "(Waiting)" etc. */
+  readonly statusText?: string
 }
 
 export interface TableState {
@@ -42,6 +45,13 @@ export interface TableState {
    * TrickArea while it settles before being cleared for the next trick.
    * null/undefined outside that settle pause. */
   readonly trickWinner?: PlayerIndex | null
+  /** Which seat is the dealer (#76) — shown during the auction phase so the
+   * human knows who has the last bid. Optional because some callers (e.g.
+   * TrickPlayFlow) don't track it. */
+  readonly dealer?: PlayerIndex
+  /** Meld points of the bidding team, shown in the header after meld
+   * declaration. Only meaningful during trick-play; omitted before that. */
+  readonly meldPoints?: number
 }
 
 /** Table position, independent of PlayerIndex — the human seat is always
