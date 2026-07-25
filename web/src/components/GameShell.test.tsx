@@ -123,7 +123,7 @@ describe('GameShell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
     fireEvent.click(screen.getByRole('button', { name: 'New Game' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Start new game' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
     expect(Deck.prototype.deal).toHaveBeenCalledTimes(2)
   })
