@@ -317,9 +317,11 @@ class _ScriptedHumanPlayer(HumanPlayer):
         self.pending_answer = [card_str(c) for c in cards]
         return super().choose_pass_cards(count, trump_suit, is_bid_winner)
 
-    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None):
+    def choose_card(self, legal_moves, trick=None, trump=None, tracker=None, my_team_players=None,
+                    is_bidder_first_lead=False):
         self.pending_answer = card_str(random.choice(legal_moves))
-        return super().choose_card(legal_moves, trick, trump, tracker, my_team_players)
+        return super().choose_card(legal_moves, trick, trump, tracker, my_team_players,
+                                   is_bidder_first_lead=is_bidder_first_lead)
 
 
 def _gs(name, lvl):
