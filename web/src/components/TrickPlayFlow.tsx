@@ -140,9 +140,10 @@ export function TrickPlayFlow({
       const legal = trick.legalMoves(hand)
       const isBidderFirstLead = state.trickNumber === 0 && player === state.bidWinner && state.currentTrick.length === 0
       const skill = skillForPlayer(player, humanPlayer, options)
+      const isBiddingTeam = teamOf(player) === teamOf(state.bidWinner)
       const card =
         state.currentTrick.length === 0
-          ? chooseLeadCard(hand, state.trumpSuit, trackerRef.current, isBidderFirstLead, skill)
+          ? chooseLeadCard(hand, state.trumpSuit, trackerRef.current, isBidderFirstLead, skill, isBiddingTeam)
           : chooseFollowCard(hand, legal, state.currentTrick, state.trumpSuit, teammatesOf(player), trackerRef.current, skill)
       trackerRef.current.record(card)
       dispatch({ type: 'PLAY_CARD', player, card })
