@@ -25,6 +25,30 @@ describe('PlayingCard', () => {
     expect(screen.queryByText('Q')).toBeNull()
   })
 
+  // #94: width used to be passed via className, where Tailwind resolved the
+  // conflict with the base `w-20` by stylesheet order — so `w-6` lost and meld
+  // cards silently rendered full size. Width now comes from `size` alone, so
+  // exactly one width utility is ever emitted.
+  it('emits exactly one width utility, chosen by size', () => {
+    const widthsFor = (el: Element) => (el.className.match(/(^|\s)w-\S+/g) ?? []).map((s) => s.trim())
+
+    const { container: sm } = render(<PlayingCard suit={Suit.Spades} rank="A" size="sm" />)
+    const { container: md } = render(<PlayingCard suit={Suit.Spades} rank="A" size="md" />)
+    const { container: lg } = render(<PlayingCard suit={Suit.Spades} rank="A" />)
+
+    expect(widthsFor(sm.firstElementChild!)).toEqual(['w-9'])
+    expect(widthsFor(md.firstElementChild!)).toEqual(['w-[60px]'])
+    expect(widthsFor(lg.firstElementChild!)).toEqual(['w-20'])
+  })
+
+  it('keeps a caller className from introducing a competing width', () => {
+    const { container } = render(<PlayingCard suit={Suit.Spades} rank="A" size="sm" className="-ml-2" />)
+    const cls = container.firstElementChild!.className
+    expect(cls).toContain('w-9')
+    expect(cls).toContain('-ml-2')
+    expect(cls.match(/(^|\s)w-\S+/g)!.map((s) => s.trim())).toEqual(['w-9'])
+  })
+
   it('renders every suit and rank without throwing', () => {
     const suits = [Suit.Spades, Suit.Hearts, Suit.Diamonds, Suit.Clubs]
     const ranks = ['9', 'J', 'Q', 'K', '10', 'A'] as const
