@@ -236,7 +236,6 @@ export function AuctionFlow({
       <AuctionLog
         entries={state.log}
         currentBid={state.bid || state.bidding.currentBid}
-        bidWinner={bidWinner ?? undefined}
         bidWinnerName={bidWinner !== null ? state.seatNames[bidWinner] : undefined}
         dealerName={state.seatNames[state.dealer]}
       />

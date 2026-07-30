@@ -166,8 +166,8 @@ export function TrickPlayFlow({
     const result: TrickPlayResult = {
       trickPointsByTeam: state.trickPointsByTeam,
       trickWinners: state.trickWinners,
+      ...(state.conceded ? { conceded: true } : {}),
     }
-    if (state.conceded) result.conceded = true
     onComplete?.(result)
   }, [state, onComplete])
 

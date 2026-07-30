@@ -1,13 +1,10 @@
 import { type AuctionLogEntry, formatAuctionLogEntry } from './auctionTypes'
-import type { PlayerIndex } from '../engine/trick'
 
 export interface AuctionLogProps {
   /** Oldest-first; rendered newest-first so the latest event is always visible without scrolling. */
   entries: readonly AuctionLogEntry[]
   /** The current high bid in the auction. */
   currentBid?: number
-  /** The player index of the current highest bidder. */
-  bidWinner?: PlayerIndex
   /** The display name of the current highest bidder. */
   bidWinnerName?: string
   /** The display name of the dealer. */
@@ -20,13 +17,17 @@ export interface AuctionLogProps {
  * a human player can follow the auction instead of just watching table
  * state change silently underneath them.
  */
-export function AuctionLog({ entries, currentBid, bidWinner, bidWinnerName, dealerName }: AuctionLogProps) {
+export function AuctionLog({ entries, currentBid, bidWinnerName, dealerName }: AuctionLogProps) {
   const newestFirst = [...entries].reverse()
+  const hasHeader = currentBid !== undefined || Boolean(dealerName)
+
+  // Nothing to say yet — render nothing rather than an empty floating panel.
+  if (entries.length === 0 && !hasHeader) return null
 
   return (
     <div className="pointer-events-none w-full max-w-xs">
       <div className="flex flex-col gap-1 rounded-lg bg-black/60 p-3 text-xs text-white shadow-lg">
-        {(currentBid !== undefined || dealerName) && (
+        {hasHeader && (
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 border-b border-white/20 pb-1.5 font-semibold">
             {currentBid !== undefined && currentBid > 0 && bidWinnerName && (
               <span className="text-amber-300">High: {currentBid} ({bidWinnerName})</span>
