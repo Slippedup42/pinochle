@@ -10,7 +10,9 @@
 // module only decides; it does not run an auction loop (that's a future
 // Round orchestrator, see round.ts's module docstring).
 
+import type { SkillLevel } from '../persistence/options'
 import { type Card, GAME_WIN_SCORE, OPENING_BID, type Rank, Suit, SUITS } from './card'
+import { MELD_ONLY_BID_NOISE, MELD_ONLY_TRICK_ESTIMATE, SKILL_PARAMS } from './skills'
 import {
   AROUND_DOUBLE_MULTIPLIER,
   AROUND_VALUES,

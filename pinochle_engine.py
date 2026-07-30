@@ -472,31 +472,9 @@ def is_unsecured_ace(card, hand, tracker):
     return tracker.played_count(card.suit, "A") == 0
 
 
-def choose_lead_card(hand, trump, tracker, is_bidder_first_lead=False):
-    """
-    Choose what to lead when you have control. Priority:
-      0. Bidder's first lead (#82) — must lead trump if any is held
-      1. Unsecured trump Ace
-      2. Other unsecured Aces (longest suit first)
-      3. Safe cards, cascading top-down by rank (longest suit first within a rank)
-      4. Junk lead (non-point, non-trump) to surrender - shortest suit first
-      5. Non-point trump as a last resort before giving up a point card
-
-    @param is_bidder_first_lead - When True (bidder opening the first trick of the
-      round), forces a trump lead if the player has any trump cards remaining.
-    """
-    # Bidder's first lead must be trump if they have any — rule #82
-    if is_bidder_first_lead:
-        trumps = [c for c in hand if c.suit == trump]
-        if trumps:
-            unsecured_ace = next((c for c in trumps if c.rank == "A" and is_unsecured_ace(c, hand, tracker)), None)
-            if unsecured_ace:
-                return unsecured_ace
-            ace = next((c for c in trumps if c.rank == "A"), None)
-            if ace:
-                return ace
-            return max(trumps, key=lambda c: RANK_VALUE[c.rank])
-
+def _lead_safe_cascade(hand, trump, tracker):
+    """Original Proficient safe-card cascade, extracted so offense/defender
+    wraps can call it with a filtered hand."""
     trump_aces = [c for c in hand if c.suit == trump and c.rank == "A" and is_unsecured_ace(c, hand, tracker)]
     if trump_aces:
         return trump_aces[0]
@@ -522,6 +500,40 @@ def choose_lead_card(hand, trump, tracker, is_bidder_first_lead=False):
         return junk_trump[0]
 
     return min(hand, key=lambda c: RANK_VALUE[c.rank])
+
+
+def choose_lead_card(hand, trump, tracker, is_bidder_first_lead=False, is_bidding_team=None):
+    """
+    Choose what to lead when you have control. Priority:
+      0. Bidder's first lead (#82) — must lead trump if any is held
+      1. When side is known: bidding team draws trump, defending team avoids it
+      2. Otherwise: original safe-card cascade fallback
+
+    @param is_bidder_first_lead - When True (bidder opening the first trick of the
+      round), forces a trump lead if the player has any trump cards remaining.
+    @param is_bidding_team - When True, use offense trump-draw strategy. When
+      False, use defender strategy (avoid leading trump). None = fallback.
+    """
+    # Bidder's first lead must be trump if they have any — rule #82
+    if is_bidder_first_lead:
+        trumps = [c for c in hand if c.suit == trump]
+        if trumps:
+            unsecured_ace = next((c for c in trumps if c.rank == "A" and is_unsecured_ace(c, hand, tracker)), None)
+            if unsecured_ace:
+                return unsecured_ace
+            ace = next((c for c in trumps if c.rank == "A"), None)
+            if ace:
+                return ace
+            return max(trumps, key=lambda c: RANK_VALUE[c.rank])
+
+    # Dispatch by side when known
+    if is_bidding_team is True:
+        return _offense_trump_lead(hand, trump, tracker)
+    if is_bidding_team is False:
+        return _defender_lead(hand, trump, tracker)
+
+    # Fallback when side is unknown: original safe-card cascade
+    return _lead_safe_cascade(hand, trump, tracker)
 
 
 def _current_winner(trick_plays, trump):
@@ -1759,8 +1771,14 @@ class Player:
             return legal_moves[0]
 
         if not trick.plays:
+            # Determine side when in a full Round context (self.team and
+            # round_bid are set), so the offense/defense split works.
+            is_bidding_team = None
+            if self.team is not None and self.team.round_bid is not None:
+                is_bidding_team = True
             return choose_lead_card(self.hand, trump, tracker if tracker else PlayTracker(),
-                                    is_bidder_first_lead=is_bidder_first_lead)
+                                    is_bidder_first_lead=is_bidder_first_lead,
+                                    is_bidding_team=is_bidding_team)
 
         team_set = my_team_players if my_team_players is not None else set(self.team.players)
         return choose_follow_card(self.hand, legal_moves, trick.plays, trump, team_set, tracker)

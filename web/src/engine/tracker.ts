@@ -13,6 +13,7 @@ import type { PlayerIndex, TrickPlay } from './trick'
 import { SKILL_PARAMS } from './skills'
 
 const POINT_RANKS = new Set(['A', '10', 'K'])
+const TOTAL_TRUMP_COPIES = 12
 
 /** Tracks cards played so far this round, across all 4 hands. */
 export class PlayTracker {
@@ -83,26 +84,53 @@ function isUnsecuredAce(card: Card, hand: readonly Card[], tracker: PlayTracker)
  * @param skill - Skill level. Skill 1 (easy) uses simplified logic: prefers
  *   low non-trump non-count cards. Defaults to 'hard' (full Proficient cascade).
  */
-export function chooseLeadCard(hand: readonly Card[], trump: Suit, tracker: PlayTracker, isBidderFirstLead = false, skill: SkillLevel = 'hard'): Card {
-  // Skill 1 (easy): simplified leading — prefer low non-trump non-count cards
-  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
-    const safeLeads = hand.filter((c) => c.suit !== trump && c.rank !== 'A' && c.rank !== '10' && c.rank !== 'K')
-    const pool = safeLeads.length > 0 ? safeLeads : hand
-    return pool.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
-  }
+/** True when every trump card (all 12 copies across all 4 players) has
+ * been accounted for — either in hand or already played — meaning no unseen
+ * trump remains that could beat a non-trump lead. Ported from the Python
+ * reference's `_trump_fully_accounted`. */
+function trumpFullyAccounted(hand: readonly Card[], trump: Suit, tracker: PlayTracker): boolean {
+  const playedTrump = RANKS.reduce((sum, r) => sum + tracker.playedCount(trump, r), 0)
+  const handTrump = suitLength(hand, trump)
+  return playedTrump + handTrump >= TOTAL_TRUMP_COPIES
+}
 
-  // Bidder's first lead must be trump if they have any — rule #82
-  if (isBidderFirstLead) {
-    const trumps = hand.filter((c) => c.suit === trump)
-    if (trumps.length > 0) {
-      const unsecuredAce = trumps.find((c) => c.rank === 'A' && isUnsecuredAce(c, hand, tracker))
-      if (unsecuredAce) return unsecuredAce
-      const ace = trumps.find((c) => c.rank === 'A')
-      if (ace) return ace
-      return maxByRank(trumps)
-    }
-  }
+/**
+ * Offense trump lead: when the bidding team is leading, draw trump by
+ * leading the trump Ace if held. Without a trump Ace, abandon the aggressive
+ * trump-draw plan and lead non-trump conservatively.
+ */
+function offenseTrumpLead(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
+  const trumpAces = hand.filter((c) => c.suit === trump && c.rank === 'A')
+  if (trumpAces.length > 0) return trumpAces[0]
+  const nonTrump = hand.filter((c) => c.suit !== trump)
+  if (nonTrump.length > 0) return leadSafeCascade(nonTrump, trump, tracker)
+  return leadSafeCascade(hand, trump, tracker)
+}
 
+/**
+ * Defending team lead: avoid leading trump whenever possible. If trump is
+ * fully accounted for (no unseen trump remains), lead any non-trump card.
+ * Otherwise prefer safe non-trump leads over trump leads.
+ */
+function defenderLead(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
+  const nonTrump = hand.filter((c) => c.suit !== trump)
+  const trumpCards = hand.filter((c) => c.suit === trump)
+  if (trumpCards.length > 0 && nonTrump.length > 0 && trumpFullyAccounted(hand, trump, tracker)) {
+    return leadSafeCascade(nonTrump, trump, tracker)
+  }
+  return leadSafeCascade(hand, trump, tracker)
+}
+
+/**
+ * The original Proficient safe-card cascade, extracted so offense/defender
+ * wraps can call it with a filtered hand. Priority:
+ *   1. Unsecured trump Ace
+ *   2. Other unsecured Aces (longest suit first)
+ *   3. Safe cards, cascading top-down by rank (longest suit first within a rank)
+ *   4. Junk lead (non-point, non-trump) to surrender — shortest suit first
+ *   5. Non-point trump as a last resort before giving up a point card
+ */
+function leadSafeCascade(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
   const trumpAces = hand.filter((c) => c.suit === trump && c.rank === 'A' && isUnsecuredAce(c, hand, tracker))
   if (trumpAces.length > 0) return trumpAces[0]
 
@@ -136,6 +164,41 @@ export function chooseLeadCard(hand: readonly Card[], trump: Suit, tracker: Play
   }
 
   return hand.reduce((lowest, c) => (RANK_VALUE[c.rank] < RANK_VALUE[lowest.rank] ? c : lowest))
+}
+
+export function chooseLeadCard(
+  hand: readonly Card[],
+  trump: Suit,
+  tracker: PlayTracker,
+  isBidderFirstLead = false,
+  skill: SkillLevel = 'hard',
+  isBiddingTeam?: boolean,
+): Card {
+  // Skill 1 (easy): simplified leading — prefer low non-trump non-count cards
+  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
+    const safeLeads = hand.filter((c) => c.suit !== trump && c.rank !== 'A' && c.rank !== '10' && c.rank !== 'K')
+    const pool = safeLeads.length > 0 ? safeLeads : hand
+    return pool.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
+  }
+
+  // Bidder's first lead must be trump if they have any — rule #82
+  if (isBidderFirstLead) {
+    const trumps = hand.filter((c) => c.suit === trump)
+    if (trumps.length > 0) {
+      const unsecuredAce = trumps.find((c) => c.rank === 'A' && isUnsecuredAce(c, hand, tracker))
+      if (unsecuredAce) return unsecuredAce
+      const ace = trumps.find((c) => c.rank === 'A')
+      if (ace) return ace
+      return maxByRank(trumps)
+    }
+  }
+
+  // Dispatch by side when known: bidding team draws trump, defending team avoids it
+  if (isBiddingTeam === true) return offenseTrumpLead(hand, trump, tracker)
+  if (isBiddingTeam === false) return defenderLead(hand, trump, tracker)
+
+  // Fallback when side is unknown (old callers): original safe-card cascade
+  return leadSafeCascade(hand, trump, tracker)
 }
 
 function minByRank(cards: readonly Card[]): Card {

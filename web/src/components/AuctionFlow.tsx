@@ -8,7 +8,6 @@ import type { SkillLevel } from '../persistence/options'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { auctionReducer, initAuctionState } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
-import { partnerOf } from './auctionTypes'
 import { AuctionLog } from './AuctionLog'
 import { BiddingControls } from './BiddingControls'
 import { PassRevealDialog } from './PassRevealDialog'
@@ -237,7 +236,6 @@ export function AuctionFlow({
       <AuctionLog
         entries={state.log}
         currentBid={state.bid || state.bidding.currentBid}
-        bidWinner={bidWinner ?? undefined}
         bidWinnerName={bidWinner !== null ? state.seatNames[bidWinner] : undefined}
         dealerName={state.seatNames[state.dealer]}
       />
