@@ -105,7 +105,7 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
         <div className="flex justify-center gap-1 overflow-x-auto">
           {sortHandForDisplay(seat.hand).map((card, i) => (
             <div key={i} className="-ml-10 first:ml-0">
-              <PlayingCard suit={card.suit} rank={card.rank} className="w-[60px]" />
+              <PlayingCard suit={card.suit} rank={card.rank} size="md" />
             </div>
           ))}
         </div>
