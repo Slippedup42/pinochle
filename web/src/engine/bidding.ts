@@ -423,10 +423,11 @@ export function chooseBid(
   const partner = partnerOf(player)
   const partnerPassed = context.passedPlayers.includes(partner)
 
-  // Raise the floor to 320 when partner has already passed this auction
-  // (they declined to bid, so the remaining bidder must cover the gap).
-  const effectiveCeiling = partnerPassed ? Math.max(321, ceiling) : ceiling
-  // The minimum bid amount when partner passed: at least 321 (strictly > 320).
+  // When partner has already passed they cannot come back in (#93), so a bid
+  // here is one this hand must carry alone — which means committing to at
+  // least 321. That raises the *bid floor*, not the hand's ceiling: the
+  // ceiling still reflects what the cards are actually worth, so a hopeless
+  // hand declines rather than being talked into 321 it cannot make.
   const minBidAfterPartnerPass = Math.max(321, currentBid + minIncrement)
 
   if (!context.everBid) {
@@ -439,7 +440,7 @@ export function chooseBid(
     // 3rd bidder opens cheap.
     if (context.passesSoFar === 2) {
       if (myScore > 800) {
-        return (partnerPassed ? ceiling > 320 : effectiveCeiling >= OPENER_THRESHOLD)
+        return (partnerPassed ? ceiling > 320 : ceiling >= OPENER_THRESHOLD)
           ? (partnerPassed ? minBidAfterPartnerPass : OPENING_BID)
           : null
       }
@@ -448,7 +449,7 @@ export function chooseBid(
 
     // Normal opener threshold (4th bidder / dealer — partner has already
     // had their turn, so no pass-out protection needed).
-    return (partnerPassed ? ceiling > 320 : effectiveCeiling >= OPENER_THRESHOLD)
+    return (partnerPassed ? ceiling > 320 : ceiling >= OPENER_THRESHOLD)
       ? (partnerPassed ? minBidAfterPartnerPass : OPENING_BID)
       : null
   }
@@ -465,7 +466,7 @@ export function chooseBid(
 
     if (lastBidder === partner && myOwnBids.length > 0 && currentBid > myOwnBids[myOwnBids.length - 1]) {
       // partner raised over my own earlier bid
-      return effectiveCeiling < 340 ? null : currentBid + minIncrement
+      return ceiling < 340 ? null : currentBid + minIncrement
     }
 
     return null // our own bid already stands, no need to raise ourselves
@@ -473,7 +474,7 @@ export function chooseBid(
 
   // Opponent currently holds the bid.
   const partnerHasBid = context.bidHistory.some((b) => b.player === partner)
-  let competitiveCeiling = partnerHasBid ? Math.max(effectiveCeiling, 330) : effectiveCeiling
+  let competitiveCeiling = partnerHasBid ? Math.max(ceiling, 330) : ceiling
   if (cap !== null) {
     competitiveCeiling = Math.min(competitiveCeiling, cap)
   }

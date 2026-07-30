@@ -6,7 +6,7 @@ import { partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
-import { auctionReducer, initAuctionState } from './auctionReducer'
+import { auctionReducer, initAuctionState, passedPlayersOf } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
 import { AuctionLog } from './AuctionLog'
 import { BiddingControls } from './BiddingControls'
@@ -66,9 +66,7 @@ export function AuctionFlow({
         bidHistory: state.bidding.bidHistory,
         dealer: state.dealer,
         scores: state.scoresByTeam,
-        passedPlayers: (Array.from({ length: 4 }) as PlayerIndex[]).filter(
-          (_, i) => !state.bidding.active[i],
-        ),
+        passedPlayers: passedPlayersOf(state.bidding.active),
       }
       const skill = skillForPlayer(turn, humanPlayer, options)
       const decision = chooseBid(turn, state.hands[turn], state.bidding.currentBid, MIN_INCREMENT, context, skill)

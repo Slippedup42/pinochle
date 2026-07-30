@@ -82,6 +82,17 @@ export function initAuctionState(
   }
 }
 
+/**
+ * Seats that have passed, and are therefore out of the auction for the rest
+ * of the hand (#93). A passed player is never asked again — `nextActiveTurn`
+ * skips them — so a typical hand settles into two passers and two bidders
+ * trading raises. Exported because the bidding AI needs to know who is out
+ * (notably whether its partner has passed) via `AuctionContext`.
+ */
+export function passedPlayersOf(active: readonly boolean[]): readonly PlayerIndex[] {
+  return ([0, 1, 2, 3] as PlayerIndex[]).filter((p) => !active[p])
+}
+
 function isBiddingOver(b: BiddingSubstate): boolean {
   return b.passes >= 3 || (b.everBid && b.active.filter(Boolean).length === 1)
 }

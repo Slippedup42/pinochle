@@ -4,7 +4,7 @@ import { Card, FORCED_BID, Suit } from '../engine/card'
 import type { PlayerIndex } from '../engine/trick'
 import { AI_BID_DELAY_MS, AuctionFlow } from './AuctionFlow'
 import type { AuctionState } from './auctionReducer'
-import { auctionReducer, initAuctionState } from './auctionReducer'
+import { auctionReducer, initAuctionState, passedPlayersOf } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
 
 const SEAT_NAMES: Record<PlayerIndex, string> = { 0: 'You', 1: 'West', 2: 'Partner', 3: 'East' }
@@ -146,6 +146,50 @@ describe('auctionReducer', () => {
     expect(state.phase).toBe('pass-reveal')
     state = auctionReducer(state, { type: 'CONFIRM_PASS_REVEAL' })
     expect(state.phase).toBe('complete')
+  })
+
+  // -- Passed players are out for the hand (#93) ---------------------------
+
+  it('skips a passed seat when the bidding wraps around (#93)', () => {
+    let state = baseState(3) // seat 0 opens, seat 3 (You) is dealer
+    state = auctionReducer(state, { type: 'BID', player: 0, amount: 300 })
+    state = auctionReducer(state, { type: 'PASS_BID', player: 1 })
+    state = auctionReducer(state, { type: 'PASS_BID', player: 2 })
+    // Seats 1 and 2 are out; the turn must jump straight to seat 3.
+    expect(state.bidding.turn).toBe(3)
+    state = auctionReducer(state, { type: 'BID', player: 3, amount: 310 })
+    // Wrapping past the two passed seats lands back on seat 0, not seat 1.
+    expect(state.bidding.turn).toBe(0)
+    state = auctionReducer(state, { type: 'BID', player: 0, amount: 320 })
+    expect(state.bidding.turn).toBe(3)
+  })
+
+  it('never gives the turn to a seat that already passed, for any bid/pass sequence (#93)', () => {
+    const violations: string[] = []
+
+    function walk(state: AuctionState, asked: readonly PlayerIndex[]) {
+      if (state.phase !== 'bidding' || asked.length > 12) return
+      const turn = state.bidding.turn
+      if (!state.bidding.active[turn]) {
+        violations.push(`seat ${turn} asked again after passing; sequence was [${asked.join(',')}]`)
+        return
+      }
+      walk(auctionReducer(state, { type: 'BID', player: turn, amount: state.bidding.currentBid + 10 }), [...asked, turn])
+      walk(auctionReducer(state, { type: 'PASS_BID', player: turn }), [...asked, turn])
+    }
+
+    for (const dealer of [0, 1, 2, 3] as PlayerIndex[]) walk(baseState(dealer), [])
+    expect(violations).toEqual([])
+  })
+
+  it('reports exactly the seats that have passed, as real seat indices (#93)', () => {
+    let state = baseState(3)
+    expect(passedPlayersOf(state.bidding.active)).toEqual([])
+    state = auctionReducer(state, { type: 'BID', player: 0, amount: 300 })
+    state = auctionReducer(state, { type: 'PASS_BID', player: 1 })
+    expect(passedPlayersOf(state.bidding.active)).toEqual([1])
+    state = auctionReducer(state, { type: 'PASS_BID', player: 2 })
+    expect(passedPlayersOf(state.bidding.active)).toEqual([1, 2])
   })
 })
 
