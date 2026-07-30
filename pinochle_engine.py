@@ -1783,6 +1783,21 @@ class Player:
         team_set = my_team_players if my_team_players is not None else set(self.team.players)
         return choose_follow_card(self.hand, legal_moves, trick.plays, trump, team_set, tracker)
 
+    def decide_fold(self, trump, bid, bidding_meld, defending_meld):
+        """
+        Whether to concede the contract rather than play it out (issue #100).
+        Asked of the bid winner only, once, after meld is declared and before
+        the first card is led - matching the concede window the web client
+        offers the human (#83).
+
+        Proficient and below always play the hand out. Conceding well needs a
+        read on how the tricks will actually go, and this tier has no way to
+        get one; guessing with a threshold is exactly what #106 is moving
+        away from. `GeneralStrategy` overrides this at the skill levels that
+        carry a rollout budget.
+        """
+        return False
+
 
 # ---------------------------------------------------------------------------
 # AI difficulty tiers (issue #53). Player above is the "Proficient" tier and
@@ -1983,12 +1998,15 @@ GENERAL_STRATEGY_SKILL_PARAMS = {
     #   the same skill threshold), per the issue's consistency note.
     # *_samples: Monte Carlo sample counts fed to the rollout machinery,
     #   tuned empirically via tournament_sim (issue #65).
+    # fold_samples: sample count for the concede decision (#100). 0 means the
+    #   skill level never folds - it has no rollout budget to judge with, and
+    #   a guessed threshold is what #106 exists to remove.
     # deception: whether choose_expert_follow_card gets a deception_evaluator.
-    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
-    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
-    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "deception": False},
-    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "deception": False},
-    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "deception": False},
+    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "deception": False},
+    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "deception": False},
+    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "deception": False},
+    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "fold_samples": 20, "deception": False},
+    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "fold_samples": 50, "deception": False},
 }
 
 MELD_ONLY_TRICK_ESTIMATE = EASY_FLAT_TRICK_ESTIMATE  # same flat, non-hand-shape-aware stand-in EasyPlayer uses for skill 1's meld-only bidding (doc Section 8) - reused rather than redefined, since it's the same judgment call.
@@ -2109,6 +2127,29 @@ class GeneralStrategy(Player):
             num_samples=params["bid_samples"], rng=self.rng,
         )
         return best_bid
+
+    # -- Conceding (issue #100, epic #106) --
+
+    def decide_fold(self, trump, bid, bidding_meld, defending_meld):
+        """
+        Concede when the rollout says playing on is worth less than the
+        conceded score, per `pinochle_rollout.should_fold`. Skill levels with
+        no fold budget keep Player's never-fold behavior rather than falling
+        back to a threshold - the point of #106 is that the alternative to
+        measuring is not guessing, it's declining to decide.
+        """
+        from pinochle_rollout import should_fold
+
+        params = GENERAL_STRATEGY_SKILL_PARAMS[self.skill_level]
+        num_samples = params.get("fold_samples", 0)
+        if num_samples <= 0:
+            return False
+
+        fold, _diagnostics = should_fold(
+            self.hand, trump, bid, bidding_meld, defending_meld,
+            num_samples=num_samples, rng=self.rng,
+        )
+        return fold
 
     # -- Passing (doc Sections 2-3) --
 
@@ -2373,6 +2414,7 @@ class Round:
         self.bid_winner = None
         self.trump_suit = None
         self.tracker = PlayTracker()
+        self.conceded = False  # set by _concede_phase (issue #100)
 
     def run(self):
         self._deal()
@@ -2386,6 +2428,11 @@ class Round:
         self._stamp_team_round_context()
         self._passing_phase()
         self._meld_phase()
+
+        if self._concede_phase():
+            self._discard_hands()
+            return self._score_conceded_round()
+
         trick_points = self._trick_taking_loop()
 
         return self._score_round(trick_points)
@@ -2473,6 +2520,69 @@ class Round:
         for player in self.players:
             points, _breakdown = score_melds(player.hand, self.trump_suit)
             player.team.meld_points += points
+
+    def _concede_phase(self):
+        """
+        Offer the bid winner the chance to concede the contract (issue #100),
+        once, after meld is declared and before any card is led. Mirrors the
+        window the web client already gives the human (#83) rather than
+        inventing a second set of concede rules.
+
+        Only the bid winner is asked: their partner cannot concede a contract
+        they did not take, and the defending team has nothing to concede.
+
+        Sets and returns `self.conceded`.
+        """
+        bidding_team = self.bid_winner.team
+        defending_team = next(t for t in self.teams if t is not bidding_team)
+
+        self.conceded = bool(
+            self.bid_winner.decide_fold(
+                self.trump_suit,
+                self.current_bid,
+                bidding_team.meld_points,
+                defending_team.meld_points,
+            )
+        )
+        return self.conceded
+
+    def _discard_hands(self):
+        """
+        Throw the four hands in after a concede.
+
+        Necessary because `Player.receive_cards` *extends* the hand rather
+        than replacing it - dealing has always relied on trick play having
+        emptied all four hands as a side effect of playing 12 tricks. A
+        conceded round is the first path that ends without playing those
+        tricks, so without this the next `_deal` builds a 24-card hand
+        holding every card twice, and the first thing to notice is a
+        confusing "duplicate card" error from the rollout sampler several
+        rounds later.
+        """
+        for player in self.players:
+            player.hand.clear()
+
+    def _score_conceded_round(self):
+        """
+        Score a conceded round. The bidding team forfeits its meld and takes
+        -bid, exactly as if it had been set. The defenders keep their meld but
+        score no trick points, because no trick was played - conceding denies
+        them up to 250 points they would otherwise have collected, which is a
+        real part of why conceding can be the better move.
+
+        Also zeroes `team.trick_points`, so a caller reading round state after
+        a concede sees "no tricks were taken" rather than whatever the
+        previous round happened to leave there.
+        """
+        bidding_team = self.bid_winner.team
+        round_scores = {}
+        for team in self.teams:
+            team.trick_points = 0
+            if team is bidding_team:
+                round_scores[team] = -self.current_bid
+            else:
+                round_scores[team] = team.meld_points
+        return round_scores
 
     def _trick_taking_loop(self):
         """Runs 12 tricks, returns {team: trick_points}."""

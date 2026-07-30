@@ -565,3 +565,178 @@ def choose_bid_by_ev(hand, trump, candidate_bids, num_samples=150, rng=None):
 
     best_bid = max(all_evs, key=all_evs.get)
     return best_bid, all_evs[best_bid], all_evs
+
+
+# ---------------------------------------------------------------------------
+# Fold / concede expected value (issue #100, epic #106) - decide whether to
+# play the contract out or concede it, by measuring both futures rather than
+# consulting a threshold.
+#
+# This decision point is unusually clean to express as expected value because
+# one side of the comparison is known *exactly* rather than estimated: the
+# rules fix a conceded round's score, so EV(fold) needs no simulation at all.
+# Only EV(play on) has to be rolled out. See #106 for why the whole family of
+# "fold when <condition>" rules is being replaced by this.
+# ---------------------------------------------------------------------------
+
+def estimate_play_on(hand, trump, bid, bidding_meld, defending_meld,
+                      num_samples=150, rng=None):
+    """
+    Monte Carlo estimate of playing the contract out from the fold decision
+    point - i.e. after the 3-card exchange and after meld has been declared,
+    but before the first card is led.
+
+    `hand` is the bid winner's own 12 post-pass cards. The other 36 cards are
+    determinized 12/12/12 per sample, exactly as at bid time (every seat holds
+    12 again once passing has resolved, so `sample_bid_time_deal`'s shape is
+    the right one here - it is reused rather than duplicated).
+
+    `bidding_meld` / `defending_meld` are passed in and NOT recomputed,
+    because at this point they are *known exactly* - meld has been declared
+    face-up by all four players. Only trick play is still uncertain, so only
+    trick play is simulated. Handing them to `rollout_deal` explicitly also
+    stops each sample from scoring the meld of whatever random hand it just
+    dealt partner, which would be a fiction the real table can already see
+    through.
+
+    Passing is `"none"`: the forward and return passes already happened for
+    real, and are baked into `hand`.
+
+    Returns the aggregate dict from `monte_carlo_rollout`.
+    """
+    rng = rng if rng is not None else random
+
+    def sample_fn(active_rng):
+        return sample_bid_time_deal(hand, rng=active_rng)
+
+    def build_fn(dealt):
+        players = _build_rollout_players(
+            ["me", "opp_left", "partner", "opp_right"],
+            [hand, dealt["opp_left"], dealt["partner"], dealt["opp_right"]],
+        )
+        return players, players[0]
+
+    return monte_carlo_rollout(
+        sample_fn, build_fn, trump, bid, num_samples,
+        rollout_kwargs={
+            "passing": "none",
+            "bidding_meld": bidding_meld,
+            "defending_meld": defending_meld,
+        },
+        rng=rng,
+    )
+
+
+def fold_ev(hand, trump, bid, bidding_meld, defending_meld,
+             num_samples=150, rng=None):
+    """
+    The two futures at the fold decision point, as score differentials
+    (our score minus theirs), from the bidding team's side.
+
+    Folding:
+
+        we score  -bid            (meld forfeited, per the concede rule)
+        they score defending_meld (their meld stands; no tricks are played,
+                                   so there are no trick points to take)
+
+        EV(fold) = -bid - defending_meld        -- exact, no rollout
+
+    Playing on, per sample:
+
+        made:   we score bidding_meld + our trick points
+        failed: we score -bid, with no partial credit
+        they always score defending_meld + their trick points
+
+        EV(play on) = mean over samples of (ours - theirs)
+
+    Differential rather than our-points-only because conceding does not just
+    cap our loss at -bid, it also denies the opponents up to 250 trick points.
+    In a race to 1000 that denial is often the larger half of the decision,
+    and an our-points-only comparison cannot see it at all: it scores folding
+    and getting set identically at -bid, when they are very different
+    outcomes for the game.
+
+    Differential is still only a proxy for what actually matters, which is
+    winning the game - at 900-100 our own points matter far more than denying
+    theirs, and at 400-900 the reverse. #102 replaces this objective with win
+    probability; until then the score itself is deliberately not an input
+    here, rather than being folded in via some invented weighting.
+
+    Returns (ev_play_on, ev_fold, diagnostics). `diagnostics` is the
+    `estimate_play_on` aggregate (or a synthetic equivalent when the auto-set
+    fast path fired) plus `auto_set_shortcut`, `ev_play_on` and `ev_fold`, so
+    callers and tests can inspect the comparison rather than just its verdict.
+    """
+    ev_fold = float(-bid - defending_meld)
+
+    # Fast path: the contract is unreachable even taking every trick point in
+    # the deck, so playing on cannot make it - and playing on can only hand
+    # the opponents trick points that conceding denies them. Folding weakly
+    # dominates by exactly their trick points, so no rollout can change the
+    # verdict and none is run. This is `is_auto_set`'s existing purpose,
+    # reused rather than reimplemented as a "count the losers" rule.
+    if is_auto_set(bidding_meld, bid):
+        # Playing on scores us exactly -bid (the contract cannot be made) and
+        # hands them defending_meld + T, for some unknown T in [0, 250]. So
+        # EV(play on) = ev_fold - T <= ev_fold, with equality only if they
+        # take nothing. `ev_play_on` is therefore reported as that upper
+        # bound - the best case for playing on - rather than inventing a
+        # point estimate for T that no rollout was run to support. The
+        # verdict comes from dominance, which holds for every T.
+        diagnostics = {
+            "samples": [],
+            "p_make": 0.0,
+            "expected_bidding_points": float(bidding_meld),
+            "expected_defending_points": float(defending_meld),
+            "auto_set_rate": 1.0,
+            "auto_set_shortcut": True,
+            "ev_play_on": ev_fold,
+            "ev_play_on_is_upper_bound": True,
+            "ev_fold": ev_fold,
+        }
+        return ev_fold, ev_fold, diagnostics
+
+    diagnostics = estimate_play_on(
+        hand, trump, bid, bidding_meld, defending_meld,
+        num_samples=num_samples, rng=rng,
+    )
+
+    differentials = [
+        (r["bidding_total"] if r["made"] else -bid) - r["defending_total"]
+        for r in diagnostics["samples"]
+    ]
+    ev_play_on = sum(differentials) / len(differentials)
+
+    diagnostics["auto_set_shortcut"] = False
+    diagnostics["ev_play_on_is_upper_bound"] = False
+    diagnostics["ev_play_on"] = ev_play_on
+    diagnostics["ev_fold"] = ev_fold
+    return ev_play_on, ev_fold, diagnostics
+
+
+def should_fold(hand, trump, bid, bidding_meld, defending_meld,
+                 num_samples=150, rng=None):
+    """
+    True when conceding beats playing the contract out, by the comparison in
+    `fold_ev`. There is no threshold, no margin and no tunable constant here
+    on purpose: the hand, the contract and the meld that actually landed all
+    reach the decision by moving the rollout, not by being consulted by a
+    rule. That is what keeps the fold behaviour correct as the rest of the AI
+    changes, instead of needing its threshold re-tuned every time.
+
+    Ties play on. A dead-even estimate means folding buys nothing measurable,
+    and playing the hand out is the more informative choice for a game the
+    human is watching. The one exception is the auto-set case, where folding
+    wins by dominance rather than by a strictly larger EV - `fold_ev` reports
+    only an upper bound on playing on there, so the flag decides instead of
+    the (deliberately tied) numbers.
+
+    Returns (fold, diagnostics).
+    """
+    ev_play_on, ev_fold, diagnostics = fold_ev(
+        hand, trump, bid, bidding_meld, defending_meld,
+        num_samples=num_samples, rng=rng,
+    )
+    if diagnostics["auto_set_shortcut"]:
+        return True, diagnostics
+    return ev_play_on < ev_fold, diagnostics
