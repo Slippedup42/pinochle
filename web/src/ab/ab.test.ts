@@ -12,11 +12,19 @@
 // runs meaningful, at the smallest size that demonstrates it.
 
 import { describe, expect, it } from 'vitest'
+import type { TeamId } from '../engine/round'
 import { SKILL_PARAMS } from '../engine/skills'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
-import { DISTILLED_LEVEL, STATIC_LEVEL, analyse, installPolicies, runAb } from './abRun'
-import { makeRng, playHeadlessGame } from './headlessGame'
+import {
+  DISTILLED_LEVEL,
+  FOLD_AB_POLICIES,
+  STATIC_LEVEL,
+  analyse,
+  installPolicies,
+  runAb,
+} from './abRun'
+import { type SideStats, makeRng, newSideStats, playHeadlessGame } from './headlessGame'
 import { binomialTwoSidedP, bootstrapMeanCi, percentile, wilsonInterval } from './stats'
 
 describe('the statistics', () => {
@@ -96,6 +104,52 @@ describe('the headless game', () => {
     const a = playHeadlessGame({ seatSkills, dealSeed: 99 })
     const b = playHeadlessGame({ seatSkills, dealSeed: 99 })
     expect(b).toEqual(a)
+  })
+
+  // -- Conceding (#123) -----------------------------------------------------
+
+  it('concedes contracts, and counts them as set rather than as a third outcome', () => {
+    // Aggregated over seeds rather than pinned to one: roughly a fifth of
+    // contracts are conceded, so a single ~6-round game has no fold at all
+    // often enough (17 of 40 seeds) that a one-seed version of this test would
+    // fail for reasons having nothing to do with the code.
+    const seatSkills = { 0: 'hard', 1: 'hard', 2: 'hard', 3: 'hard' } as Record<PlayerIndex, SkillLevel>
+    const stats = { 0: newSideStats(), 1: newSideStats() } as Record<TeamId, SideStats>
+    for (let dealSeed = 1; dealSeed <= 12; dealSeed++) {
+      playHeadlessGame({ seatSkills, dealSeed, stats })
+    }
+
+    const conceded = stats[0].conceded + stats[1].conceded
+    expect(conceded).toBeGreaterThan(0)
+    for (const team of [0, 1] as TeamId[]) {
+      // A concede is a contract taken and not made. Both invariants would break
+      // if the concede branch forgot its bookkeeping or double-counted.
+      expect(stats[team].conceded).toBeLessThanOrEqual(stats[team].set)
+      expect(stats[team].made + stats[team].set).toBe(stats[team].contracts)
+      expect(stats[team].bids).toHaveLength(stats[team].contracts)
+    }
+  })
+
+  it('never concedes when the dial says never, and folds strictly more often when it does', () => {
+    // The comparison `foldPolicy` exists to make measurable. Same deal, same
+    // seats, one field different — so any difference in concedes is the policy.
+    const never = { 0: newSideStats(), 1: newSideStats() } as Record<TeamId, SideStats>
+    const model = { 0: newSideStats(), 1: newSideStats() } as Record<TeamId, SideStats>
+
+    const restore = installPolicies(FOLD_AB_POLICIES)
+    try {
+      const seats = (level: SkillLevel) =>
+        ({ 0: level, 1: level, 2: level, 3: level }) as Record<PlayerIndex, SkillLevel>
+      for (let dealSeed = 1; dealSeed <= 12; dealSeed++) {
+        playHeadlessGame({ seatSkills: seats(STATIC_LEVEL), dealSeed, stats: never })
+        playHeadlessGame({ seatSkills: seats(DISTILLED_LEVEL), dealSeed, stats: model })
+      }
+    } finally {
+      restore()
+    }
+
+    expect(never[0].conceded + never[1].conceded).toBe(0)
+    expect(model[0].conceded + model[1].conceded).toBeGreaterThan(0)
   })
 })
 

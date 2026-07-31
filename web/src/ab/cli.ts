@@ -4,6 +4,7 @@
 // executes TypeScript directly, so this needs no build step and no new package:
 //
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts ab --pairs 400
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts fold --pairs 400
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts latency --positions 4000
 //
@@ -17,7 +18,14 @@
 // the rest of the engine, and paying for that with one cast is the cheaper
 // trade than a second tsconfig project.
 
-import { DISTILLED_LEVEL, STATIC_LEVEL, analyse, runAb, summarise } from './abRun'
+import {
+  DISTILLED_LEVEL,
+  FOLD_AB_POLICIES,
+  STATIC_LEVEL,
+  analyse,
+  runAb,
+  summarise,
+} from './abRun'
 import { formatLatency, runLatencyBenchmark } from './latency'
 
 const argv = (globalThis as { process?: { argv: string[] } }).process?.argv ?? []
@@ -31,7 +39,19 @@ function flag(name: string, fallback: number): number {
   return Number.isFinite(value) ? value : fallback
 }
 
-if (command === 'ab' || command === 'selftest') {
+if (command === 'fold') {
+  // #123's measurement: identical distilled bidders, one allowed to concede.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: 'fold',
+    labelB: 'no-fold',
+    policies: FOLD_AB_POLICIES,
+  })
+  console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'ab' || command === 'selftest') {
   const pairs = flag('pairs', command === 'selftest' ? 100 : 400)
   const seed = flag('seed', 1)
   // `--policy distilled` self-tests the model path instead of the threshold
@@ -49,5 +69,5 @@ if (command === 'ab' || command === 'selftest') {
   const repeats = flag('repeats', 40)
   console.log(formatLatency(runLatencyBenchmark(positions, repeats)))
 } else {
-  console.log('usage: cli.ts [ab|selftest|latency] [--pairs N] [--seed N] [--positions N] [--repeats N]')
+  console.log('usage: cli.ts [ab|fold|selftest|latency] [--pairs N] [--seed N] [--positions N] [--repeats N]')
 }
