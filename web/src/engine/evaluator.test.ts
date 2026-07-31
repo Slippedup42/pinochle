@@ -177,22 +177,43 @@ describe('the skill dial gates the evaluator (#114)', () => {
   // policies, which is what makes it a usable probe of the dial.
   const runOnlyHand = RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1))
 
-  it('maps the levels the way skills.ts documents', () => {
-    expect(SKILL_PARAMS.easy.bidPolicy).toBe('static')
-    expect(SKILL_PARAMS.medium.bidPolicy).toBe('distilled')
-    expect(SKILL_PARAMS.hard.bidPolicy).toBe('distilled')
-    expect(SKILL_PARAMS.proficient.bidPolicy).toBe('static')
-    expect(SKILL_PARAMS.expert.bidPolicy).toBe('static')
+  it('has the evaluator gated off at every level pending #115', () => {
+    // Deliberate, not an oversight. Pushing to main deploys to GitHub Pages and
+    // DEFAULT_OPTIONS puts both AI seats on `hard`, so enabling the model there
+    // would change every seat of the default game on merge — a measured change
+    // (settled contract 335.4 -> 323.6; hands ending at exactly 300 3% -> 36%)
+    // that #115 has not yet judged. #101 and #102 shipped the same way: wiring
+    // live, flag off, pending evidence.
+    //
+    // Flipping a level to 'distilled' should be a deliberate act with an A/B
+    // behind it, so this fails loudly if one drifts back on.
+    for (const level of ['easy', 'medium', 'hard', 'proficient', 'expert'] as const) {
+      expect(SKILL_PARAMS[level].bidPolicy).toBe('static')
+    }
   })
 
-  it('runs the static thresholds on proficient and expert', () => {
-    expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'proficient')).toBeNull()
-    expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'expert')).toBeNull()
+  it('runs the static thresholds on every level while gated', () => {
+    for (const level of ['medium', 'hard', 'proficient', 'expert'] as const) {
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, level)).toBeNull()
+    }
   })
 
-  it('runs the evaluator on medium and hard', () => {
-    expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'medium')).toBe(OPENING_BID)
-    expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
+  it('still opens this hand when the evaluator is consulted directly', () => {
+    // The gate is a policy choice, not a missing implementation. Exercised
+    // directly so the distilled path stays covered while no level selects it —
+    // otherwise gating would quietly turn the whole of #114 into dead code.
+    // This is the decision the dial would surface if #115 enables it: the same
+    // sub-320 hand the static rule passes on.
+    expect(
+      shouldBid({
+        hand: runOnlyHand,
+        bid: OPENING_BID,
+        ourScore: 0,
+        theirScore: 0,
+        partnerHasBid: false,
+        partnerHasPassed: false,
+      }),
+    ).toBe(true)
   })
 
   it('leaves easy on the meld-only path, which the evaluator never enters', () => {

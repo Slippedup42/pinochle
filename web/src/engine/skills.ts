@@ -26,29 +26,41 @@ export interface SkillParams {
 }
 
 /**
- * The dial. `bidPolicy` follows epic #104's mapping — skills 1-3 get the
- * fitted evaluator, skills 4-5 are reserved for real rollouts "where
- * affordable" — with one deliberate exception and one consequence worth
- * stating outright:
+ * The dial.
  *
- *   easy is 'static' even though it is skill 1. Its bidding never reaches the
- *   Base Bid path at all (`handValuation: 'meld_only'` short-circuits into
- *   `meldOnlyBid`), and the evaluator is a distillation of *skill 5*. Wiring it
- *   in here would not make easy better-calibrated, it would make easy the
- *   strongest bidder in the game and delete the tier.
+ * Every level is currently `'static'`. The distilled evaluator is fully wired,
+ * exported and parity-tested against Python (180/180 fixture hands exact) — it
+ * is simply not switched on for anyone yet, because #115 has not measured
+ * whether it plays better. Same discipline as the rest of epic #106: #101 and
+ * #102 both shipped with their wiring live and their flag off after measuring
+ * no benefit, and #103 was only enabled once an A/B justified it.
  *
- *   proficient and expert stay 'static' because the web port has no rollouts to
- *   fall back on yet — epic #104 reserves 4-5 for real ones, in a Web Worker or
- *   on desktop, and that is a separate piece of work. Until then they run the
- *   pre-#104 constants. That is an inversion (hard bids with the fitted model,
- *   expert with the guessed constants) and it is temporary on purpose: #115's
- *   A/B needs both policies reachable from the dial to measure one against the
- *   other, and it is #115's result that decides where the line finally sits.
+ * This matters more here than in the Python engine, because pushing to `main`
+ * deploys to GitHub Pages and `DEFAULT_OPTIONS` sets both `opponentSkill` and
+ * `teammateSkill` to `hard`. Enabling the model on `hard` would therefore
+ * change every seat of the default game the moment it merged. Measured over
+ * 2000 simulated auctions that is not a subtle change: the settled contract
+ * averages 323.6 rather than 335.4, and the share of hands settling at exactly
+ * 300 goes from 3% to 36%, because the model usually declines the defensive
+ * push `DEFENSIVE_PUSH_FLOOR` mandates. That may well be an improvement — but
+ * "may well be" is exactly what #115 exists to settle.
+ *
+ * Two notes for whoever flips these:
+ *
+ *   easy should stay 'static' regardless. Its bidding never reaches the Base
+ *   Bid path (`handValuation: 'meld_only'` short-circuits into `meldOnlyBid`),
+ *   and the evaluator distils *skill 5* — wiring it in would not make easy
+ *   better-calibrated, it would make easy the strongest bidder in the game and
+ *   delete the tier.
+ *
+ *   proficient and expert are reserved for real rollouts "where affordable"
+ *   per epic #104 (Web Worker, or desktop), which is separate work. Until that
+ *   exists they run the pre-#104 constants.
  */
 export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
   easy: { handValuation: 'meld_only', bidPolicy: 'static' },
-  medium: { handValuation: 'base_bid', bidPolicy: 'distilled' },
-  hard: { handValuation: 'base_bid', bidPolicy: 'distilled' },
+  medium: { handValuation: 'base_bid', bidPolicy: 'static' },
+  hard: { handValuation: 'base_bid', bidPolicy: 'static' },
   proficient: { handValuation: 'base_bid', bidPolicy: 'static' },
   expert: { handValuation: 'base_bid', bidPolicy: 'static' },
 }
