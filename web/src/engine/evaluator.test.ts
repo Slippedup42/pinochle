@@ -162,7 +162,7 @@ describe('the fold model', () => {
   })
 })
 
-describe('the skill dial gates the evaluator (#114)', () => {
+describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
   const context: AuctionContext = {
     everBid: false,
     passesSoFar: 3,
@@ -177,33 +177,37 @@ describe('the skill dial gates the evaluator (#114)', () => {
   // policies, which is what makes it a usable probe of the dial.
   const runOnlyHand = RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1))
 
-  it('has the evaluator gated off at every level pending #115', () => {
-    // Deliberate, not an oversight. Pushing to main deploys to GitHub Pages and
-    // DEFAULT_OPTIONS puts both AI seats on `hard`, so enabling the model there
-    // would change every seat of the default game on merge — a measured change
-    // (settled contract 335.4 -> 323.6; hands ending at exactly 300 3% -> 36%)
-    // that #115 has not yet judged. #101 and #102 shipped the same way: wiring
-    // live, flag off, pending evidence.
+  it('runs the evaluator on hard and above, and the thresholds below (#115)', () => {
+    // #114 pinned every level to 'static' so the model could not reach a player
+    // by accident; #115 measured it and opened the gate for `hard` upward —
+    // 211 deals swept to static's 50 over 1000 mirrored pairs, +227 score
+    // margin per deal with a 95% CI of +198 to +257 (see src/ab/).
     //
-    // Flipping a level to 'distilled' should be a deliberate act with an A/B
-    // behind it, so this fails loudly if one drifts back on.
-    for (const level of ['easy', 'medium', 'hard', 'proficient', 'expert'] as const) {
-      expect(SKILL_PARAMS[level].bidPolicy).toBe('static')
+    // Still an assertion rather than a shrug, and still the place a drift shows
+    // up: `hard` is what DEFAULT_OPTIONS gives both AI seats, so a level moving
+    // in either direction here changes the default game on merge and should be
+    // a deliberate act with a measurement behind it.
+    expect(SKILL_PARAMS.easy.bidPolicy).toBe('static')
+    expect(SKILL_PARAMS.medium.bidPolicy).toBe('static')
+    for (const level of ['hard', 'proficient', 'expert'] as const) {
+      expect(SKILL_PARAMS[level].bidPolicy).toBe('distilled')
     }
   })
 
-  it('runs the static thresholds on every level while gated', () => {
-    for (const level of ['medium', 'hard', 'proficient', 'expert'] as const) {
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, level)).toBeNull()
+  it('separates the two policies on one hand the dial can be probed with', () => {
+    // Ceiling 300, under OPENER_THRESHOLD, so the static rule passes while the
+    // evaluator opens — one hand that reads the dial directly rather than
+    // asserting on SKILL_PARAMS a second time.
+    expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+    for (const level of ['hard', 'proficient', 'expert'] as const) {
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, level)).toBe(OPENING_BID)
     }
   })
 
-  it('still opens this hand when the evaluator is consulted directly', () => {
-    // The gate is a policy choice, not a missing implementation. Exercised
-    // directly so the distilled path stays covered while no level selects it —
-    // otherwise gating would quietly turn the whole of #114 into dead code.
-    // This is the decision the dial would surface if #115 enables it: the same
-    // sub-320 hand the static rule passes on.
+  it('opens this hand when the evaluator is consulted directly', () => {
+    // The same decision as above with the dial taken out of the picture: a full
+    // trump Run is 150 guaranteed meld, and the model takes the contract on it
+    // where a threshold on the ceiling alone does not.
     expect(
       shouldBid({
         hand: runOnlyHand,

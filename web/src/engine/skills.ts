@@ -8,7 +8,9 @@ export type HandValuation = 'meld_only' | 'base_bid'
  * Which rule decides "is this hand worth a contract at this level" (#114).
  *
  *   `'static'`    the hand-tuned constants — `OPENER_THRESHOLD`,
- *                 `DEFENSIVE_PUSH_FLOOR` — that shipped before epic #104.
+ *                 `DEFENSIVE_PUSH_FLOOR` — that shipped before epic #104. Still
+ *                 live: `medium` runs them, and they still decide the auction's
+ *                 raise ladder on every level (see `chooseBid`).
  *   `'distilled'` the evaluator fitted to 2000 measured rollout decisions
  *                 (`evaluator.ts`), which reads the bid level, the auction
  *                 state and the hand's shape rather than one number against
@@ -28,41 +30,70 @@ export interface SkillParams {
 /**
  * The dial.
  *
- * Every level is currently `'static'`. The distilled evaluator is fully wired,
- * exported and parity-tested against Python (180/180 fixture hands exact) — it
- * is simply not switched on for anyone yet, because #115 has not measured
- * whether it plays better. Same discipline as the rest of epic #106: #101 and
- * #102 both shipped with their wiring live and their flag off after measuring
- * no benefit, and #103 was only enabled once an A/B justified it.
+ * #114 landed the evaluator wired but switched on for nobody, because pushing
+ * to `main` deploys to GitHub Pages and `DEFAULT_OPTIONS` puts both AI seats on
+ * `hard` — enabling it there changes every seat of the default game on merge,
+ * and #114 could describe the behaviour change without judging it. #115
+ * measured it, and the gate is now open for `hard` and above.
  *
- * This matters more here than in the Python engine, because pushing to `main`
- * deploys to GitHub Pages and `DEFAULT_OPTIONS` sets both `opponentSkill` and
- * `teammateSkill` to `hard`. Enabling the model on `hard` would therefore
- * change every seat of the default game the moment it merged. Measured over
- * 2000 simulated auctions that is not a subtle change: the settled contract
- * averages 323.6 rather than 335.4, and the share of hands settling at exactly
- * 300 goes from 3% to 36%, because the model usually declines the defensive
- * push `DEFENSIVE_PUSH_FLOOR` mandates. That may well be an improvement — but
- * "may well be" is exactly what #115 exists to settle.
+ * What #115 found, over 1000 paired deals played twice with the seats mirrored
+ * (2000 headless games, `src/ab/`):
  *
- * Two notes for whoever flips these:
+ *   distilled swept 211 deals, static 50, 739 split. 95% CI on distilled's
+ *   share of the 261 decisive deals: 75.6%–85.2%, exact two-sided binomial
+ *   p < 1e-4. Score margin +227 per deal, 95% CI +198 to +257.
  *
- *   easy should stay 'static' regardless. Its bidding never reaches the Base
- *   Bid path (`handValuation: 'meld_only'` short-circuits into `meldOnlyBid`),
- *   and the evaluator distils *skill 5* — wiring it in would not make easy
- *   better-calibrated, it would make easy the strongest bidder in the game and
- *   delete the tier.
+ * The mechanism is the one #114 flagged and could not evaluate.
+ * `DEFENSIVE_PUSH_FLOOR = 200` tells a seat to raise a 300 opener on almost any
+ * hand — a ceiling of 200 is barely above the "no meld, no aces" floor — so the
+ * static side buys a great many cheap contracts and is set on 45.4% of them.
+ * The model declines most of those pushes: it takes a third fewer contracts and
+ * makes 63.7% of them against static's 54.6%. Declining a contract you cannot
+ * make is worth more than the contract.
  *
- *   proficient and expert are reserved for real rollouts "where affordable"
- *   per epic #104 (Web Worker, or desktop), which is separate work. Until that
- *   exists they run the pre-#104 constants.
+ * That effect survives the harness's own control: the same policy against
+ * itself splits every pair with a paired margin of exactly zero, so the
+ * mirroring really is cancelling the seat advantage rather than hiding a bug.
+ * It is also not a quirk of playing *against* the static rule — an all-
+ * distilled table is set on 38.8% of its contracts where an all-static table is
+ * set on 42.3%.
+ *
+ * Cost, since a model that thinks visibly is a regression however well it
+ * plays: +1.9 kB raw / +872 B gzipped on the shipped bundle (255.1 kB -> 253.2
+ * kB with it removed), and p95 per-decision latency of 72us against static's
+ * 41us in Node, 495us against 313us in Chrome at a 375x812 viewport. Even
+ * multiplied by a 6x mobile-CPU emulation factor that is ~3 ms, against the
+ * 600 ms `AI_BID_DELAY_MS` the auction already waits before each AI bid.
+ *
+ * Why the levels land where they do:
+ *
+ *   easy stays 'static' — its bidding never reaches the Base Bid path
+ *   (`handValuation: 'meld_only'` short-circuits into `meldOnlyBid`), and the
+ *   evaluator distils *skill 5*, so wiring it in would not make easy
+ *   better-calibrated, it would make easy the strongest bidder and delete the
+ *   tier.
+ *
+ *   medium stays 'static', unchanged from what it plays today. Before this
+ *   change medium, hard, proficient and expert were byte-identical, so the dial
+ *   had exactly two settings; leaving medium on the thresholds gives it a real
+ *   third one — a bidder that opens on a rule of thumb and pushes every cheap
+ *   contract is a fair description of a middling player.
+ *
+ *   proficient and expert take 'distilled' rather than staying on the
+ *   thresholds. Epic #104's sketch was the other way round — evaluator for
+ *   skills 1-3, real rollouts for 4-5 — but that mapping assumed 4-5 would
+ *   *have* rollouts, and in the browser they do not and will not until the Web
+ *   Worker work exists. Between the two policies that do exist here, distilled
+ *   is the measurably stronger one, so leaving the top tiers on the weaker rule
+ *   would rank them below `hard`. When real rollouts land they replace this on
+ *   4-5; until then it is the floor, not the ceiling.
  */
 export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
   easy: { handValuation: 'meld_only', bidPolicy: 'static' },
   medium: { handValuation: 'base_bid', bidPolicy: 'static' },
-  hard: { handValuation: 'base_bid', bidPolicy: 'static' },
-  proficient: { handValuation: 'base_bid', bidPolicy: 'static' },
-  expert: { handValuation: 'base_bid', bidPolicy: 'static' },
+  hard: { handValuation: 'base_bid', bidPolicy: 'distilled' },
+  proficient: { handValuation: 'base_bid', bidPolicy: 'distilled' },
+  expert: { handValuation: 'base_bid', bidPolicy: 'distilled' },
 }
 
 /** Flat trick-point estimate for meld-only bidding (skill 1), matching
