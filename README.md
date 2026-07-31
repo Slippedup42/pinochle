@@ -76,6 +76,18 @@ level at creation) are implemented — see the strategy doc below.
   `bid_ev_win_probability` / `defend_ev_win_probability` /
   `fold_ev_win_probability`, which are gated behind the
   `use_win_probability` skill parameter.
+- [`generate_rollout_dataset.py`](generate_rollout_dataset.py) — offline
+  generator for the labelled training data epic #104's distillation is
+  fitted to (issue #112). Plays real games with a recording
+  `GeneralStrategy` subclass, captures every bid and concede decision the
+  auction actually produced (rather than sampling hands uniformly, which
+  is a different distribution from the one the AI meets), and labels each
+  with `pinochle_rollout.py`'s measured `p_make` / `bid_ev_differential` /
+  `defend_ev` / `should_fold`. Which configuration gets labelled is read
+  out of `GENERAL_STRATEGY_SKILL_PARAMS` at runtime rather than assumed —
+  `--config` prints it. Output is `rollout_dataset.csv`; the committed
+  file is a reproducible 2000-row prefix of a longer run, not a
+  hand-edited artifact.
 - [`human_play.py`](human_play.py) — resumable interactive play layer
   (`HumanPlayer`, `InteractiveRound`) built for chat-session play, where
   a script can't block on `input()` between messages: decisions raise
@@ -104,6 +116,9 @@ python play_local.py        # play a full interactive game in the terminal
 python tournament_sim.py --games 300   # Proficient-vs-Proficient sanity check (~50/50)
 python ab_harness.py --pairs 100       # A/B harness self-test (a config against itself)
 python win_probability.py --games 6000 --seed 7   # regenerate the win-probability table
+python generate_rollout_dataset.py --config       # print the config the labels describe
+python generate_rollout_dataset.py --games 100 --samples 150 --seed 112 --max-rows 2000
+                                       # regenerate the committed rollout dataset (~15 min)
 python -m pytest -q                    # full test suite
 ```
 
