@@ -2019,10 +2019,13 @@ GENERAL_STRATEGY_SKILL_PARAMS = {
     #   95% CI of -109 to +102, make rate 54.4% vs 55.3%) while running about
     #   4x slower. The likely reason is that the bid decision is a coarse
     #   argmax over [pass, next_bid], so a sharper model of partner shifts both
-    #   options together and rarely flips the choice. Worth re-measuring once
-    #   #103 makes EV(pass) a real rollout, since that gives the constraint a
-    #   richer comparison to affect; enabling it before then would just be
-    #   paying 4x for nothing.
+    #   options together and rarely flips the choice. That explanation was
+    #   then tested and did NOT hold up: re-run on top of #103's defence
+    #   rollout - a genuinely richer comparison - it still showed nothing
+    #   (40-40 on games, margin -50 with a 95% CI of -152 to +51). So the
+    #   null result is not an artifact of the decision being too coarse, and
+    #   a better model of the other seats simply does not appear to change
+    #   bidding. Left off; do not re-run this A/B without a new hypothesis.
     # defence_samples: when > 0, bidding compares taking the contract against
     #   *defending* it, both as score differentials, instead of scoring a pass
     #   as a flat 0.0 (#103). ON at skill 4-5: A/B'd over 40 paired deals it
