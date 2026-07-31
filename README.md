@@ -104,6 +104,19 @@ level at creation) are implemented — see the strategy doc below.
   on the same features scored 86.7% five-fold against the linear model's
   86.3% ± 1.9%. Output is `rollout_evaluator.json`, the artifact #114
   exports to TypeScript.
+- [`export_evaluator.py`](export_evaluator.py) — carries that artifact
+  into the PWA (issue #114). Generates two files under
+  `web/src/engine/`: `evaluatorModel.ts`, the weights as a typed module
+  rather than a JSON import, and `evaluatorParity.fixture.ts`, a fixed
+  set of real hands scored by the *Python* model. The fixture is what
+  `evaluatorParity.test.ts` fails against when the two sides compute
+  different features — most of all `base_bid_ceiling`, which is not a
+  stored column but a re-derivation of `compute_max_bid`/`capped_bid`
+  and is worth eight points of decision agreement on its own. Both files
+  are regenerated, never edited; `--check` fails the Python suite if
+  they have drifted from the model, which is the only place that drift
+  is visible (a stale model module and a stale fixture agree with each
+  other perfectly).
 - [`human_play.py`](human_play.py) — resumable interactive play layer
   (`HumanPlayer`, `InteractiveRound`) built for chat-session play, where
   a script can't block on `input()` between messages: decisions raise
@@ -138,6 +151,8 @@ python generate_rollout_dataset.py --games 100 --samples 150 --seed 112 --max-ro
 python fit_evaluator.py --compare --disagreements
                                        # refit the cheap evaluator, with the baselines it
                                        # has to beat and where it disagrees (~15 s)
+python export_evaluator.py             # regenerate the TypeScript the PWA bids with
+python export_evaluator.py --check     # fail if the committed TypeScript is stale
 python -m pytest -q                    # full test suite
 ```
 

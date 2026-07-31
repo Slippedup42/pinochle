@@ -243,8 +243,22 @@ describe('chooseBid', () => {
     it('passes when the ceiling does not clear OPENER_THRESHOLD and partner has already had a turn', () => {
       // 4th bidder (passesSoFar=3, dealer): partner (player 2) has already had
       // their turn, so the "partner hasn't bid" rule doesn't apply.
+      // Pinned to a 'static' skill level (#114): this is the OPENER_THRESHOLD
+      // rule specifically, and 'hard' no longer runs it.
       const context = baseContext({ dealer: 0, passesSoFar: 3 })
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context)).toBeNull()
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'proficient')).toBeNull()
+    })
+
+    it('passes this hand on every level while the evaluator is gated off (#114/#115)', () => {
+      // runOnlyHand's ceiling is 300, under OPENER_THRESHOLD, so the static
+      // rule passes. The distilled evaluator would take it — it sees a full
+      // trump Run, 150 guaranteed meld before a trick is played, offered the
+      // contract at the 300 minimum. That divergence is the clearest single
+      // illustration of what #114 changes, and it is switched off at every
+      // skill level pending #115's measurement. `evaluator.test.ts` asserts
+      // the evaluator's side of it directly, so the behaviour stays covered.
+      const context = baseContext({ dealer: 0, passesSoFar: 3 })
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBeNull()
     })
 
     it('always opens (dealer-protection) when partner is dealer and my score is >= 850 with opponent under 500', () => {

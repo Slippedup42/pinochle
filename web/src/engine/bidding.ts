@@ -12,6 +12,7 @@
 
 import type { SkillLevel } from '../persistence/options'
 import { type Card, GAME_WIN_SCORE, OPENING_BID, type Rank, Suit, SUITS } from './card'
+import { shouldBid } from './evaluator'
 import { MELD_ONLY_BID_NOISE, MELD_ONLY_TRICK_ESTIMATE, SKILL_PARAMS } from './skills'
 import {
   AROUND_DOUBLE_MULTIPLIER,
@@ -53,6 +54,14 @@ export const ACE_VALUE = 20
 export const PARTNER_ESTIMATE_RANGE: readonly [number, number] = [50, 100]
 export const MAX_BID_DEFAULT = 400
 export const MAX_BID_MELD_THRESHOLD = 300
+
+// -- The two static bidding thresholds. Both are guesses, and both are
+// superseded by the fitted evaluator on every skill level whose `bidPolicy` is
+// `'distilled'` (see skills.ts). They are NOT dead: `'static'` is still what
+// proficient and expert run, until #115's A/B says which policy wins. Anything
+// that reads them outside `chooseBid`'s static branch is reading a rule that
+// half the dial no longer follows. ---------------------------------------
+
 // Minimum Base Bid to justify opening at all.
 export const OPENER_THRESHOLD = 320
 // Minimum ceiling to justify a defensive push against an opening bid of 300.
@@ -391,9 +400,9 @@ function meldOnlyBid(
  *        always open regardless of hand.
  *     2. 3rd bidder (2 passes already, no one's bid) - always open to
  *        deny the last player a cheap contract, unless my score is high
- *        enough (>800) that I'd rather play it safe and only open if my
- *        ceiling clears OPENER_THRESHOLD.
- *     3. Otherwise, open only if my ceiling clears OPENER_THRESHOLD.
+ *        enough (>800) that I'd rather play it safe and only open if the
+ *        hand is worth the contract.
+ *     3. Otherwise, open only if the hand is worth the contract.
  *   - My team currently holds the bid:
  *     - Partner has already bid twice this auction - back off, they're
  *       carrying it.
@@ -432,6 +441,7 @@ export function chooseBid(
 
   const partner = partnerOf(player)
   const partnerPassed = context.passedPlayers.includes(partner)
+  const partnerHasBid = context.bidHistory.some((b) => b.player === partner)
 
   // When partner has already passed they cannot come back in (#93), so a bid
   // here is one this hand must carry alone — which means committing to at
@@ -440,6 +450,28 @@ export function chooseBid(
   // hand declines rather than being talked into 321 it cannot make.
   const minBidAfterPartnerPass = Math.max(321, currentBid + minIncrement)
 
+  // "Is this hand worth committing to a contract at `level`?" — the single
+  // question `OPENER_THRESHOLD` and `DEFENSIVE_PUSH_FLOOR` were each a crude
+  // answer to (#114). On a `'distilled'` skill level it goes to the evaluator
+  // fitted to 2000 measured rollout decisions, which sees the level being
+  // committed to rather than only the hand's ceiling — the same 200-ceiling
+  // hand is a different proposition at 310 than at 400, and a threshold on the
+  // ceiling alone cannot express that. On a `'static'` level it is the old
+  // comparison, passed in by the caller so the two rules stay side by side and
+  // #115 can measure one against the other.
+  const distilled = SKILL_PARAMS[skill].bidPolicy === 'distilled'
+  const worthContract = (level: number, staticVerdict: boolean): boolean =>
+    distilled
+      ? shouldBid({
+          hand,
+          bid: level,
+          ourScore: myScore,
+          theirScore: oppScore,
+          partnerHasBid,
+          partnerHasPassed: partnerPassed,
+        })
+      : staticVerdict
+
   if (!context.everBid) {
     // If partner hasn't had their turn yet (first two bidders), always open
     // to protect against the auction passing out cheaply.
@@ -447,21 +479,29 @@ export function chooseBid(
       return OPENING_BID
     }
 
+    // With partner passed the bid must clear 321, so the static rule wants the
+    // ceiling strictly above the opener threshold rather than merely level
+    // with it. (Ceilings move in tens, so the two differ only at exactly 320.)
+    const openingLevel = partnerPassed ? minBidAfterPartnerPass : OPENING_BID
+    const opens = worthContract(
+      openingLevel,
+      partnerPassed ? ceiling > OPENER_THRESHOLD : ceiling >= OPENER_THRESHOLD,
+    )
+
     // 3rd bidder opens cheap.
     if (context.passesSoFar === 2) {
       if (myScore > 800) {
-        return (partnerPassed ? ceiling > 320 : ceiling >= OPENER_THRESHOLD)
-          ? (partnerPassed ? minBidAfterPartnerPass : OPENING_BID)
-          : null
+        return opens ? openingLevel : null
       }
-      return partnerPassed ? (ceiling > 320 ? minBidAfterPartnerPass : null) : OPENING_BID
+      // Positional, not a hand judgement: with partner still to speak this
+      // seat opens on anything to deny the last player a cheap contract, so
+      // neither policy is consulted.
+      return partnerPassed ? (opens ? openingLevel : null) : OPENING_BID
     }
 
     // Normal opener threshold (4th bidder / dealer — partner has already
     // had their turn, so no pass-out protection needed).
-    return (partnerPassed ? ceiling > 320 : ceiling >= OPENER_THRESHOLD)
-      ? (partnerPassed ? minBidAfterPartnerPass : OPENING_BID)
-      : null
+    return opens ? openingLevel : null
   }
 
   // Someone has already bid this auction.
@@ -483,7 +523,6 @@ export function chooseBid(
   }
 
   // Opponent currently holds the bid.
-  const partnerHasBid = context.bidHistory.some((b) => b.player === partner)
   let competitiveCeiling = partnerHasBid ? Math.max(ceiling, 330) : ceiling
   if (cap !== null) {
     competitiveCeiling = Math.min(competitiveCeiling, cap)
@@ -492,13 +531,16 @@ export function chooseBid(
   const nextBid = currentBid + minIncrement
 
   // Defensive push (#78): when opponent opened at the minimum (300), respond
-  // unless the hand is truly hopeless (ceiling below DEFENSIVE_PUSH_FLOOR).
-  // In real Pinochle, 300 is the absolute floor and is almost always raised.
-  // Even a moderate hand (~200+ ceiling) can contribute toward making 300
-  // with partner's help, and pushing deprives the opponent of a cheap contract.
-  if (currentBid <= OPENING_BID && ceiling >= DEFENSIVE_PUSH_FLOOR) {
-    if (partnerPassed) return Math.max(nextBid, 321)
-    return nextBid
+  // unless the hand is truly hopeless. The static rule is a ceiling floor
+  // (DEFENSIVE_PUSH_FLOOR) on the reasoning that 300 is the absolute floor and
+  // is almost always raised — even a moderate hand can contribute toward making
+  // 300 with partner's help, and pushing deprives the opponent of a cheap
+  // contract. The distilled rule asks the evaluator about the level actually
+  // being pushed to; declining here is not the end of the auction, it just
+  // falls through to the ordinary raise ladder below.
+  const pushLevel = partnerPassed ? Math.max(nextBid, 321) : nextBid
+  if (currentBid <= OPENING_BID && worthContract(pushLevel, ceiling >= DEFENSIVE_PUSH_FLOOR)) {
+    return pushLevel
   }
 
   // When partner passed, the bid must be at least 320 regardless of ceiling.
