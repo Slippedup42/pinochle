@@ -59,6 +59,23 @@ level at creation) are implemented — see the strategy doc below.
   currently-unseen cards for a decision point (bidding / return-pass /
   trick-play), rolls a sample out to completion via the real pass/
   trick-play logic, and aggregates P(make)/E[points] across samples.
+  Carries three objectives over the same rollouts, in increasing order of
+  what they can see: own points (`bid_ev`, #60), score differential
+  (`bid_ev_differential` / `defend_ev` / `fold_ev`, #100/#103), and
+  probability of winning the game (`*_win_probability`, #102) — the last
+  being the only one the game score is an input to.
+- [`win_probability.py`](win_probability.py) — P(win the game | score
+  state), the objective the rollout AI can maximize instead of points
+  (issue #102). A coarse 20×20 lookup table over both teams' scores in
+  100-point buckets, tabulated from Proficient self-play and smoothed
+  toward a race-model prior, plus exact resolution of already-decided
+  states (bust before target; a round carrying both sides past 1000 goes
+  to the bidding team). Also the generator that built it —
+  `python win_probability.py --games 6000 --seed 7` reprints the table
+  literal. Consumed by `pinochle_rollout.py`'s
+  `bid_ev_win_probability` / `defend_ev_win_probability` /
+  `fold_ev_win_probability`, which are gated behind the
+  `use_win_probability` skill parameter.
 - [`human_play.py`](human_play.py) — resumable interactive play layer
   (`HumanPlayer`, `InteractiveRound`) built for chat-session play, where
   a script can't block on `input()` between messages: decisions raise
@@ -85,6 +102,9 @@ level at creation) are implemented — see the strategy doc below.
 python pinochle_engine.py   # rules engine self-checks + full-game sanity runs
 python play_local.py        # play a full interactive game in the terminal
 python tournament_sim.py --games 300   # Proficient-vs-Proficient sanity check (~50/50)
+python ab_harness.py --pairs 100       # A/B harness self-test (a config against itself)
+python win_probability.py --games 6000 --seed 7   # regenerate the win-probability table
+python -m pytest -q                    # full test suite
 ```
 
 ## Architecture
