@@ -2011,12 +2011,24 @@ GENERAL_STRATEGY_SKILL_PARAMS = {
     # fold_samples: sample count for the concede decision (#100). 0 means the
     #   skill level never folds - it has no rollout budget to judge with, and
     #   a guessed threshold is what #106 exists to remove.
+    # use_auction_evidence: reject determinized deals that contradict what the
+    #   other seats did in the auction (#101). OFF everywhere for now. The
+    #   constraint provably works - a sampled partner's ceiling moves from 276
+    #   to 338 once partner has bid 330 - but A/B'd over 50 paired deals it
+    #   produced no measurable improvement (46-54 on games, margin -1 with a
+    #   95% CI of -109 to +102, make rate 54.4% vs 55.3%) while running about
+    #   4x slower. The likely reason is that the bid decision is a coarse
+    #   argmax over [pass, next_bid], so a sharper model of partner shifts both
+    #   options together and rarely flips the choice. Worth re-measuring once
+    #   #103 makes EV(pass) a real rollout, since that gives the constraint a
+    #   richer comparison to affect; enabling it before then would just be
+    #   paying 4x for nothing.
     # deception: whether choose_expert_follow_card gets a deception_evaluator.
-    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "deception": False},
-    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "deception": False},
-    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "deception": False},
-    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "fold_samples": 20, "deception": False},
-    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "fold_samples": 50, "deception": False},
+    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "deception": False},
+    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "deception": False},
+    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "deception": False},
+    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "fold_samples": 20, "use_auction_evidence": False, "deception": False},
+    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "fold_samples": 50, "use_auction_evidence": False, "deception": False},
 }
 
 MELD_ONLY_TRICK_ESTIMATE = EASY_FLAT_TRICK_ESTIMATE  # same flat, non-hand-shape-aware stand-in EasyPlayer uses for skill 1's meld-only bidding (doc Section 8) - reused rather than redefined, since it's the same judgment call.
@@ -2104,6 +2116,64 @@ class GeneralStrategy(Player):
             return OPENING_BID if ceiling >= OPENING_BID else None
         return next_bid if next_bid <= ceiling else None
 
+    def _auction_evidence(self, context):
+        """
+        Translate what the other three seats have done this auction into the
+        rollout's seat-key space, so determinized deals that contradict the
+        bidding can be rejected (issue #101).
+
+        Seat keys mirror `estimate_bid_time`'s fixed seating: my partner is
+        "partner", and the two opponents are "opp_left"/"opp_right".
+
+        The two opponents are keyed in the order they first acted, which is
+        not necessarily their true seating relative to me - `context` carries
+        the auction record but no seat indices. Both opponents get constrained
+        by their own bidding either way, so the only thing this can get wrong
+        is which side of the table a given constrained hand sits on. That
+        shifts trick-play order inside the rollout without changing the hand
+        strength being modelled. Worth tightening if seat indices ever reach
+        here; not worth opening a second seating channel for now.
+        """
+        from pinochle_rollout import AuctionEvidence
+
+        if self.team is None:
+            return None
+
+        partner = next((p for p in self.team.players if p is not self), None)
+
+        # Opponents are everyone who has acted this auction and is neither me
+        # nor my partner. Derived from the auction record rather than from the
+        # team objects, so a seat that has not acted yet stays unconstrained.
+        seen = []
+        for player, _amount in context.get("bid_history", []):
+            if player not in seen:
+                seen.append(player)
+        for player, _amount in context.get("pass_history", []):
+            if player not in seen:
+                seen.append(player)
+        opponents = [p for p in seen if p is not self and p is not partner]
+
+        key_for = {}
+        if partner is not None:
+            key_for[id(partner)] = "partner"
+        for opponent, key in zip(opponents, ("opp_left", "opp_right")):
+            key_for[id(opponent)] = key
+
+        highest_bid = {}
+        for player, amount in context.get("bid_history", []):
+            key = key_for.get(id(player))
+            if key is not None:
+                highest_bid[key] = max(highest_bid.get(key, 0), amount)
+
+        declined = {}
+        for player, amount in context.get("pass_history", []):
+            key = key_for.get(id(player))
+            if key is not None:
+                declined[key] = min(declined.get(key, amount), amount)
+
+        evidence = AuctionEvidence(highest_bid=highest_bid, declined=declined)
+        return evidence if evidence else None
+
     def _rollout_ev_bid(self, current_bid, min_increment, context, params):
         """Skill 4-5: replace the static ceiling comparison with simulated
         EV (doc Section 1), via pinochle_rollout.choose_bid_by_ev built on
@@ -2135,6 +2205,7 @@ class GeneralStrategy(Player):
         best_bid, _best_ev, _all_evs = choose_bid_by_ev(
             self.hand, trump, [None, next_bid],
             num_samples=params["bid_samples"], rng=self.rng,
+            evidence=self._auction_evidence(context) if params.get("use_auction_evidence") else None,
         )
         return best_bid
 
@@ -2471,6 +2542,11 @@ class Round:
         passes = 0
         passes_so_far = 0
         bid_history = []  # list of (player, amount)
+        # (player, the minimum bid they declined) - richer than a bare list of
+        # who passed, because "declined to bid 340" bounds a hand from above
+        # while "declined to bid 300" says something much stronger. Issue #101
+        # uses this to reject determinized deals that contradict the auction.
+        pass_history = []
         dealer = self.players[self.dealer_index]
 
         while passes < 3:
@@ -2481,6 +2557,8 @@ class Round:
                     "ever_bid": ever_bid,
                     "passes_so_far": passes_so_far,
                     "bid_history": bid_history,
+                    "pass_history": pass_history,
+                    "passed_players": [p for p, _ in pass_history],
                     "dealer": dealer,
                     "teams": self.teams,
                 }
@@ -2494,6 +2572,7 @@ class Round:
                     active[idx] = False
                     passes += 1
                     passes_so_far += 1
+                    pass_history.append((player, min_bid))
                     if sum(active) == 1 and ever_bid:
                         break
             idx = (idx + 1) % 4
