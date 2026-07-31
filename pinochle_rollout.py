@@ -50,6 +50,7 @@ import random
 
 from pinochle_engine import (
     Card,
+    OPENING_BID,
     best_base_bid,
     PlayTracker,
     Player,
@@ -682,6 +683,178 @@ def choose_bid_by_ev(hand, trump, candidate_bids, num_samples=150, rng=None, evi
         else:
             all_evs[bid], _ = bid_ev(hand, trump, bid, num_samples=num_samples, rng=rng,
                                      evidence=evidence)
+
+    best_bid = max(all_evs, key=all_evs.get)
+    return best_bid, all_evs[best_bid], all_evs
+
+
+# ---------------------------------------------------------------------------
+# Bidding as a comparison of two futures (issue #103, epic #106).
+#
+# `choose_bid_by_ev` models passing as a flat EV of 0.0 - "no points won,
+# nothing risked". That is not what passing does. Pass and the opponents take
+# the contract instead: we still score our meld, we still take tricks
+# defending, and we may set them for a large swing. That EV is frequently
+# negative and occasionally strongly positive, but it is essentially never
+# zero.
+#
+# Comparing every bid against a fiction of zero biases the AI toward passing
+# whenever a bid's own EV dips below zero, however bad the alternative is -
+# a plausible direct cause of the underbidding in #95.
+#
+# Both futures are measured here on the same *score differential* scale (our
+# score minus theirs), because the two sides are not otherwise comparable:
+# taking the contract and defending one distribute points differently between
+# the teams, and only the difference is common to both. This matches the
+# convention `fold_ev` already uses. Differential remains a proxy for winning
+# the game; #102 replaces it with win probability.
+# ---------------------------------------------------------------------------
+
+def _differential_when_we_bid(sample, bid):
+    """Our score minus theirs, for a sample where WE hold the contract."""
+    ours = sample["bidding_total"] if sample["made"] else -bid
+    return ours - sample["defending_total"]
+
+
+def _differential_when_they_bid(sample, bid):
+    """
+    Our score minus theirs, for a sample where THEY hold the contract - so
+    `rollout_deal`'s "bidding" side is the opponents and its "defending" side
+    is us.
+    """
+    theirs = sample["bidding_total"] if sample["made"] else -bid
+    return sample["defending_total"] - theirs
+
+
+def estimate_defence(hand, bid, num_samples=150, rng=None, evidence=None):
+    """
+    Monte Carlo estimate of what happens if we pass and the opponents take the
+    contract at `bid`.
+
+    The opponent holding the better hand in each sampled deal is seated as the
+    bid winner and picks their own trump via `best_base_bid` - using our
+    preferred trump here would model a contract nobody would actually play.
+    Which of the two opponents bids is decided per sample rather than fixed,
+    since the determinized deal is what decides who has the hand for it.
+
+    Returns the `monte_carlo_rollout` aggregate. Note that within it,
+    "bidding" refers to the opponents and "defending" to us.
+    """
+    rng = rng if rng is not None else random
+
+    def sample_fn(active_rng):
+        if not evidence:
+            return sample_bid_time_deal(hand, rng=active_rng)
+        dealt, _attempts, _ok = sample_consistent_deal(
+            lambda r: sample_bid_time_deal(hand, rng=r), evidence, rng=active_rng,
+        )
+        return dealt
+
+    # Trump varies per sample (it is the opponent bidder's call), so it cannot
+    # be handed to monte_carlo_rollout as one fixed suit. Each sample is run
+    # directly instead, reusing rollout_deal exactly as monte_carlo_rollout
+    # would.
+    results = []
+    for _ in range(num_samples):
+        dealt = sample_fn(rng)
+        left_ceiling = best_base_bid(dealt["opp_left"])[1]
+        right_ceiling = best_base_bid(dealt["opp_right"])[1]
+        bidder_key = "opp_left" if left_ceiling >= right_ceiling else "opp_right"
+        their_trump = best_base_bid(dealt[bidder_key])[0]
+
+        players = _build_rollout_players(
+            ["me", "opp_left", "partner", "opp_right"],
+            [hand, dealt["opp_left"], dealt["partner"], dealt["opp_right"]],
+        )
+        bid_winner = players[1] if bidder_key == "opp_left" else players[3]
+        results.append(
+            rollout_deal(players, their_trump, bid, bid_winner, passing="both")
+        )
+
+    made_count = sum(1 for r in results if r["made"])
+    return {
+        "samples": results,
+        # p_make here is *their* chance of making it, not ours.
+        "p_make": made_count / num_samples,
+        "expected_bidding_points": sum(r["bidding_total"] for r in results) / num_samples,
+        "expected_defending_points": sum(r["defending_total"] for r in results) / num_samples,
+        "auto_set_rate": sum(1 for r in results if r["auto_set"]) / num_samples,
+    }
+
+
+def defend_ev(hand, bid, num_samples=150, rng=None, evidence=None):
+    """
+    EV of passing and defending a contract of `bid`, as a score differential
+    from our side. Returns (ev, diagnostics).
+    """
+    diagnostics = estimate_defence(
+        hand, bid, num_samples=num_samples, rng=rng, evidence=evidence,
+    )
+    differentials = [
+        _differential_when_they_bid(sample, bid) for sample in diagnostics["samples"]
+    ]
+    ev = sum(differentials) / len(differentials)
+    diagnostics["ev_defend"] = ev
+    return ev, diagnostics
+
+
+def bid_ev_differential(hand, trump, bid, num_samples=150, rng=None, evidence=None):
+    """
+    EV of taking the contract at `bid`, on the same score-differential scale
+    as `defend_ev`, so the two can be compared directly.
+
+    Distinct from `bid_ev`, which stays on its own-points scale (issue #60's
+    formula) and is still what the existing skill-4/5 bidding path uses.
+    Returns (ev, diagnostics).
+    """
+    diagnostics = estimate_bid_time(
+        hand, trump, bid, num_samples=num_samples, rng=rng, evidence=evidence,
+    )
+    differentials = [
+        _differential_when_we_bid(sample, bid) for sample in diagnostics["samples"]
+    ]
+    ev = sum(differentials) / len(differentials)
+    diagnostics["ev_bid_differential"] = ev
+    return ev, diagnostics
+
+
+def choose_bid_vs_defence(hand, trump, candidate_bids, num_samples=150, rng=None,
+                           evidence=None, defence_bid=None):
+    """
+    Pick the best of `candidate_bids`, scoring `None` (pass) by rolling out the
+    defence rather than assuming it is worth zero (issue #103).
+
+    `defence_bid` is the contract the opponents are assumed to take if we pass
+    - normally the next legal bid above the current one. Defaults to the
+    lowest real candidate, which is the level we would have had to bid
+    ourselves and therefore the level they get it for if we do not.
+
+    Every candidate is evaluated as a score differential, so a bid and a pass
+    are directly comparable. Blocking bids fall out of this on their own: a
+    contract that loses money in isolation is still correct when defending
+    loses more, with no hand-coded "should I block" branch and no
+    DEFENSIVE_PUSH_FLOOR constant.
+
+    Returns (best_bid, best_ev, all_evs) - the same shape as
+    `choose_bid_by_ev`, so callers can swap between them.
+    """
+    if not candidate_bids:
+        raise ValueError("candidate_bids must be non-empty")
+
+    real_bids = [b for b in candidate_bids if b is not None]
+    if defence_bid is None:
+        defence_bid = min(real_bids) if real_bids else OPENING_BID
+
+    all_evs = {}
+    for bid in candidate_bids:
+        if bid is None:
+            all_evs[None], _ = defend_ev(
+                hand, defence_bid, num_samples=num_samples, rng=rng, evidence=evidence,
+            )
+        else:
+            all_evs[bid], _ = bid_ev_differential(
+                hand, trump, bid, num_samples=num_samples, rng=rng, evidence=evidence,
+            )
 
     best_bid = max(all_evs, key=all_evs.get)
     return best_bid, all_evs[best_bid], all_evs
