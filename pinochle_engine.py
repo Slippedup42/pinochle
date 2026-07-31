@@ -88,8 +88,18 @@ class Deck:
         assert len(cards) == 48
         return cards
 
-    def shuffle(self):
-        random.shuffle(self.cards)
+    def shuffle(self, rng=None):
+        """
+        Shuffle, optionally from a caller-supplied `random.Random` rather than
+        the global module RNG.
+
+        Injectable so a harness can hold the *deal* fixed while varying the
+        players (issue #105). Sharing one global RNG with the AI makes that
+        impossible: two configs that consume a different number of random
+        values while thinking desynchronise every later shuffle, so only the
+        first deal of a game would match.
+        """
+        (rng if rng is not None else random).shuffle(self.cards)
 
     def deal(self, players):
         """Deal 12 cards to each of the 4 players."""
@@ -2404,11 +2414,14 @@ PASS_COUNT = 3
 
 
 class Round:
-    def __init__(self, players, teams, dealer_index):
+    def __init__(self, players, teams, dealer_index, deal_rng=None):
         self.players = players
         self.teams = teams
         self.dealer_index = dealer_index
         self.deck = Deck()
+        # Optional dedicated RNG for the shuffle only (issue #105) - see
+        # Deck.shuffle. None keeps the previous global-RNG behaviour.
+        self.deal_rng = deal_rng
 
         self.current_bid = OPENING_BID
         self.bid_winner = None
@@ -2438,7 +2451,7 @@ class Round:
         return self._score_round(trick_points)
 
     def _deal(self):
-        self.deck.shuffle()
+        self.deck.shuffle(self.deal_rng)
         self.deck.deal(self.players)
 
     def _left_of_dealer(self):
@@ -2648,11 +2661,35 @@ class Game:
         self.teams = [team_a, team_b]
         self.dealer_index = 0
 
-    def play(self):
+    def play(self, deal_seed=None, on_round=None):
+        """
+        Play rounds until someone wins.
+
+        `deal_seed` makes the *sequence of deals* reproducible independently
+        of anything the players do (issue #105). Each round draws its own
+        shuffle seed from a master RNG seeded here, so round N's deal depends
+        only on `deal_seed` and N - not on how many random values the AI
+        happened to consume in rounds 1..N-1. That is what lets two different
+        configurations be compared on identical deals. None keeps the
+        previous behaviour of shuffling from the global RNG.
+
+        `on_round(round_, round_scores)` is called after each round is scored,
+        for harnesses that want per-round detail (bids, sets, concedes)
+        without wrapping or monkeypatching Round.
+        """
+        deal_master = random.Random(deal_seed) if deal_seed is not None else None
+
         winner = None
         while winner is None:
-            round_ = Round(self.players, self.teams, self.dealer_index)
+            deal_rng = (
+                random.Random(deal_master.randrange(2 ** 63))
+                if deal_master is not None else None
+            )
+            round_ = Round(self.players, self.teams, self.dealer_index, deal_rng=deal_rng)
             round_scores = round_.run()
+
+            if on_round is not None:
+                on_round(round_, round_scores)
 
             bidding_team = round_.bid_winner.team
             for team in self.teams:
