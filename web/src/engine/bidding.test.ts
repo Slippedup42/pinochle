@@ -243,8 +243,20 @@ describe('chooseBid', () => {
     it('passes when the ceiling does not clear OPENER_THRESHOLD and partner has already had a turn', () => {
       // 4th bidder (passesSoFar=3, dealer): partner (player 2) has already had
       // their turn, so the "partner hasn't bid" rule doesn't apply.
+      // Pinned to a 'static' skill level (#114): this is the OPENER_THRESHOLD
+      // rule specifically, and 'hard' no longer runs it.
       const context = baseContext({ dealer: 0, passesSoFar: 3 })
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context)).toBeNull()
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'proficient')).toBeNull()
+    })
+
+    it('opens the same sub-320 hand on a distilled skill level, where the model decides (#114)', () => {
+      // The one place the two policies visibly part company in this suite, kept
+      // as a test rather than left implicit. runOnlyHand's ceiling is 300, under
+      // OPENER_THRESHOLD, so the static rule passes; the evaluator sees a hand
+      // holding a full trump Run — 150 guaranteed meld before a trick is played
+      // — being offered the contract at the 300 minimum, and takes it.
+      const context = baseContext({ dealer: 0, passesSoFar: 3 })
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
     })
 
     it('always opens (dealer-protection) when partner is dealer and my score is >= 850 with opponent under 500', () => {
