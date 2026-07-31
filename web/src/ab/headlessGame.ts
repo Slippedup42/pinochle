@@ -1,0 +1,255 @@
+// A headless driver for the real TS game (#115).
+//
+// #115 needs to A/B two TypeScript bidding policies, which `ab_harness.py`
+// cannot do — it drives the Python engine, and both sides here are TS. This
+// module is the smallest thing that plays a complete game without React: it
+// calls the *same* reducers and the *same* AI entry points the app calls
+// (`auctionReducer`, `chooseBid`, `chooseTrump`, `choosePassCards`,
+// `playTrickTakingPhase`, `chooseLeadCard`/`chooseFollowCard`,
+// `meldPointsByTeam`, `scoreRound`, `checkGameOutcome`), in the order
+// `GameFlow.tsx` calls them, with the delays and the rendering removed.
+//
+// It is deliberately not a second engine. Every rule it appears to implement is
+// a call into the module that already owns that rule; what lives here is only
+// the loop GameFlow's `useEffect`s form, plus seeding.
+//
+// Two things it does NOT model, both on purpose:
+//
+//   The human seat. Every seat is an AI, as in `biddingSim.test.ts`. That is
+//   what makes the comparison a comparison.
+//
+//   Conceding. `trickPlayReducer`'s CONCEDE action has exactly one caller in
+//   the app — the human's fold button (#83) — so no AI seat ever concedes, and
+//   `evaluator.ts`'s `shouldConcede` has no call site at all. Adding one here
+//   would measure a feature the product does not ship.
+
+import { auctionReducer, initAuctionState, passedPlayersOf, type AuctionState } from '../components/auctionReducer'
+import { meldPointsByTeam } from '../components/gameFlowReducer'
+import { teammatesOf } from '../components/trickPlayReducer'
+import { type AuctionContext, chooseBid, chooseTrump } from '../engine/bidding'
+import { Card, type CopyId, RANKS, type Suit, SUITS } from '../engine/card'
+import { checkGameOutcome } from '../engine/game'
+import { isMisdealEligible } from '../engine/misdeal'
+import { PASS_COUNT, choosePassCards } from '../engine/passing'
+import { type Hands, playTrickTakingPhase, scoreRound, teamOf, type TeamId } from '../engine/round'
+import { PlayTracker, chooseFollowCard, chooseLeadCard } from '../engine/tracker'
+import type { PlayerIndex } from '../engine/trick'
+import type { SkillLevel } from '../persistence/options'
+
+/** Matches AuctionFlow's MIN_INCREMENT. */
+const MIN_INCREMENT = 10
+const SEATS: readonly PlayerIndex[] = [0, 1, 2, 3]
+const SEAT_NAMES: Record<PlayerIndex, string> = { 0: 'S0', 1: 'S1', 2: 'S2', 3: 'S3' }
+/** A real game reaches 1000 in well under this. The guard exists so a rules
+ *  change that stalls scoring shows up as a loud failure rather than a hang. */
+const MAX_ROUNDS = 300
+
+export type Rng = () => number
+
+/** mulberry32. Small, fast, and good enough for shuffling — the property that
+ *  matters here is that a seed reproduces a run exactly, so a surprising A/B
+ *  result can be replayed. */
+export function makeRng(seed: number): Rng {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Mixes two 32-bit values into one seed. Used to derive round N's deal from
+ *  (game seed, round index) alone — the same trick `Game.play(deal_seed=...)`
+ *  uses in Python, and for the same reason: the deal must not drift when one
+ *  configuration consumes more random values than the other while thinking. */
+export function mixSeed(a: number, b: number): number {
+  let h = (a ^ 0x9e3779b9) >>> 0
+  h = Math.imul(h ^ (b + 0x85ebca6b), 0xcc9e2d51) >>> 0
+  h = (h ^ (h >>> 13)) >>> 0
+  return Math.imul(h, 0x1b873593) >>> 0
+}
+
+/** A shuffled 48-card deal from a seeded RNG. Rebuilt here rather than calling
+ *  `Deck` because `Deck.shuffle` draws from `Math.random`, which cannot be
+ *  pinned to a deal seed. Card construction and the Fisher-Yates loop are
+ *  otherwise identical to `card.ts`. */
+export function dealFromRng(rand: Rng): Hands {
+  const cards: Card[] = []
+  for (const suit of SUITS) {
+    for (const rank of RANKS) {
+      for (const copyId of [1, 2] as CopyId[]) cards.push(new Card(suit, rank, copyId))
+    }
+  }
+  for (let i = cards.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    ;[cards[i], cards[j]] = [cards[j], cards[i]]
+  }
+  return SEATS.map((i) => cards.slice(i * 12, (i + 1) * 12)) as Hands
+}
+
+/** Round-level behaviour for one side, aggregated across a run. Mirrors
+ *  `ab_harness.SideStats` minus `conceded`, which cannot happen here. */
+export interface SideStats {
+  contracts: number
+  made: number
+  set: number
+  bids: number[]
+}
+
+export function newSideStats(): SideStats {
+  return { contracts: 0, made: 0, set: 0, bids: [] }
+}
+
+export interface GameResult {
+  readonly winner: TeamId
+  readonly scoresByTeam: Record<TeamId, number>
+  readonly rounds: number
+}
+
+/** Collected only when a caller asks for it — the latency benchmark replays
+ *  real auction positions rather than invented ones, since the cost of a bid
+ *  decision depends on the hand and on how far the auction has run. */
+export interface BidSituationSample {
+  readonly player: PlayerIndex
+  readonly hand: readonly Card[]
+  readonly currentBid: number
+  readonly context: AuctionContext
+}
+
+export interface HeadlessGameOptions {
+  /** Skill level per seat. Two seats of one level and two of another is what
+   *  makes this an A/B; the levels differ only in `SKILL_PARAMS`. */
+  readonly seatSkills: Record<PlayerIndex, SkillLevel>
+  /** Derives every deal in the game. Identical across the mirrored orientations
+   *  of a pair. */
+  readonly dealSeed: number
+  /** Per-side round bookkeeping, keyed by team id, if the caller wants it. */
+  readonly stats?: Record<TeamId, SideStats>
+  /** Appended to, if supplied. See `BidSituationSample`. */
+  readonly collectBidSituations?: BidSituationSample[]
+}
+
+/** Plays one complete game to the +/-1000 thresholds and reports who won. */
+export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
+  const { seatSkills, dealSeed, stats, collectBidSituations } = options
+  const scoresByTeam: Record<TeamId, number> = { 0: 0, 1: 0 }
+  let dealer: PlayerIndex = 3
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    // -- Deal, with the misdeal/reshuffle house rule ------------------------
+    // GameFlow checks each seat in fixed order and auto-reshuffles for an
+    // eligible AI seat. Every seat is an AI here, so the first eligible one
+    // triggers a redeal. Each reshuffle gets its own derived seed so a redeal
+    // is a genuinely different deal rather than the same one again.
+    let hands: Hands = [[], [], [], []]
+    for (let attempt = 0; attempt < 64; attempt++) {
+      hands = dealFromRng(makeRng(mixSeed(dealSeed, round * 64 + attempt)))
+      if (!SEATS.some((seat) => isMisdealEligible(hands[seat]))) break
+    }
+
+    // -- Auction -----------------------------------------------------------
+    let state: AuctionState = initAuctionState(hands, dealer, SEAT_NAMES, scoresByTeam)
+    let guard = 0
+    while (state.phase === 'bidding' && guard++ < 100) {
+      const turn = state.bidding.turn
+      const context: AuctionContext = {
+        everBid: state.bidding.everBid,
+        passesSoFar: state.bidding.passes,
+        bidHistory: state.bidding.bidHistory,
+        dealer: state.dealer,
+        scores: state.scoresByTeam,
+        passedPlayers: passedPlayersOf(state.bidding.active),
+      }
+      if (collectBidSituations !== undefined) {
+        collectBidSituations.push({
+          player: turn,
+          hand: state.hands[turn],
+          currentBid: state.bidding.currentBid,
+          context,
+        })
+      }
+      const decision = chooseBid(
+        turn,
+        state.hands[turn],
+        state.bidding.currentBid,
+        MIN_INCREMENT,
+        context,
+        seatSkills[turn],
+      )
+      state =
+        decision === null
+          ? auctionReducer(state, { type: 'PASS_BID', player: turn })
+          : auctionReducer(state, { type: 'BID', player: turn, amount: decision })
+    }
+    if (state.phase === 'bidding') throw new Error('auction did not settle')
+
+    const bidWinner = state.bidWinner as PlayerIndex
+    const bid = state.bid
+    state = auctionReducer(state, {
+      type: 'CHOOSE_TRUMP',
+      player: bidWinner,
+      suit: chooseTrump(state.hands[bidWinner], seatSkills[bidWinner]),
+    })
+    const trumpSuit = state.trumpSuit as Suit
+
+    // -- The 3-card pass, both directions, then the reveal ------------------
+    const partner = ((bidWinner + 2) % 4) as PlayerIndex
+    state = auctionReducer(state, {
+      type: 'PASS_CARDS',
+      from: bidWinner,
+      cards: choosePassCards(state.hands[bidWinner], PASS_COUNT, trumpSuit, true, seatSkills[bidWinner]),
+    })
+    state = auctionReducer(state, {
+      type: 'PASS_CARDS',
+      from: partner,
+      cards: choosePassCards(state.hands[partner], PASS_COUNT, trumpSuit, false, seatSkills[partner]),
+    })
+    state = auctionReducer(state, { type: 'CONFIRM_PASS_REVEAL' })
+
+    // -- Meld, trick play, round score -------------------------------------
+    const meldPoints = meldPointsByTeam(state.hands, trumpSuit)
+    const tracker = new PlayTracker()
+    let cardsPlayed = 0
+    const { trickPointsByTeam } = playTrickTakingPhase(
+      state.hands,
+      trumpSuit,
+      bidWinner,
+      (player, hand, legal, trick) => {
+        const skill = seatSkills[player]
+        // TrickPlayFlow's own conditions, with `trickNumber === 0` expressed as
+        // "nothing has been played yet" since playTrickTakingPhase does not
+        // hand the trick index to `chooseCard`.
+        const isBidderFirstLead = cardsPlayed === 0 && player === bidWinner
+        const card =
+          trick.plays.length === 0
+            ? chooseLeadCard(hand, trumpSuit, tracker, isBidderFirstLead, skill, teamOf(player) === teamOf(bidWinner))
+            : chooseFollowCard(hand, legal, trick.plays, trumpSuit, teammatesOf(player), tracker, skill)
+        tracker.record(card)
+        cardsPlayed++
+        return card
+      },
+    )
+
+    const bidWinnerTeam = teamOf(bidWinner)
+    const roundScore = scoreRound({ meldPointsByTeam: meldPoints, trickPointsByTeam, bidWinnerTeam, bid })
+    if (stats !== undefined) {
+      const side = stats[bidWinnerTeam]
+      side.contracts++
+      side.bids.push(bid)
+      if (roundScore[bidWinnerTeam] < 0) side.set++
+      else side.made++
+    }
+
+    scoresByTeam[0] += roundScore[0]
+    scoresByTeam[1] += roundScore[1]
+
+    const winner = checkGameOutcome(scoresByTeam, bidWinnerTeam)
+    if (winner !== null) return { winner, scoresByTeam, rounds: round + 1 }
+
+    dealer = ((dealer + 1) % 4) as PlayerIndex
+  }
+
+  throw new Error(`game did not finish in ${MAX_ROUNDS} rounds`)
+}

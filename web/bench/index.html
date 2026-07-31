@@ -1,0 +1,27 @@
+<!doctype html>
+<!--
+  Dev-only latency bench for #115. Served by `npm run dev` at
+  /pinochle/bench/; never an input to `vite build`, so it cannot reach a
+  player or the PWA precache. See src/ab/benchPage.ts.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pinochle — bid decision latency bench (#115)</title>
+    <style>
+      body { font: 12px/1.5 ui-monospace, monospace; margin: 12px; }
+      pre { white-space: pre-wrap; }
+      label { margin-right: 8px; }
+      input { width: 5em; }
+    </style>
+  </head>
+  <body>
+    <h1>Bid decision latency (#115)</h1>
+    <label>positions <input id="positions" value="2000" /></label>
+    <label>repeats <input id="repeats" value="60" /></label>
+    <button id="go">run</button>
+    <pre id="out">idle</pre>
+    <script type="module" src="/src/ab/benchPage.ts"></script>
+  </body>
+</html>
