@@ -88,6 +88,22 @@ level at creation) are implemented — see the strategy doc below.
   `--config` prints it. Output is `rollout_dataset.csv`; the committed
   file is a reproducible 2000-row prefix of a longer run, not a
   hand-edited artifact.
+- [`fit_evaluator.py`](fit_evaluator.py) — fits the cheap evaluator epic
+  #104 wants to ship to that dataset (issue #113), and reports how often
+  it reaches the rollout's *decision* rather than how close it gets to
+  `p_make`. Two separate logistic models, because a bid row (auction
+  running, melds unknown) and a fold row (auction over, both melds face
+  up) are different problems sharing one table. Held out the last 25% of
+  rows in capture order — a shuffled split would scatter one deal's rows
+  across the boundary. Held-out decision agreement is 85.5% on bid rows
+  against 74.3% for the shipped `ceiling >= OPENER_THRESHOLD` rule, and
+  92.0% on fold rows against 81.6% for never conceding; disagreements sit
+  almost entirely where the rollout's own two EVs are within sampling
+  noise of each other, not on any hand class. Nothing heavier than
+  logistic regression was warranted: a 150-tree gradient-boosted ensemble
+  on the same features scored 86.7% five-fold against the linear model's
+  86.3% ± 1.9%. Output is `rollout_evaluator.json`, the artifact #114
+  exports to TypeScript.
 - [`human_play.py`](human_play.py) — resumable interactive play layer
   (`HumanPlayer`, `InteractiveRound`) built for chat-session play, where
   a script can't block on `input()` between messages: decisions raise
@@ -119,6 +135,9 @@ python win_probability.py --games 6000 --seed 7   # regenerate the win-probabili
 python generate_rollout_dataset.py --config       # print the config the labels describe
 python generate_rollout_dataset.py --games 100 --samples 150 --seed 112 --max-rows 2000
                                        # regenerate the committed rollout dataset (~15 min)
+python fit_evaluator.py --compare --disagreements
+                                       # refit the cheap evaluator, with the baselines it
+                                       # has to beat and where it disagrees (~15 s)
 python -m pytest -q                    # full test suite
 ```
 
