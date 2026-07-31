@@ -12,6 +12,7 @@ import {
   computeMaxBid,
   maxBid,
   MAX_BID_DEFAULT,
+  NEAR_DOUBLE_PINOCHLE_VALUE,
   NEAR_RUN_VALUE,
 } from './bidding'
 
@@ -72,7 +73,7 @@ describe('computeBaseBid', () => {
       new Card(Suit.Diamonds, 'J', 1),
     ]
     const { breakdown } = computeBaseBid(hand, Suit.Hearts)
-    expect(breakdown['Pinochle/near-double']).toBe(60)
+    expect(breakdown['Pinochle/near-double']).toBe(NEAR_DOUBLE_PINOCHLE_VALUE)
   })
 
   it('always includes the flat Aces line even at zero', () => {
@@ -352,5 +353,27 @@ describe('chooseBid', () => {
       })
       expect(chooseBid(0, runOnlyHand, 320, 10, withPartnerBid)).toBe(330)
     })
+  })
+})
+
+// -- Parity with the Python reference engine (#118) -------------------------
+//
+// `pinochle_engine.py` is the frozen reference implementation this module was
+// ported from (CLAUDE.md). NEAR_RUN_VALUE and NEAR_DOUBLE_PINOCHLE_VALUE
+// silently shipped at 60/60 against Python's 120/225 - a hand-port slip that
+// survived because both of this file's cases asserted loosely: one against the
+// constant itself, the other against a hardcoded 60 under a title saying 225.
+//
+// These values are not free parameters. They feed computeBaseBid ->
+// bestBaseBid, which picks the *trump suit*, so a divergence makes the browser
+// disagree with the reference engine about what a hand even is - and silently
+// invalidates the distilled evaluator (#104), whose labels are computed under
+// Python's valuation.
+describe('parity with the Python reference engine (#118)', () => {
+  it('matches pinochle_engine.py Base Bid constants exactly', () => {
+    expect(NEAR_RUN_VALUE).toBe(120)
+    expect(NEAR_DOUBLE_PINOCHLE_VALUE).toBe(225)
+    expect(ACE_VALUE).toBe(20)
+    expect(MAX_BID_DEFAULT).toBe(400)
   })
 })

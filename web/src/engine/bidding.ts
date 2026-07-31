@@ -34,8 +34,18 @@ import type { PlayerIndex } from './trick'
 // near-double-pinochle, remaining-card trick-taking potential, partner
 // estimate), not the actual guaranteed meld. ------------------------------
 
-export const NEAR_RUN_VALUE = 60
-export const NEAR_DOUBLE_PINOCHLE_VALUE = 60
+// These two are ported from pinochle_engine.py, which CLAUDE.md names the
+// frozen reference implementation for this port. They read 60/60 here until
+// #118 — a hand-port slip, not a deliberate divergence: every other constant
+// in this block already matched Python exactly, and `bidding.test.ts`'s own
+// case is titled "credits a near-run ... at 120" while asserting against the
+// constant, so it passed at either value and documented the intent all along.
+//
+// The cost was not just undervaluing these shapes. `computeBaseBid` feeds
+// `bestBaseBid`, which also *picks the trump suit* — so the browser could
+// name a different trump than the reference engine on the very same hand.
+export const NEAR_RUN_VALUE = 120
+export const NEAR_DOUBLE_PINOCHLE_VALUE = 225
 export const ACE_VALUE = 20
 // Proficient AI draws randomly in this range each bid (partner-strength
 // estimate). Not consumed by the pure valuation functions below — ported
