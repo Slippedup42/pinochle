@@ -39,6 +39,14 @@ machinery that wiring calls:
     the Expert-tier replacement for the static Base-Bid formula, at the
     top of the skill range only. `Player`/`EasyPlayer.choose_bid` are
     untouched; a higher-skill strategy calls this instead (issue #63).
+  - Objectives (what gets averaged across samples). Three of them share the
+    rollouts above rather than each having their own simulator: own points
+    (`bid_ev`, #60), score differential (`bid_ev_differential` / `defend_ev` /
+    `fold_ev`, #100/#103), and probability of winning the game
+    (`bid_ev_win_probability` / `defend_ev_win_probability` /
+    `fold_ev_win_probability`, #102 - the only one the game score is an input
+    to). They coexist deliberately: swapping the objective is the change being
+    measured, so the one it replaces has to stay runnable next to it.
 
 Sample counts are always a caller-supplied parameter (never hardcoded) -
 the doc suggests ~100-150 for bid-time and ~300+ for the one-time
@@ -62,6 +70,10 @@ from pinochle_engine import (
     run_return_pass,
     score_melds,
 )
+# win_probability imports pinochle_engine too, but nothing imports back into
+# this module at import time, so this is a plain top-level import rather than
+# one of the lazy in-method imports GeneralStrategy needs for the real cycle.
+from win_probability import win_probability
 
 
 # ---------------------------------------------------------------------------
@@ -707,7 +719,8 @@ def choose_bid_by_ev(hand, trump, candidate_bids, num_samples=150, rng=None, evi
 # taking the contract and defending one distribute points differently between
 # the teams, and only the difference is common to both. This matches the
 # convention `fold_ev` already uses. Differential remains a proxy for winning
-# the game; #102 replaces it with win probability.
+# the game; `choose_bid_by_win_probability` below (#102) is the same
+# comparison with P(win) as the objective instead.
 # ---------------------------------------------------------------------------
 
 def _differential_when_we_bid(sample, bid):
@@ -951,9 +964,10 @@ def fold_ev(hand, trump, bid, bidding_meld, defending_meld,
 
     Differential is still only a proxy for what actually matters, which is
     winning the game - at 900-100 our own points matter far more than denying
-    theirs, and at 400-900 the reverse. #102 replaces this objective with win
-    probability; until then the score itself is deliberately not an input
-    here, rather than being folded in via some invented weighting.
+    theirs, and at 400-900 the reverse. `fold_ev_win_probability` (#102) is
+    this same comparison with P(win) as the objective and the score as a real
+    input; this function keeps the score deliberately out of it rather than
+    folding it in via some invented weighting.
 
     Returns (ev_play_on, ev_fold, diagnostics). `diagnostics` is the
     `estimate_play_on` aggregate (or a synthetic equivalent when the auto-set
@@ -1008,7 +1022,7 @@ def fold_ev(hand, trump, bid, bidding_meld, defending_meld,
 
 
 def should_fold(hand, trump, bid, bidding_meld, defending_meld,
-                 num_samples=150, rng=None):
+                 num_samples=150, rng=None, our_score=None, their_score=None):
     """
     True when conceding beats playing the contract out, by the comparison in
     `fold_ev`. There is no threshold, no margin and no tunable constant here
@@ -1024,8 +1038,23 @@ def should_fold(hand, trump, bid, bidding_meld, defending_meld,
     only an upper bound on playing on there, so the flag decides instead of
     the (deliberately tied) numbers.
 
+    Supplying both `our_score` and `their_score` switches the objective from
+    score differential to win probability (issue #102) via
+    `fold_ev_win_probability`. Omitting them keeps the differential behaviour
+    this function has always had, per CODING_STANDARDS' "default to None and
+    branch on its absence" convention for widening a contract.
+
     Returns (fold, diagnostics).
     """
+    if our_score is not None and their_score is not None:
+        p_play_on, p_fold, diagnostics = fold_ev_win_probability(
+            hand, trump, bid, bidding_meld, defending_meld,
+            our_score, their_score, num_samples=num_samples, rng=rng,
+        )
+        if diagnostics["auto_set_shortcut"]:
+            return True, diagnostics
+        return p_play_on < p_fold, diagnostics
+
     ev_play_on, ev_fold, diagnostics = fold_ev(
         hand, trump, bid, bidding_meld, defending_meld,
         num_samples=num_samples, rng=rng,
@@ -1033,3 +1062,188 @@ def should_fold(hand, trump, bid, bidding_meld, defending_meld,
     if diagnostics["auto_set_shortcut"]:
         return True, diagnostics
     return ev_play_on < ev_fold, diagnostics
+
+
+# ---------------------------------------------------------------------------
+# Win probability as the objective (issue #102, epic #106).
+#
+# Everything above is denominated in points - `bid_ev` in our own points, and
+# `bid_ev_differential` / `defend_ev` / `fold_ev` in score differential. Both
+# are proxies for the thing that decides a game, and both stop tracking it near
+# the end: at 890-950 a differential of +40 is worthless if we never take the
+# contract, and at 200-180 a differential of +300 bought with a 40% chance of
+# being set is a bad trade. The score is not even an input to any of them.
+#
+# The fix is not to bolt a score term onto the point EVs. It is to change what
+# is averaged. A rollout already produces a full round result; applying it to
+# the current game score gives a *game state*, and `win_probability.py` turns a
+# game state into P(win). Average that instead of points and score-awareness
+# stops being a special case anybody hand-codes - it falls out of the objective.
+#
+# The functions here mirror the differential ones one-for-one rather than
+# replacing them: the differential path is what skill 4-5 ships with today, and
+# a swap of objective has to be A/B-able against it, not assumed better.
+# ---------------------------------------------------------------------------
+
+def _win_prob_when_we_bid(sample, bid, our_score, their_score):
+    """
+    P(win) after a sample where WE hold the contract, applied to the current
+    score. Failing scores us exactly -bid with no partial credit, while the
+    defenders keep meld + tricks either way - the same asymmetry
+    `_differential_when_we_bid` encodes, just resolved into a probability.
+    """
+    ours = sample["bidding_total"] if sample["made"] else -bid
+    theirs = sample["defending_total"]
+    return win_probability(our_score + ours, their_score + theirs, we_bid=True)
+
+
+def _win_prob_when_they_bid(sample, bid, our_score, their_score):
+    """
+    P(win) after a sample where THEY hold the contract - so `rollout_deal`'s
+    "bidding" side is the opponents and its "defending" side is us.
+    """
+    theirs = sample["bidding_total"] if sample["made"] else -bid
+    ours = sample["defending_total"]
+    return win_probability(our_score + ours, their_score + theirs, we_bid=False)
+
+
+def bid_ev_win_probability(hand, trump, bid, our_score, their_score,
+                            num_samples=150, rng=None, evidence=None):
+    """
+    P(win the game) from taking the contract at `bid`, averaged over the same
+    rollout `bid_ev_differential` uses. Returns (p_win, diagnostics).
+
+    Note what changes and what does not: the rollout is identical, the samples
+    are identical, only the function applied to each sample's result differs.
+    That is deliberate - it makes the A/B against the differential objective a
+    clean comparison of objectives rather than of two different simulators.
+    """
+    diagnostics = estimate_bid_time(
+        hand, trump, bid, num_samples=num_samples, rng=rng, evidence=evidence,
+    )
+    probabilities = [
+        _win_prob_when_we_bid(sample, bid, our_score, their_score)
+        for sample in diagnostics["samples"]
+    ]
+    p_win = sum(probabilities) / len(probabilities)
+    diagnostics["p_win_bid"] = p_win
+    return p_win, diagnostics
+
+
+def defend_ev_win_probability(hand, bid, our_score, their_score,
+                               num_samples=150, rng=None, evidence=None):
+    """
+    P(win the game) from passing and defending a contract of `bid`, averaged
+    over `estimate_defence`'s rollout. Returns (p_win, diagnostics).
+    """
+    diagnostics = estimate_defence(
+        hand, bid, num_samples=num_samples, rng=rng, evidence=evidence,
+    )
+    probabilities = [
+        _win_prob_when_they_bid(sample, bid, our_score, their_score)
+        for sample in diagnostics["samples"]
+    ]
+    p_win = sum(probabilities) / len(probabilities)
+    diagnostics["p_win_defend"] = p_win
+    return p_win, diagnostics
+
+
+def choose_bid_by_win_probability(hand, trump, candidate_bids, our_score, their_score,
+                                   num_samples=150, rng=None, evidence=None,
+                                   defence_bid=None):
+    """
+    `choose_bid_vs_defence` with win probability as the objective (#102).
+
+    Same two futures, same rollouts, same return shape `(best_bid, best_ev,
+    all_evs)` - so a caller swaps between the two by swapping the function.
+    The only difference is that every candidate is scored as P(win the game
+    from the resulting state) instead of as a score differential.
+
+    This is what makes the *same hand at the same bid* decide differently at
+    200-180 and at 890-950, with no score branch anywhere: at 200-180 a set
+    costs a modest slice of win probability and there are many rounds left to
+    recover, while at 890-950 passing hands them a contract that ends the
+    game, so almost any chance of making one beats near-certain defeat.
+    """
+    if not candidate_bids:
+        raise ValueError("candidate_bids must be non-empty")
+
+    real_bids = [b for b in candidate_bids if b is not None]
+    if defence_bid is None:
+        defence_bid = min(real_bids) if real_bids else OPENING_BID
+
+    all_evs = {}
+    for bid in candidate_bids:
+        if bid is None:
+            all_evs[None], _ = defend_ev_win_probability(
+                hand, defence_bid, our_score, their_score,
+                num_samples=num_samples, rng=rng, evidence=evidence,
+            )
+        else:
+            all_evs[bid], _ = bid_ev_win_probability(
+                hand, trump, bid, our_score, their_score,
+                num_samples=num_samples, rng=rng, evidence=evidence,
+            )
+
+    best_bid = max(all_evs, key=all_evs.get)
+    return best_bid, all_evs[best_bid], all_evs
+
+
+def fold_ev_win_probability(hand, trump, bid, bidding_meld, defending_meld,
+                             our_score, their_score, num_samples=150, rng=None):
+    """
+    `fold_ev` with win probability as the objective (#102).
+
+    Folding's score is still exact - we take -bid and forfeit our meld, they
+    keep `defending_meld` and take no tricks - so P(win | fold) needs no
+    rollout either, just the conversion of that one known state.
+
+    The auto-set fast path survives the change of objective intact, and for
+    the same dominance reason: playing on cannot make the contract, so we
+    score -bid whichever way it goes, while the opponents end at
+    `defending_meld + T` for some T >= 0 that conceding denies them. Win
+    probability is non-increasing in the opponents' score, so P(play on) <=
+    P(fold) for every T. That the argument still holds is worth stating
+    rather than assuming - a change of objective is exactly the kind of change
+    that quietly invalidates a shortcut taken under the old one.
+
+    Returns (p_play_on, p_fold, diagnostics).
+    """
+    p_fold = win_probability(our_score - bid, their_score + defending_meld, we_bid=True)
+
+    if is_auto_set(bidding_meld, bid):
+        diagnostics = {
+            "samples": [],
+            "p_make": 0.0,
+            "expected_bidding_points": float(bidding_meld),
+            "expected_defending_points": float(defending_meld),
+            "auto_set_rate": 1.0,
+            "auto_set_shortcut": True,
+            "ev_play_on": p_fold,
+            "ev_play_on_is_upper_bound": True,
+            "ev_fold": p_fold,
+            "p_play_on": p_fold,
+            "p_fold": p_fold,
+        }
+        return p_fold, p_fold, diagnostics
+
+    diagnostics = estimate_play_on(
+        hand, trump, bid, bidding_meld, defending_meld,
+        num_samples=num_samples, rng=rng,
+    )
+
+    probabilities = [
+        _win_prob_when_we_bid(sample, bid, our_score, their_score)
+        for sample in diagnostics["samples"]
+    ]
+    p_play_on = sum(probabilities) / len(probabilities)
+
+    diagnostics["auto_set_shortcut"] = False
+    diagnostics["ev_play_on_is_upper_bound"] = False
+    # Both key sets are populated so a caller (or `should_fold`) can read the
+    # diagnostics without first knowing which objective produced them.
+    diagnostics["ev_play_on"] = p_play_on
+    diagnostics["ev_fold"] = p_fold
+    diagnostics["p_play_on"] = p_play_on
+    diagnostics["p_fold"] = p_fold
+    return p_play_on, p_fold, diagnostics

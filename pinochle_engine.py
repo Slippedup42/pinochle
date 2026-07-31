@@ -2038,12 +2038,39 @@ GENERAL_STRATEGY_SKILL_PARAMS = {
     #   letting a flawed bidder overreach. Re-measure against a stronger
     #   bidder before treating +233 as universal. 20 samples is the value
     #   measured; the count itself was not separately tuned.
+    # use_win_probability: score every rollout sample as P(win the game) from
+    #   the resulting score state (win_probability.py), instead of as a score
+    #   differential (#102). Uses the same rollouts and the same sample budget
+    #   as defence_samples - only the function applied to each sample changes -
+    #   and requires defence_samples > 0, since the objective compares two
+    #   futures. OFF everywhere, following #101's precedent.
+    #   It does what the issue asks: the same hand at the same bid passes at
+    #   950-300 and bids at 890-950, with no score branch anywhere. But A/B'd
+    #   against the differential objective at skill 5 over 120 paired deals it
+    #   did not win more games (122-118, 30 decisive pairs, p=0.86) and was
+    #   slightly WORSE on margin (-92 per deal, 95% CI -170 to -13). Two
+    #   40-pair replicates agreed on "no effect" (41-39, margin -29 with a 95%
+    #   CI of -159 to +109; 44-36, margin -46 with a 95% CI of -158 to +69).
+    #   Games and margin pointed opposite ways in every run - the exact
+    #   divergence #102 warned about - and neither points at enabling this.
+    #   The likely reason is measured rather than guessed: the self-play table
+    #   is nearly flat in game stage (a 100-point lead is worth ~0.58 at 100-0
+    #   and ~0.56 at 700-600), because a Pinochle round swings ~259 points with
+    #   a ~406-point spread, so no lead is safe until a side can actually cross
+    #   1000. Over 18 sampled hands the two objectives chose identically at 0-0
+    #   and at 500-500 and differed only near the finish (2/18 at 890-950,
+    #   10/18 at 950-300). An objective that only bites in the last round or
+    #   two cannot move a whole-game A/B much, and what it does change here
+    #   (758 contracts taken vs 581, make rate 59.6% vs 64.4%, conceded 20.4%
+    #   vs 16.5%) is not paying for itself. Do not re-run this A/B without a
+    #   new hypothesis; the promising direction is the endgame decisions
+    #   specifically, not the objective across the board.
     # deception: whether choose_expert_follow_card gets a deception_evaluator.
-    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "deception": False},
-    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "deception": False},
-    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "deception": False},
-    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "fold_samples": 20, "use_auction_evidence": False, "defence_samples": 20, "deception": False},
-    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "fold_samples": 50, "use_auction_evidence": False, "defence_samples": 20, "deception": False},
+    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "use_win_probability": False, "deception": False},
+    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "use_win_probability": False, "deception": False},
+    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "use_win_probability": False, "deception": False},
+    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "fold_samples": 20, "use_auction_evidence": False, "defence_samples": 20, "use_win_probability": False, "deception": False},
+    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "fold_samples": 50, "use_auction_evidence": False, "defence_samples": 20, "use_win_probability": False, "deception": False},
 }
 
 MELD_ONLY_TRICK_ESTIMATE = EASY_FLAT_TRICK_ESTIMATE  # same flat, non-hand-shape-aware stand-in EasyPlayer uses for skill 1's meld-only bidding (doc Section 8) - reused rather than redefined, since it's the same judgment call.
@@ -2221,6 +2248,19 @@ class GeneralStrategy(Player):
 
         defence_samples = params.get("defence_samples", 0)
         if defence_samples > 0:
+            if params.get("use_win_probability"):
+                # Same two futures and the same rollouts as #103's comparison,
+                # scored as P(win the game) from the resulting score state
+                # instead of as a score differential (#102). The score reaches
+                # the decision by moving the objective, not via a branch.
+                from pinochle_rollout import choose_bid_by_win_probability
+
+                best_bid, _best_ev, _all_evs = choose_bid_by_win_probability(
+                    self.hand, trump, [None, next_bid], my_score, opp_score,
+                    num_samples=defence_samples, rng=self.rng, evidence=evidence,
+                )
+                return best_bid
+
             # Compare taking the contract against defending it, both as score
             # differentials (#103), instead of scoring a pass as a flat 0.0.
             from pinochle_rollout import choose_bid_vs_defence
@@ -2254,9 +2294,21 @@ class GeneralStrategy(Player):
         if num_samples <= 0:
             return False
 
+        # Under the win-probability objective (#102) the concede decision gets
+        # the game score too, so "we are 60 behind with one round left" can
+        # reach it. Scores are only passed when both sides are actually known -
+        # a hand-built Team in a test has no opponent wired up, and guessing 0
+        # there would silently model the wrong game state.
+        our_score = their_score = None
+        if params.get("use_win_probability") and self.team is not None:
+            opponent = self.team.opponent
+            if opponent is not None:
+                our_score, their_score = self.team.score, opponent.score
+
         fold, _diagnostics = should_fold(
             self.hand, trump, bid, bidding_meld, defending_meld,
             num_samples=num_samples, rng=self.rng,
+            our_score=our_score, their_score=their_score,
         )
         return fold
 
