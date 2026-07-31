@@ -2023,12 +2023,24 @@ GENERAL_STRATEGY_SKILL_PARAMS = {
     #   #103 makes EV(pass) a real rollout, since that gives the constraint a
     #   richer comparison to affect; enabling it before then would just be
     #   paying 4x for nothing.
+    # defence_samples: when > 0, bidding compares taking the contract against
+    #   *defending* it, both as score differentials, instead of scoring a pass
+    #   as a flat 0.0 (#103). ON at skill 4-5: A/B'd over 40 paired deals it
+    #   was worth +233 score margin per deal (95% CI +72 to +397). It makes
+    #   the AI bid markedly less - 139 contracts taken vs 393, average bid 301
+    #   vs 313 - which is the opposite of what #95 asks for and is worth
+    #   reading as evidence against that issue's 320 target. Caveat recorded
+    #   honestly: the opponent in that A/B was the same AI, which bids
+    #   unmakeable contracts ~19% of the time (#100), so some of the gain is
+    #   letting a flawed bidder overreach. Re-measure against a stronger
+    #   bidder before treating +233 as universal. 20 samples is the value
+    #   measured; the count itself was not separately tuned.
     # deception: whether choose_expert_follow_card gets a deception_evaluator.
-    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "deception": False},
-    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "deception": False},
-    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "deception": False},
-    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "fold_samples": 20, "use_auction_evidence": False, "deception": False},
-    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "fold_samples": 50, "use_auction_evidence": False, "deception": False},
+    1: {"hand_valuation": "meld_only",   "pass_logic": "easy",      "trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "deception": False},
+    2: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "deception": False},
+    3: {"hand_valuation": "base_bid",    "pass_logic": "proficient","trick_logic": "proficient", "use_rollout": False, "bid_samples": 0,  "pass_samples": 0,  "trick_samples": 0,  "fold_samples": 0,  "use_auction_evidence": False, "defence_samples": 0,  "deception": False},
+    4: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 20, "pass_samples": 15, "trick_samples": 10, "fold_samples": 20, "use_auction_evidence": False, "defence_samples": 20, "deception": False},
+    5: {"hand_valuation": "rollout_ev",  "pass_logic": "expert",    "trick_logic": "expert",     "use_rollout": True,  "bid_samples": 50, "pass_samples": 30, "trick_samples": 25, "fold_samples": 50, "use_auction_evidence": False, "defence_samples": 20, "deception": False},
 }
 
 MELD_ONLY_TRICK_ESTIMATE = EASY_FLAT_TRICK_ESTIMATE  # same flat, non-hand-shape-aware stand-in EasyPlayer uses for skill 1's meld-only bidding (doc Section 8) - reused rather than redefined, since it's the same judgment call.
@@ -2202,10 +2214,23 @@ class GeneralStrategy(Player):
             return None
 
         next_bid = OPENING_BID if not context["ever_bid"] else current_bid + min_increment
+        evidence = self._auction_evidence(context) if params.get("use_auction_evidence") else None
+
+        defence_samples = params.get("defence_samples", 0)
+        if defence_samples > 0:
+            # Compare taking the contract against defending it, both as score
+            # differentials (#103), instead of scoring a pass as a flat 0.0.
+            from pinochle_rollout import choose_bid_vs_defence
+
+            best_bid, _best_ev, _all_evs = choose_bid_vs_defence(
+                self.hand, trump, [None, next_bid],
+                num_samples=defence_samples, rng=self.rng, evidence=evidence,
+            )
+            return best_bid
+
         best_bid, _best_ev, _all_evs = choose_bid_by_ev(
             self.hand, trump, [None, next_bid],
-            num_samples=params["bid_samples"], rng=self.rng,
-            evidence=self._auction_evidence(context) if params.get("use_auction_evidence") else None,
+            num_samples=params["bid_samples"], rng=self.rng, evidence=evidence,
         )
         return best_bid
 
