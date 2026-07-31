@@ -13,25 +13,30 @@
 // a call into the module that already owns that rule; what lives here is only
 // the loop GameFlow's `useEffect`s form, plus seeding.
 //
-// Two things it does NOT model, both on purpose:
+// One thing it does NOT model, on purpose:
 //
 //   The human seat. Every seat is an AI, as in `biddingSim.test.ts`. That is
 //   what makes the comparison a comparison.
 //
-//   Conceding. `trickPlayReducer`'s CONCEDE action has exactly one caller in
-//   the app — the human's fold button (#83) — so no AI seat ever concedes, and
-//   `evaluator.ts`'s `shouldConcede` has no call site at all. Adding one here
-//   would measure a feature the product does not ship.
+// Conceding used to be a second such exclusion, on the grounds that
+// `trickPlayReducer`'s CONCEDE action had exactly one caller — the human's fold
+// button (#83) — so modelling it here would have measured a feature the product
+// did not ship. #123 wired `shouldConcede` for every AI bid winner, so that
+// reasoning inverted: leaving it out would now measure a *different* game from
+// the one the app plays. The concede window below is the same one
+// `TrickPlayFlow` gives the AI, and both read the same `foldPolicy`.
 
 import { auctionReducer, initAuctionState, passedPlayersOf, type AuctionState } from '../components/auctionReducer'
 import { meldPointsByTeam } from '../components/gameFlowReducer'
 import { teammatesOf } from '../components/trickPlayReducer'
 import { type AuctionContext, chooseBid, chooseTrump } from '../engine/bidding'
 import { Card, type CopyId, RANKS, type Suit, SUITS } from '../engine/card'
+import { shouldConcede } from '../engine/evaluator'
 import { checkGameOutcome } from '../engine/game'
 import { isMisdealEligible } from '../engine/misdeal'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import { type Hands, playTrickTakingPhase, scoreRound, teamOf, type TeamId } from '../engine/round'
+import { SKILL_PARAMS } from '../engine/skills'
 import { PlayTracker, chooseFollowCard, chooseLeadCard } from '../engine/tracker'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
@@ -90,16 +95,20 @@ export function dealFromRng(rand: Rng): Hands {
 }
 
 /** Round-level behaviour for one side, aggregated across a run. Mirrors
- *  `ab_harness.SideStats` minus `conceded`, which cannot happen here. */
+ *  `ab_harness.SideStats`, `conceded` included since #123. A conceded contract
+ *  counts in `contracts` and in `set` — it is a contract that was taken and not
+ *  made, and rolling it into the set rate keeps "made %" answering the same
+ *  question it did before folding existed. */
 export interface SideStats {
   contracts: number
   made: number
   set: number
+  conceded: number
   bids: number[]
 }
 
 export function newSideStats(): SideStats {
-  return { contracts: 0, made: 0, set: 0, bids: [] }
+  return { contracts: 0, made: 0, set: 0, conceded: 0, bids: [] }
 }
 
 export interface GameResult {
@@ -208,8 +217,55 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
     })
     state = auctionReducer(state, { type: 'CONFIRM_PASS_REVEAL' })
 
-    // -- Meld, trick play, round score -------------------------------------
+    // -- Meld, then the concede window --------------------------------------
     const meldPoints = meldPointsByTeam(state.hands, trumpSuit)
+    const bidWinnerTeam = teamOf(bidWinner)
+    const defendingTeam = (1 - bidWinnerTeam) as TeamId
+
+    // Asked of the bid winner only, once, after meld and before the first lead
+    // — `Round._concede_phase`'s window in Python and `canConcede`'s in
+    // `TrickPlayFlow`. The partner cannot concede a contract they did not take
+    // and the defenders have nothing to concede.
+    const conceded =
+      SKILL_PARAMS[seatSkills[bidWinner]].foldPolicy === 'model' &&
+      shouldConcede({
+        hand: state.hands[bidWinner],
+        trump: trumpSuit,
+        bid,
+        biddingMeld: meldPoints[bidWinnerTeam],
+        defendingMeld: meldPoints[defendingTeam],
+      })
+
+    if (conceded) {
+      // Same scoring as `gameFlowReducer`'s TRICK_COMPLETE concede branch: the
+      // bidding team forfeits its meld and takes -bid, the defenders keep their
+      // meld and score no trick points because no trick was played.
+      const roundScore = scoreRound({
+        meldPointsByTeam: { ...meldPoints, [bidWinnerTeam]: 0 } as Record<TeamId, number>,
+        trickPointsByTeam: { 0: 0, 1: 0 },
+        bidWinnerTeam,
+        bid,
+      })
+      if (stats !== undefined) {
+        const side = stats[bidWinnerTeam]
+        side.contracts++
+        side.bids.push(bid)
+        side.set++
+        side.conceded++
+      }
+
+      scoresByTeam[0] += roundScore[0]
+      scoresByTeam[1] += roundScore[1]
+
+      const winnerAfterConcede = checkGameOutcome(scoresByTeam, bidWinnerTeam)
+      if (winnerAfterConcede !== null) {
+        return { winner: winnerAfterConcede, scoresByTeam, rounds: round + 1 }
+      }
+      dealer = ((dealer + 1) % 4) as PlayerIndex
+      continue
+    }
+
+    // -- Trick play, round score --------------------------------------------
     const tracker = new PlayTracker()
     let cardsPlayed = 0
     const { trickPointsByTeam } = playTrickTakingPhase(
@@ -232,7 +288,6 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
       },
     )
 
-    const bidWinnerTeam = teamOf(bidWinner)
     const roundScore = scoreRound({ meldPointsByTeam: meldPoints, trickPointsByTeam, bidWinnerTeam, bid })
     if (stats !== undefined) {
       const side = stats[bidWinnerTeam]

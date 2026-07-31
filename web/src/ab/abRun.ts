@@ -51,26 +51,41 @@ import { type SideStats, makeRng, newSideStats, playHeadlessGame } from './headl
 import { binomialTwoSidedP, bootstrapMeanCi, wilsonInterval } from './stats'
 
 /** The two dial entries the harness commandeers. Both are `base_bid` levels, so
- *  overwriting them changes bidding policy and nothing else. */
+ *  overwriting them changes the one field under test and nothing else. */
 export const STATIC_LEVEL: SkillLevel = 'hard'
 export const DISTILLED_LEVEL: SkillLevel = 'expert'
 
-const AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'static' },
-  [DISTILLED_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'distilled' },
+/** Bidding A/B (#115): distilled vs static, both folding as the product does. */
+export const BID_AB_POLICIES: Record<string, SkillParams> = {
+  [STATIC_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model' },
+  [DISTILLED_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
 }
 
-/** Overwrites the two entries above, returning a function that restores them.
- *  Callers must restore in a `finally` — a leaked override would silently
+/**
+ * Fold A/B (#123): identical bidders, one allowed to concede and one not.
+ *
+ * `foldPolicy` is uniform across the shipped dial by design, so there is no
+ * pair of real skill levels that differ in it — which is exactly why the
+ * override mechanism has to carry this comparison. Both sides bid `distilled`
+ * here rather than `static`, so the measurement describes folding as it will
+ * actually ship on `hard` and above.
+ */
+export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
+  [STATIC_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'never' },
+  [DISTILLED_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
+}
+
+/** Overwrites the two entries in `policies`, returning a function that restores
+ *  them. Callers must restore in a `finally` — a leaked override would silently
  *  change any later test in the same module registry. */
-export function installPolicies(): () => void {
+export function installPolicies(policies: Record<string, SkillParams> = BID_AB_POLICIES): () => void {
   const saved: Partial<Record<SkillLevel, SkillParams>> = {}
-  for (const [level, params] of Object.entries(AB_POLICIES) as [SkillLevel, SkillParams][]) {
+  for (const [level, params] of Object.entries(policies) as [SkillLevel, SkillParams][]) {
     saved[level] = SKILL_PARAMS[level]
     SKILL_PARAMS[level] = params
   }
   return () => {
-    for (const level of Object.keys(AB_POLICIES) as SkillLevel[]) {
+    for (const level of Object.keys(policies) as SkillLevel[]) {
       SKILL_PARAMS[level] = saved[level] as SkillParams
     }
   }
@@ -144,6 +159,9 @@ export interface RunAbOptions {
    *  twice is the harness's own self-test. */
   readonly levelA?: SkillLevel
   readonly levelB?: SkillLevel
+  /** Which pair of overrides to install for the run. Defaults to the bidding
+   *  comparison; pass `FOLD_AB_POLICIES` for the fold one. */
+  readonly policies?: Record<string, SkillParams>
 }
 
 /**
@@ -164,9 +182,10 @@ export function runAb(options: RunAbOptions): AbReport {
     labelB = 'static',
     levelA = DISTILLED_LEVEL,
     levelB = STATIC_LEVEL,
+    policies = BID_AB_POLICIES,
   } = options
 
-  const restore = installPolicies()
+  const restore = installPolicies(policies)
   const realRandom = Math.random
   const seedSource = makeRng(seed)
   const marginsA: number[] = []
@@ -279,6 +298,10 @@ export function summarise(report: AbReport, analysis = analyse(report)): string 
     `  ${'contracts won'.padEnd(18)}${String(report.statsA.contracts).padStart(12)}${String(report.statsB.contracts).padStart(12)}`,
     `  ${'made'.padEnd(18)}${rate(report.statsA.made, report.statsA.contracts).padStart(12)}${rate(report.statsB.made, report.statsB.contracts).padStart(12)}`,
     `  ${'set'.padEnd(18)}${rate(report.statsA.set, report.statsA.contracts).padStart(12)}${rate(report.statsB.set, report.statsB.contracts).padStart(12)}`,
+    // Conceded is a subset of set, not a third outcome — see `SideStats`. A
+    // side that never folds reads 0% here, which is what makes the fold A/B
+    // legible at a glance rather than only through the margin.
+    `  ${'  of which folded'.padEnd(18)}${rate(report.statsA.conceded, report.statsA.contracts).padStart(12)}${rate(report.statsB.conceded, report.statsB.contracts).padStart(12)}`,
     `  ${'avg bid'.padEnd(18)}${avg(report.statsA.bids).toFixed(0).padStart(12)}${avg(report.statsB.bids).toFixed(0).padStart(12)}`,
   ].join('\n')
 }

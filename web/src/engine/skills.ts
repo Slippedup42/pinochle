@@ -22,9 +22,36 @@ export type HandValuation = 'meld_only' | 'base_bid'
  */
 export type BidPolicy = 'static' | 'distilled'
 
+/**
+ * Whether an AI bid winner is asked to concede (#123).
+ *
+ *   `'never'`  play every contract out, whatever the arithmetic says. What
+ *              every level did before #123, and what `Player.decide_fold`
+ *              still does in Python for skill 1-3.
+ *   `'model'`  ask `shouldConcede` (`evaluator.ts`) in the same window the
+ *              human's fold button gets: after meld, before the first lead.
+ *
+ * Unlike `bidPolicy` this is **deliberately uniform across all five levels**,
+ * and the type exists to keep the alternative measurable rather than to give
+ * the dial another notch. The reason is that folding is not a matter of taste:
+ * conceding and being set cost the bidding team exactly the same (`-bid`, meld
+ * forfeited either way), and the only thing a fold changes is that the
+ * defenders are denied their trick points. So a fold can never beat making the
+ * contract and can never lose to being set - it is strictly dominant over a
+ * set. A weak tier declining a free improvement would not read as weak play,
+ * it would read as a bug.
+ *
+ * `'never'` is retained because `abRun.ts` needs two levels differing in
+ * exactly one field to measure this, and because the day someone wants a tier
+ * that folds *badly* the honest way to build it is a third policy that folds
+ * on the wrong hands - not a tier that cannot fold at all.
+ */
+export type FoldPolicy = 'never' | 'model'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
+  readonly foldPolicy: FoldPolicy
 }
 
 /**
@@ -87,13 +114,19 @@ export interface SkillParams {
  *   is the measurably stronger one, so leaving the top tiers on the weaker rule
  *   would rank them below `hard`. When real rollouts land they replace this on
  *   4-5; until then it is the floor, not the ceiling.
+ *
+ * `foldPolicy` reads `'model'` on every row on purpose (#123) and is not a
+ * second dial — see `FoldPolicy` for why folding is shared competence rather
+ * than a difficulty setting. The dial this table exists to express is
+ * `bidPolicy`; a level's strength is meant to come from what it is willing to
+ * bid, not from whether it is allowed to notice a dead contract.
  */
 export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
-  easy: { handValuation: 'meld_only', bidPolicy: 'static' },
-  medium: { handValuation: 'base_bid', bidPolicy: 'static' },
-  hard: { handValuation: 'base_bid', bidPolicy: 'distilled' },
-  proficient: { handValuation: 'base_bid', bidPolicy: 'distilled' },
-  expert: { handValuation: 'base_bid', bidPolicy: 'distilled' },
+  easy: { handValuation: 'meld_only', bidPolicy: 'static', foldPolicy: 'model' },
+  medium: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model' },
+  hard: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
+  proficient: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
+  expert: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
 }
 
 /** Flat trick-point estimate for meld-only bidding (skill 1), matching

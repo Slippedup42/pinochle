@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Card, Suit } from '../engine/card'
+import { shouldConcede } from '../engine/evaluator'
 import { partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
+import { SKILL_PARAMS } from '../engine/skills'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
@@ -127,6 +129,43 @@ export function TrickPlayFlow({
   const trackerRef = useRef(new PlayTracker())
   const completedRef = useRef(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+
+  // Concede/fold for an AI bid winner (#123), in the same window the human's
+  // fold button gets: after meld, before the first card of the round.
+  //
+  // Declared *before* the AI-play effect on purpose. Both run in the same
+  // commit, so this one dispatches CONCEDE while that one is still only
+  // scheduling a timer; the resulting re-render lands on `phase: 'complete'`,
+  // whose cleanup clears that timer before it can fire. Ordering them the other
+  // way would let a card hit the table first on a hand the AI meant to throw in.
+  //
+  // The `cardsPlayed === 0` guard is what makes this safe to re-run: the effect
+  // re-fires on every state change, and on a #54 resume `initialState` can drop
+  // us into a contract already under way, where the concede window has closed.
+  const foldAskedRef = useRef(false)
+  const cardsPlayed = state.log.filter((e) => e.kind === 'card-play').length
+  useEffect(() => {
+    if (foldAskedRef.current) return
+    if (state.phase !== 'playing' || cardsPlayed > 0) return
+    if (bidWinner === humanPlayer) return
+    foldAskedRef.current = true
+
+    const skill = skillForPlayer(bidWinner, humanPlayer, options)
+    if (SKILL_PARAMS[skill].foldPolicy !== 'model') return
+
+    const biddingTeam = teamOf(bidWinner)
+    if (
+      shouldConcede({
+        hand: state.hands[bidWinner],
+        trump: state.trumpSuit,
+        bid,
+        biddingMeld: meldPointsByTeam[biddingTeam],
+        defendingMeld: meldPointsByTeam[(1 - biddingTeam) as TeamId],
+      })
+    ) {
+      dispatch({ type: 'CONCEDE' })
+    }
+  }, [state, cardsPlayed, bidWinner, humanPlayer, options, bid, meldPointsByTeam])
 
   // Resolve AI turns automatically, after a brief delay so the play reads
   // as a real decision rather than an instant jump. Runs after every state
