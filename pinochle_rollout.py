@@ -50,6 +50,7 @@ import random
 
 from pinochle_engine import (
     Card,
+    best_base_bid,
     PlayTracker,
     Player,
     RANKS,
@@ -189,6 +190,97 @@ def sample_bid_time_deal(my_hand, rng=None):
     return deal_unseen_cards(
         unseen, [("partner", 12), ("opp_left", 12), ("opp_right", 12)], rng=rng,
     )
+
+
+# ---------------------------------------------------------------------------
+# Auction-constrained determinization (issue #101, epic #106).
+#
+# A uniform deal assumes every other seat holds a random hand, even after the
+# auction has said otherwise. If partner opened at 320 they are very unlikely
+# to be sitting on no meld and no aces, but uniform sampling keeps generating
+# exactly that, dragging the estimate toward hands that could not have
+# produced the bidding actually observed.
+#
+# Consistency is judged with `best_base_bid` - the same valuation the bidding
+# AI uses to decide its own bids - so the model of "what a bid means" cannot
+# drift away from what the bidders are actually doing.
+# ---------------------------------------------------------------------------
+
+# How far a sampled hand may fall short of a bid it supposedly made (or exceed
+# a level it declined) before the deal is rejected. Not zero: bidders are
+# speculative, positional rules make them open light, and `best_base_bid` is
+# an estimate rather than the last word - so a hard edge would reject far too
+# much and bias the sample the other way.
+AUCTION_CONSISTENCY_SLACK = 40
+
+
+class AuctionEvidence:
+    """
+    What each unseen seat did in the auction, in the rollout's own seat-key
+    space ("partner" / "opp_left" / "opp_right").
+
+    `highest_bid` maps a seat key to the largest amount that seat actually
+    bid; `declined` maps a seat key to the smallest amount it refused to bid.
+    Either may be absent for a seat that has not acted yet - an unconstrained
+    seat is simply never rejected, which is the honest treatment of "we know
+    nothing about them" rather than a special case.
+    """
+
+    def __init__(self, highest_bid=None, declined=None):
+        self.highest_bid = dict(highest_bid or {})
+        self.declined = dict(declined or {})
+
+    def __bool__(self):
+        return bool(self.highest_bid or self.declined)
+
+    def is_consistent(self, dealt, slack=AUCTION_CONSISTENCY_SLACK):
+        """
+        True if every constrained seat's sampled hand could plausibly have
+        produced that seat's auction behaviour.
+
+        A seat that bid X should hold a hand worth roughly X or better; a seat
+        that declined X should hold one worth less than X. Both are checked
+        with `slack`, for the reasons in the constant's comment above.
+        """
+        for key, amount in self.highest_bid.items():
+            hand = dealt.get(key)
+            if hand is None:
+                continue
+            _trump, ceiling, _breakdown = best_base_bid(hand)
+            if ceiling < amount - slack:
+                return False
+
+        for key, amount in self.declined.items():
+            hand = dealt.get(key)
+            if hand is None:
+                continue
+            _trump, ceiling, _breakdown = best_base_bid(hand)
+            if ceiling >= amount + slack:
+                return False
+
+        return True
+
+
+def sample_consistent_deal(sample_fn, evidence, rng=None, max_attempts=40):
+    """
+    Draw a determinized deal that does not contradict the auction, by
+    rejection sampling on top of any existing sampler.
+
+    Returns `(dealt, attempts, accepted)`. `accepted` is False when
+    `max_attempts` was exhausted, in which case the last draw is returned
+    anyway: a rollout built on a slightly implausible deal is a far smaller
+    error than no rollout at all, and looping until something fits risks
+    hanging on evidence no deal can satisfy. Callers get `accepted` so a
+    constraint that is too tight shows up as a number rather than as
+    mysteriously slow, unexplained behaviour.
+    """
+    rng = rng if rng is not None else random
+    dealt = None
+    for attempt in range(1, max_attempts + 1):
+        dealt = sample_fn(rng)
+        if not evidence or evidence.is_consistent(dealt):
+            return dealt, attempt, True
+    return dealt, max_attempts, False
 
 
 def sample_return_pass_deal(my_hand, partner_known_count=9, rng=None):
@@ -416,7 +508,7 @@ def _build_rollout_players(seat_names, hands):
     return players
 
 
-def estimate_bid_time(hand, trump, bid, num_samples=150, rng=None):
+def estimate_bid_time(hand, trump, bid, num_samples=150, rng=None, evidence=None):
     """
     Bid-time Monte Carlo estimate (Section 0/1). `hand` (12 known cards)
     is seated as the bid winner; partner and both opponents get randomly
@@ -424,14 +516,31 @@ def estimate_bid_time(hand, trump, bid, num_samples=150, rng=None):
     real return pass, and real trick play for every sample, applying the
     Auto-SET guard before any 12-trick rollout.
 
+    `evidence`, if supplied, is an `AuctionEvidence` (issue #101): sampled
+    deals that contradict what the other seats did in the auction are
+    rejected and redrawn. None keeps the uniform sampling this function has
+    always done.
+
     Returns the aggregate dict from `monte_carlo_rollout` (p_make,
     expected_bidding_points, expected_defending_points, auto_set_rate,
-    plus the raw per-sample results).
+    plus the raw per-sample results), plus `evidence_acceptance_rate` and
+    `evidence_attempts_per_sample` when `evidence` was supplied - a
+    constraint too tight to satisfy should be visible as a number, not
+    inferred from the run being slow.
     """
     rng = rng if rng is not None else random
+    rejection_stats = {"attempts": 0, "accepted": 0, "samples": 0}
 
     def sample_fn(active_rng):
-        return sample_bid_time_deal(hand, rng=active_rng)
+        if not evidence:
+            return sample_bid_time_deal(hand, rng=active_rng)
+        dealt, attempts, accepted = sample_consistent_deal(
+            lambda r: sample_bid_time_deal(hand, rng=r), evidence, rng=active_rng,
+        )
+        rejection_stats["attempts"] += attempts
+        rejection_stats["accepted"] += 1 if accepted else 0
+        rejection_stats["samples"] += 1
+        return dealt
 
     def build_fn(dealt):
         players = _build_rollout_players(
@@ -440,10 +549,19 @@ def estimate_bid_time(hand, trump, bid, num_samples=150, rng=None):
         )
         return players, players[0]
 
-    return monte_carlo_rollout(
+    aggregate = monte_carlo_rollout(
         sample_fn, build_fn, trump, bid, num_samples,
         rollout_kwargs={"passing": "both"}, rng=rng,
     )
+
+    if evidence and rejection_stats["samples"]:
+        aggregate["evidence_acceptance_rate"] = (
+            rejection_stats["accepted"] / rejection_stats["samples"]
+        )
+        aggregate["evidence_attempts_per_sample"] = (
+            rejection_stats["attempts"] / rejection_stats["samples"]
+        )
+    return aggregate
 
 
 def estimate_return_pass(hand, trump, bid, num_samples=300, rng=None):
@@ -483,7 +601,7 @@ def estimate_return_pass(hand, trump, bid, num_samples=300, rng=None):
 # as the fast-path prior for those tiers, per the doc).
 # ---------------------------------------------------------------------------
 
-def bid_ev(hand, trump, bid, num_samples=150, rng=None):
+def bid_ev(hand, trump, bid, num_samples=150, rng=None, evidence=None):
     """
     Section 1's formula:
 
@@ -513,7 +631,8 @@ def bid_ev(hand, trump, bid, num_samples=150, rng=None):
     no sample made the bid), so callers/tests can inspect the Monte Carlo
     detail behind the number rather than just the final float.
     """
-    diagnostics = estimate_bid_time(hand, trump, bid, num_samples=num_samples, rng=rng)
+    diagnostics = estimate_bid_time(hand, trump, bid, num_samples=num_samples, rng=rng,
+                                    evidence=evidence)
     p_make = diagnostics["p_make"]
     p_fail = 1.0 - p_make
 
@@ -528,7 +647,7 @@ def bid_ev(hand, trump, bid, num_samples=150, rng=None):
     return ev, diagnostics
 
 
-def choose_bid_by_ev(hand, trump, candidate_bids, num_samples=150, rng=None):
+def choose_bid_by_ev(hand, trump, candidate_bids, num_samples=150, rng=None, evidence=None):
     """
     Section 1: "Choose the bid that maximizes EV ... rather than reading
     off a fixed table." Evaluates `bid_ev` for every level in
@@ -561,7 +680,8 @@ def choose_bid_by_ev(hand, trump, candidate_bids, num_samples=150, rng=None):
         if bid is None:
             all_evs[None] = 0.0
         else:
-            all_evs[bid], _ = bid_ev(hand, trump, bid, num_samples=num_samples, rng=rng)
+            all_evs[bid], _ = bid_ev(hand, trump, bid, num_samples=num_samples, rng=rng,
+                                     evidence=evidence)
 
     best_bid = max(all_evs, key=all_evs.get)
     return best_bid, all_evs[best_bid], all_evs
