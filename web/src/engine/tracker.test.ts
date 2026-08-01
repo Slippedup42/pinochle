@@ -132,6 +132,37 @@ describe('chooseLeadCard', () => {
     expect(led.suit).toBe(Suit.Spades)
     expect(led.rank).toBe('K')
   })
+
+  // -- Side dispatch, against `choose_lead_card`'s Python original (#126) ----
+
+  it('offense leads the trump Ace when the bidding team is on lead', () => {
+    const hand = [new Card(Suit.Spades, 'A', 1), new Card(Suit.Hearts, 'A', 1), new Card(Suit.Hearts, 'A', 2)]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, 'hard', true)
+    expect(led.suit).toBe(Suit.Spades)
+    expect(led.rank).toBe('A')
+  })
+
+  it('a defender never leads trump while it holds anything else (#126)', () => {
+    // The unsecured trump Ace is the safe-card cascade's very first tier, so
+    // running the cascade over the whole hand hands it straight to the bidder's
+    // trump-draw plan. Python's `_defender_lead` restricts to non-trump before
+    // the cascade ever sees the hand, unconditionally — this used to fire only
+    // once every trump copy was accounted for.
+    const hand = [
+      new Card(Suit.Spades, 'A', 1), // trump, unsecured
+      new Card(Suit.Hearts, 'A', 1), // unsecured non-trump Ace
+      new Card(Suit.Clubs, '9', 1),
+    ]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, 'hard', false)
+    expect(led.suit).not.toBe(Suit.Spades)
+    expect(led.suit).toBe(Suit.Hearts)
+  })
+
+  it('a defender leads trump only when the hand is nothing but trump', () => {
+    const hand = [new Card(Suit.Spades, 'A', 1), new Card(Suit.Spades, '9', 1)]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, 'hard', false)
+    expect(led.suit).toBe(Suit.Spades)
+  })
 })
 
 describe('chooseFollowCard', () => {

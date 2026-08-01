@@ -13,6 +13,8 @@ import type { PlayerIndex, TrickPlay } from './trick'
 import { SKILL_PARAMS } from './skills'
 
 const POINT_RANKS = new Set(['A', '10', 'K'])
+/** 6 ranks x 2 copies, matching Python's `TOTAL_TRUMP_COPIES`. `chooseFollowCard`
+ *  calls trump "secure" once this many copies are accounted for. */
 const TOTAL_TRUMP_COPIES = 12
 
 /** Tracks cards played so far this round, across all 4 hands. */
@@ -71,30 +73,6 @@ function isUnsecuredAce(card: Card, hand: readonly Card[], tracker: PlayTracker)
 }
 
 /**
- * Choose what to lead when you have control. Priority:
- *   0. Bidder's first lead (#82) — must lead trump if any is held
- *   1. Unsecured trump Ace
- *   2. Other unsecured Aces (longest suit first)
- *   3. Safe cards, cascading top-down by rank (longest suit first within a rank)
- *   4. Junk lead (non-point, non-trump) to surrender - shortest suit first
- *   5. Non-point trump as a last resort before giving up a point card
- *
- * @param isBidderFirstLead - When true (bidder opening the first trick of the
- *   round), forces a trump lead if the player has any trump cards remaining.
- * @param skill - Skill level. Skill 1 (easy) uses simplified logic: prefers
- *   low non-trump non-count cards. Defaults to 'hard' (full Proficient cascade).
- */
-/** True when every trump card (all 12 copies across all 4 players) has
- * been accounted for — either in hand or already played — meaning no unseen
- * trump remains that could beat a non-trump lead. Ported from the Python
- * reference's `_trump_fully_accounted`. */
-function trumpFullyAccounted(hand: readonly Card[], trump: Suit, tracker: PlayTracker): boolean {
-  const playedTrump = RANKS.reduce((sum, r) => sum + tracker.playedCount(trump, r), 0)
-  const handTrump = suitLength(hand, trump)
-  return playedTrump + handTrump >= TOTAL_TRUMP_COPIES
-}
-
-/**
  * Offense trump lead: when the bidding team is leading, draw trump by
  * leading the trump Ace if held. Without a trump Ace, abandon the aggressive
  * trump-draw plan and lead non-trump conservatively.
@@ -108,16 +86,25 @@ function offenseTrumpLead(hand: readonly Card[], trump: Suit, tracker: PlayTrack
 }
 
 /**
- * Defending team lead: avoid leading trump whenever possible. If trump is
- * fully accounted for (no unseen trump remains), lead any non-trump card.
- * Otherwise prefer safe non-trump leads over trump leads.
+ * Defending team lead: never lead trump — it helps the bidder consolidate
+ * control — so run the safe-card cascade over the non-trump cards only.
+ * Trump is led only when the hand is entirely trump, i.e. there is no other
+ * legal lead at all.
+ *
+ * Corrected by the #126 audit. This used to avoid trump only when every trump
+ * copy was already accounted for, and otherwise ran the cascade over the whole
+ * hand — which leads an unsecured trump Ace, the cascade's very first tier. It
+ * had borrowed `_trump_fully_accounted` from Python's `choose_expert_lead_card`
+ * — a function belonging to the expert tier this engine does not port, where
+ * that predicate gates a different rule entirely (endgame sequencing: hold
+ * trump back so one is still in hand to win trick 12's +10 bonus). Python's
+ * `_defender_lead` has no such condition: with `rollout_evaluator=None`, the
+ * only mode reachable from the ported Proficient `choose_lead_card`, it
+ * restricts to non-trump unconditionally.
  */
 function defenderLead(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
   const nonTrump = hand.filter((c) => c.suit !== trump)
-  const trumpCards = hand.filter((c) => c.suit === trump)
-  if (trumpCards.length > 0 && nonTrump.length > 0 && trumpFullyAccounted(hand, trump, tracker)) {
-    return leadSafeCascade(nonTrump, trump, tracker)
-  }
+  if (nonTrump.length > 0) return leadSafeCascade(nonTrump, trump, tracker)
   return leadSafeCascade(hand, trump, tracker)
 }
 
@@ -166,6 +153,20 @@ function leadSafeCascade(hand: readonly Card[], trump: Suit, tracker: PlayTracke
   return hand.reduce((lowest, c) => (RANK_VALUE[c.rank] < RANK_VALUE[lowest.rank] ? c : lowest))
 }
 
+/**
+ * Choose what to lead when you have control. Priority, matching Python's
+ * `choose_lead_card`:
+ *   0. Bidder's first lead (#82) — must lead trump if any is held
+ *   1. When the side is known: the bidding team draws trump
+ *      (`offenseTrumpLead`), the defending team avoids it (`defenderLead`)
+ *   2. Otherwise the safe-card cascade (`leadSafeCascade`)
+ *
+ * @param isBidderFirstLead - When true (bidder opening the first trick of the
+ *   round), forces a trump lead if the player has any trump cards remaining.
+ * @param skill - Skill level. Skill 1 (easy) uses simplified logic: prefers
+ *   low non-trump non-count cards. Defaults to 'hard' (full Proficient cascade).
+ * @param isBiddingTeam - Which side this seat is on. Undefined = fallback.
+ */
 export function chooseLeadCard(
   hand: readonly Card[],
   trump: Suit,
@@ -297,7 +298,7 @@ export function chooseFollowCard(
     if (tracker !== undefined) {
       const playedTrump = RANKS.reduce((sum, r) => sum + tracker.playedCount(trump, r), 0)
       const handTrump = suitLength(hand, trump)
-      trumpSecure = playedTrump + handTrump >= 12
+      trumpSecure = playedTrump + handTrump >= TOTAL_TRUMP_COPIES
     }
     if (trumpSecure) return minByRank(legalMoves)
 
