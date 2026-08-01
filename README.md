@@ -117,6 +117,23 @@ level at creation) are implemented — see the strategy doc below.
   they have drifted from the model, which is the only place that drift
   is visible (a stale model module and a stale fixture agree with each
   other perfectly).
+- [`export_parity_scenarios.py`](export_parity_scenarios.py) — the
+  correctness net between this engine and the shipped TypeScript one
+  (issue #125, ROADMAP.md Phase 1.6). Plays 40 seeded rounds and records
+  each one whole — the four dealt hands, the auction result, the 3-card
+  pass both ways, every card of every trick, the legal-move set at every
+  follow — into `parity_scenarios.json`, then renders it as
+  `web/src/engine/engineParity.fixture.ts`. `engineParity.test.ts`
+  replays the recorded cards through the TS engine and has to arrive at
+  the same meld per hand, the same winner and points for every trick,
+  and the same final round score. Note what is *not* compared: the deals
+  (the two sides use different PRNGs, so the same seed cannot produce
+  the same deal) and the AI's decisions (Python rolls out, TS `hard`+
+  runs the distilled evaluator — divergence there is the design). Only
+  the rules are. Recording replays the AI and so is on-demand
+  (`--record`); rendering is a pure function of the committed JSON, so
+  `--check` can fail a hand-edited fixture without the answer depending
+  on what the AI decides today.
 - [`human_play.py`](human_play.py) — resumable interactive play layer
   (`HumanPlayer`, `InteractiveRound`) built for chat-session play, where
   a script can't block on `input()` between messages: decisions raise
@@ -153,6 +170,10 @@ python fit_evaluator.py --compare --disagreements
                                        # has to beat and where it disagrees (~15 s)
 python export_evaluator.py             # regenerate the TypeScript the PWA bids with
 python export_evaluator.py --check     # fail if the committed TypeScript is stale
+python export_parity_scenarios.py --record
+                                       # re-record the engine-parity scenarios (~1 min)
+python export_parity_scenarios.py      # re-render the TS fixture from the committed JSON
+python export_parity_scenarios.py --check  # fail if that fixture is stale
 python -m pytest -q                    # full test suite
 ```
 

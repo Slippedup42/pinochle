@@ -25,6 +25,50 @@ npm test        # vitest
 - `src/ab/` — the measurement harness (issue #115). Not shipped: nothing under
   `src/` outside the App's import graph reaches the bundle. See below.
 
+## Parity with the Python engine (`engineParity.*`)
+
+`src/engine/` is a hand port, and until #125 each side was only ever checked
+against itself. #118 is what that costs: `NEAR_RUN_VALUE` and
+`NEAR_DOUBLE_PINOCHLE_VALUE` were ported at half value, so the browser named a
+different trump suit than the reference for months, and it surfaced because
+someone read both files side by side while working on something else.
+
+`engineParity.fixture.ts` holds 40 complete rounds exactly as `pinochle_engine.py`
+played them, and `engineParity.test.ts` replays the recorded cards through this
+engine. Two things are deliberately **not** compared, and both look like the
+obvious approach:
+
+- **The deals.** Python shuffles with `random.Random`, the TS side reseeds
+  `Math.random` via `makeRng`. Different PRNGs — the same seed does not produce
+  the same deal and never will. So the deal is *pinned*, not generated.
+- **The AI's decisions.** Python runs Monte Carlo rollouts, TS `hard`+ runs the
+  evaluator distilled from them (#115). Divergence there is the design, so the
+  auction result, the 3-card pass and every card played are pinned too.
+
+What is compared is only what both sides must agree on: `scoreMelds` per hand
+(total *and* breakdown), the winner and points of every trick, the +10
+last-trick bonus, and `scoreRound`'s final number for both teams. Plus the
+legal-move set at every follow, compared as a set rather than "was Python's card
+allowed" — the one-directional version catches a filter that is *stricter* than
+the reference but not one that is *looser*, and looser is the bug that reaches a
+player, as a browser that lets you underplay a trick you were required to beat.
+
+Regenerating, from the repo root (not `web/`):
+
+```
+python export_parity_scenarios.py --record   # replay the Python engine, rewrite both files
+python export_parity_scenarios.py            # re-render the TS fixture from the committed JSON
+python export_parity_scenarios.py --check    # fail if the committed fixture is stale
+```
+
+`--record` is on demand only. Recording replays the AI, so re-recording on every
+run would turn any AI change into a red suite and a six-figure diff; rendering
+is a pure function of the committed `parity_scenarios.json`, which is what
+`--check` and `test_export_parity_scenarios.py` guard. That Python test also
+replays every committed scenario back through the *Python* engine, so a rules
+change on that side fails there rather than showing up here as an unexplained
+TS failure.
+
 ## Measuring the AI (`src/ab/`)
 
 `chooseBid` runs one of two policies per skill level (`SKILL_PARAMS.bidPolicy`
