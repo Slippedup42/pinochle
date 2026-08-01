@@ -1,24 +1,78 @@
 # Pinochle
 
-A Partnership Pinochle engine and AI, built from scratch in Python.
+A Partnership Pinochle game, built from scratch: a shipped TypeScript
+PWA, plus a Python reference implementation that doubles as the
+AI-research and measurement harness.
 
 ## Status
 
-The rules engine is complete: deal, bidding, 3-card pass, meld scanning,
-trick-taking, round scoring, and multi-round games to ±1000. `Player`
-now runs real **Proficient-tier** strategy (hand valuation via Base Bid,
-positional/score-aware bidding, category-split passing, card-counting
-trick play) rather than placeholder logic — see `pinochle_engine.py`'s
-`__main__` block for self-checks. An interactive human-play layer
-(`human_play.py`, `play_local.py`) lets a person play against the AI.
-`GeneralStrategy` (Monte Carlo determinization + rollout, skill-level
-1-5) and `RandomStrategy` (a thin wrapper that draws a random skill
-level at creation) are implemented — see the strategy doc below.
+**The game is live at <https://slippedup42.github.io/pinochle/>.** The
+PWA in [`web/`](web/) is the product — a complete game against three AI
+opponents: deal, misdeal, auction, trump, 3-card pass, meld, trick play,
+round scoring, and multi-round games to ±1000, across five difficulty
+levels, with local autosave across a page reload and installability. It
+deploys from `main` on any push touching `web/`
+(`.github/workflows/deploy-pages.yml`).
+
+The Python side has two live roles: it is the reference implementation
+the TypeScript port is checked against, *and* the harness all the AI
+research and measurement runs on. `pinochle_engine.py` implements the
+same rule set end-to-end, with real **Proficient-tier** strategy on
+`Player` (hand valuation via Base Bid, positional/score-aware bidding,
+category-split passing, card-counting trick play) and, above it,
+`GeneralStrategy`
+(Monte Carlo determinization + rollout, skill level 1-5) and
+`RandomStrategy` (which draws a skill level once at construction). An
+interactive human-play layer (`human_play.py`, `play_local.py`) lets a
+person play against it in a terminal.
+
+Expensive thinking in Python, cheap conclusions in the browser: full
+rollouts can't run on a phone, so the rollout AI is distilled offline
+into a small bid/fold model and exported to
+`web/src/engine/evaluatorModel.ts`. What crosses the boundary is a
+generated artifact rather than a hand-port —
+`python export_evaluator.py --check` fails the Python suite if the
+committed TypeScript has drifted from the model.
+
+Neither side is winding down. Player-visible behaviour lands in
+TypeScript; Python stays authoritative for ported rules constants and
+is where the next round of strategy work will run. See
+[`ROADMAP.md`](ROADMAP.md) for sequencing and `pinochle_rules.md`'s
+"Implementation Notes" for how the two engines divide up.
 
 ## Contents
 
-- [`ROADMAP.md`](ROADMAP.md) — phased plan from current state through
-  Expert AI, the web/mobile client, and PWA distribution.
+- [`web/`](web/) — **the shipped product**: the React + TypeScript +
+  Vite + Tailwind PWA, live at <https://slippedup42.github.io/pinochle/>.
+  Has its own [`web/README.md`](web/README.md). Inside it:
+  - `src/engine/` — the TypeScript rules engine, split one file per
+    concern (`card.ts`, `melds.ts`, `bidding.ts`, `passing.ts`,
+    `trick.ts`, `tracker.ts`, `round.ts`, `game.ts`, `misdeal.ts`,
+    `names.ts`/`teamNames.ts`), each with a matching `*.test.ts`. This
+    is the engine players actually meet: a rule that is wrong here is
+    wrong for players.
+  - `src/engine/evaluator.ts` + `evaluatorModel.ts` — the shipped AI.
+    The distilled bid/fold model that `export_evaluator.py` generates
+    from the Python rollouts, alongside `evaluatorParity.fixture.ts` /
+    `evaluatorParity.test.ts`, which fail the TS suite if the two sides
+    ever compute different features. `skills.ts`'s `SKILL_PARAMS` is the
+    difficulty dial (`easy` through `expert`): `hard` and above bid with
+    the distilled evaluator, and all five levels fold with it.
+  - `src/components/` — the UI and the reducers behind it.
+    `gameFlowReducer.ts` drives a round end to end; `auctionReducer.ts`
+    and `trickPlayReducer.ts` own the auction and trick phases. The
+    misdeal ask/redeal loop is UI-layer state here rather than in
+    `round.ts`, which picks up after trump is set.
+  - `src/persistence/` — localStorage autosave (`gameSave.ts`, which
+    reconstructs real `Card` instances on load, since they don't survive
+    a JSON round trip) and stored options.
+  - `src/ab/` — the TypeScript A/B harness, counterpart to
+    `ab_harness.py`: `headlessGame.ts` plays complete games without
+    React through the same reducers and AI entry points the UI calls.
+    Not shipped — nothing outside the App's import graph reaches the
+    bundle.
+- [`ROADMAP.md`](ROADMAP.md) — the phased plan and where the project
+  currently sits against it.
 - [`TEAM.md`](TEAM.md) — team-lead agent roster, issue-label
   conventions, and the `/standup` / `/work-queue` workflow.
 - [`CODING_STANDARDS.md`](CODING_STANDARDS.md) — naming, module
@@ -30,13 +84,15 @@ level at creation) are implemented — see the strategy doc below.
 - [`pinochle_expert_ai_strategy.md`](pinochle_expert_ai_strategy.md) —
   design spec for the General Strategy AI: Monte Carlo determinization +
   rollout for bidding, passing, and trick play, on top of the
-  Proficient tier already implemented. Implemented as `GeneralStrategy`,
+  Proficient tier already implemented. This is the *offline* AI — what
+  the PWA ships is the model distilled from it, not the rollout itself.
+  Implemented as `GeneralStrategy`,
   a single `Player` subclass parameterized by a skill level 1-5 (issue
   #63) rather than a separate hardcoded tier — see Section 8. All of
   Section 9's open design questions are now resolved, with pointers to
   which child issue of #57 resolved each.
-- [`pinochle_engine.py`](pinochle_engine.py) — the rules engine and
-  Proficient AI: `Card`, `Deck`, `Player`, `Team`, `Trick`, `Round`,
+- [`pinochle_engine.py`](pinochle_engine.py) — the Python reference
+  rules engine and the Proficient AI: `Card`, `Deck`, `Player`, `Team`, `Trick`, `Round`,
   `Game`, meld scoring, bid valuation, passing strategy, trick-play
   strategy. Also holds the General Strategy machinery: the forward/return
   pass logic (`choose_forward_pass_cards` / `choose_return_pass_cards`,
@@ -131,13 +187,33 @@ level at creation) are implemented — see the strategy doc below.
   N full `Game.play()` matches between two team configs (player class +
   kwargs per seat), alternating which physical seats each team occupies
   to cancel out positional bias, and reports win rate and average score
-  margin per team. Now that `GeneralStrategy` exists, this is the
-  intended mechanism (per the strategy doc's Section 8 validation plan)
-  for tuning its per-skill-level parameters against `Player`/
-  `EasyPlayer` and against itself — not yet run at scale for that
-  purpose, but the harness is ready.
+  margin per team. It has already done the job it was built for: issue
+  #65's tuning pass set `GeneralStrategy`'s per-skill-level defaults on
+  200-game tournaments and confirmed the levels come out monotonically
+  ordered — that results table is the strategy doc's Section 8. For
+  judging an AI *change* it has since been superseded by
+  `ab_harness.py`, which controls for the deal as well as the seat.
+- [`ab_harness.py`](ab_harness.py) — the paired A/B harness (issue
+  #105), and the reason anything in the measured-EV work could be
+  claimed as an improvement: identical deals played by both configs
+  with the seats mirrored, significance taken over pairs rather than
+  games, split pairs discarded, and a bootstrap interval on score
+  margin because games-won alone is too coarse. `web/src/ab/` is the
+  TypeScript counterpart; `stats.ts` there is a direct port of this
+  module's three statistics.
 
 ## Running
+
+The shipped client, from `web/`:
+
+```
+npm install
+npm run dev     # dev server
+npm run build   # typecheck + production build
+npm test        # vitest
+```
+
+The Python reference and research harness, from the repo root:
 
 ```
 python pinochle_engine.py   # rules engine self-checks + full-game sanity runs
@@ -157,6 +233,28 @@ python -m pytest -q                    # full test suite
 ```
 
 ## Architecture
+
+### Two engines, one rule set
+
+`pinochle_rules.md` is the source of truth and both engines implement
+it, but they are not peers. **TypeScript (`web/src/engine/`) is the one
+that ships** — a rule that is wrong there is wrong for players.
+**Python (`pinochle_engine.py`) is the reference** the port is checked
+against, and the platform the AI research runs on. Where a ported
+constant disagrees, Python is right and the TS side has drifted; that
+has happened (issue #118, two bidding constants, which changed the suit
+the browser named as trump), which is why #125 tracks a standing parity
+net and #126 a constant-by-constant audit.
+
+They also legitimately differ in one place: the misdeal reshuffle is
+implemented for every game mode in TypeScript, but in Python it exists
+only in `human_play.py`'s `InteractiveRound` — `Round.run()` goes
+straight from deal to bidding, so Python AI-only games never reshuffle.
+That is deliberate: closing it would invalidate every historical Python
+tuning baseline for a rule the shipped game already follows. See
+`pinochle_rules.md`'s "Implementation Notes" for the full account.
+
+### Shared concepts
 
 - **Card rank** is non-standard: `A > 10 > K > Q > J > 9`.
 - **Melding is a pure function** (`score_melds`) over a hand and trump
@@ -178,3 +276,37 @@ python -m pytest -q                    # full test suite
   phase, but keeps position in instance attributes instead of local
   variables so it can be interrupted by `NeedsHumanInput` and resumed
   later without losing progress.
+
+### TypeScript side (`web/`)
+
+- **The engine is split by concern, not by class.** Where Python has one
+  ~2,900-line module, `web/src/engine/` is one file per concern
+  (`card.ts`, `melds.ts`, `bidding.ts`, `passing.ts`, `trick.ts`,
+  `tracker.ts`, `round.ts`, `game.ts`), each with a matching
+  `*.test.ts`. `round.ts` picks up after trump is set.
+- **Reducers own phase state, not the engine.** `gameFlowReducer.ts`
+  drives a round end to end, with `auctionReducer.ts` and
+  `trickPlayReducer.ts` owning the auction and trick phases. Anything
+  that needs to ask the human — the misdeal offer, pass reveal — is
+  UI-layer state here rather than in the engine.
+- **The shipped AI is a distilled model, not a rollout.** `evaluator.ts`
+  consults `evaluatorModel.ts`'s weights instead of thresholds like
+  `OPENER_THRESHOLD`. `skills.ts`'s `SKILL_PARAMS` is the dial: `hard`
+  and above bid with the model, `easy` and `medium` keep the hand-tuned
+  constants on purpose (the model distils *skill 5*, so wiring it into
+  `easy` would delete the tier rather than calibrate it), and **all five
+  levels fold with it** — conceding and being set cost the bidding team
+  the same (`-bid`, meld forfeited either way) while a fold denies the
+  defenders their trick points, so folding well is shared competence
+  rather than part of the difficulty dial.
+- **Parity is enforced, not assumed.** `evaluatorModel.ts` and
+  `evaluatorParity.fixture.ts` are generated by `export_evaluator.py`
+  and never edited by hand. `evaluatorParity.test.ts` fails when the two
+  sides compute different features; `export_evaluator.py --check` fails
+  the Python suite when the committed TypeScript is stale. Both
+  directions are needed — a stale model module and a stale fixture agree
+  with each other perfectly.
+- **The measurement harness doesn't ship.** `web/src/ab/` plays complete
+  games through the same reducers and AI entry points the UI calls,
+  minus React and the animation delays. Nothing outside the App's import
+  graph reaches the bundle.
