@@ -69,6 +69,38 @@ of real auction positions, which is the ceiling on what the model can be
 credited with. And every seat in the harness is an AI, so this says the policy
 is stronger, not that it is a better partner for a human.
 
+### What #126 changed about those numbers
+
+The #126 audit found that `chooseBid` opened at 300 unconditionally from the
+first seat to speak, a rule the Python reference does not have (see
+`bidding.ts`). It applied to both sides of the #115 run, so the comparison was
+fair — but it meant neither policy was ever *asked* the opening question in a
+real auction, and the +227 above is the two rules judged on the defensive push
+and the raise ladder alone.
+
+Re-measured with the opening decision restored, on the same 1000 pairs:
+distilled swept 122 deals to static's 88 (790 split), p = 0.02, margin **+62
+per deal with a 95% CI of +41 to +82**. Same direction, a third of the size.
+Both sides now take fewer and better contracts (distilled 4439 at 70.8% made,
+static 5423 at 66.0%), which is what removing a rule that bought a cheap
+contract on every deal should do. `hard` and above keep `'distilled'`.
+
+The parity fix itself was A/B'd the same way, with the two ported formulas
+`legacy` on one side and `fixed` on the other, over 1000 pairs:
+
+    fixed swept 226, legacy 88 (686 split), p < 1e-4
+    margin +176 per deal, 95% CI +147 to +206
+    contracts 4998 vs 6080, made 65.1% vs 57.5%, avg bid 328 vs 315
+
+Split by fix, the bidding one carries all of it (+179, CI +150 to +209) and the
+`defenderLead` one is a null result (-3, CI -9 to +3, p = 0.85, 972 of 1000
+pairs split) — it ships as parity with the reference engine, not as a strength
+claim. The `parity` dial those runs needed is not in the tree: it was a
+temporary fourth field on `SkillParams` plus a `PARITY_AB_POLICIES` pair, added
+for the measurement in the shape `FOLD_AB_POLICIES` already uses and removed
+before the fix was committed, since a permanent switch for "play the port bug"
+is not a difficulty setting.
+
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/pinochle/bench/`. It is never an input to `vite build`, so it
 cannot reach a player or the PWA precache.
