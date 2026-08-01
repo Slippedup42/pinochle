@@ -36,16 +36,22 @@ ordered the way they are, not because it is still a live constraint.
 ## Phase 1 — PWA critical path — shipped (1.6 open)
 
 Stack: **React + TypeScript + Vite + Tailwind CSS**, PWA via
-`vite-plugin-pwa` (manifest + service worker), hosted on GitHub Pages
-via GitHub Actions. Chosen for a modern, polished UI without heavy
-build overhead, and first-class PWA tooling on top of Vite.
+`vite-plugin-pwa` (manifest + service worker). Chosen for a modern,
+polished UI without heavy build overhead, and first-class PWA tooling on
+top of Vite.
 
-Live at <https://slippedup42.github.io/pinochle/>. Built 2026-07-10/11;
-actually reachable at that URL since 2026-07-31, when GitHub Pages was
-enabled for the repo — the deploy workflow had been green-lighting
-builds into a Pages site that did not exist, and every push-triggered
-run failed at "Set up Pages" until someone looked. Worth remembering:
-a merged PR is not a shipped change until `gh run list` says so.
+**Hosting: none, by decision (2026-08-01).** The app was served from
+GitHub Pages from 2026-07-31; Paul removed that deployment the next day,
+scoping GitHub to source control only. There is no deploy pipeline and
+no public URL — run it locally with `npm run dev`. "Shipped" in this
+document therefore means *merged to `main`*, not deployed.
+
+Choosing a host is deliberately left open. Two constraints for whoever
+picks one up: `base` in `web/vite.config.ts` is `/` and must match the
+path the build is served under, and a host that cannot set COOP/COEP
+response headers rules out `SharedArrayBuffer`, and so rules out
+multi-threaded WebAssembly if browser-side rollouts are ever attempted
+(see Open questions).
 
 1. **Decisions** — done. Opening-bid mismatch resolved (engine value,
    300 min / 250 forced, is canonical; `pinochle_rules.md` updated to
@@ -61,8 +67,10 @@ a merged PR is not a shipped change until `gh run list` says so.
    skill selection, auction history, fold button. Scoped to *playable*;
    the fuller treatment is Phase 4.
 5. **PWA shell** — done: manifest, icons, service worker (Workbox
-   `generateSW` app-shell precache), GitHub Pages deploy pipeline.
-   Icons are programmatic placeholders (#129).
+   `generateSW` app-shell precache). The GitHub Pages deploy pipeline
+   that was part of this item has since been removed (see Hosting
+   above). Icons are programmatic placeholders (#129, closed — Paul's
+   call is to keep them).
 6. **Correctness net** — **open, tracked as #125.** Seeded-scenario
    parity between the Python and TS rules engines: pin the deal *and*
    the decisions in a committed fixture, replay the recorded play

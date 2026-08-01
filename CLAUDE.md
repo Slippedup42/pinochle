@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Partnership Pinochle, in two implementations that are not peers:
 
-- **`web/` — the TypeScript PWA, and the shipped product.** React + TS +
-  Vite + Tailwind, live at <https://slippedup42.github.io/pinochle/>,
-  deployed from `main` by `.github/workflows/deploy-pages.yml` on any
-  push touching `web/`. The rules engine is `web/src/engine/`. New
-  player-visible work lands here.
+- **`web/` — the TypeScript PWA, and the product.** React + TS + Vite +
+  Tailwind. The rules engine is `web/src/engine/`. New player-visible
+  work lands here. **Not currently hosted anywhere** — GitHub holds the
+  code only, and there is no deploy pipeline. Run it locally with
+  `npm run dev`. A change is shipped when it is merged, not deployed.
 - **`pinochle_engine.py` — Python, the reference implementation *and*
   the AI-research and measurement harness.** Both roles are live. It
   implements the same rules end-to-end, it is what the TS port is

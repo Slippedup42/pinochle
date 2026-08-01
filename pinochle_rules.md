@@ -168,9 +168,9 @@ There are two implementations of the rules above, and they are not
 peers:
 
 - **TypeScript, `web/src/engine/` — the shipped one.** The PWA is the
-  product; it is live at <https://slippedup42.github.io/pinochle/>,
-  deployed from `main` by `.github/workflows/deploy-pages.yml` on any
-  push touching `web/`. A rule that is wrong here is wrong for players.
+  product, and a rule that is wrong here is wrong for players. It is not
+  currently hosted anywhere — GitHub holds the code only — so "shipped"
+  means merged to `main`, not deployed.
 - **Python, `pinochle_engine.py` — the reference implementation, and
   the research harness.** It implements all of the above end-to-end and
   is tested (deal integrity, legal-move filtering, meld edge cases,

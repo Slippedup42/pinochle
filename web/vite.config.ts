@@ -4,10 +4,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Project-page hosting on GitHub Pages: https://slippedup42.github.io/pinochle/
-// (no custom domain configured — see ROADMAP.md Phase 1.5). Vite needs the
-// repo name as the base path so built asset URLs resolve correctly.
-const base = '/pinochle/'
+// The app is not currently hosted anywhere — GitHub holds the code only.
+// Root base works for `npm run dev` / `npm run preview` and for any host that
+// serves the build at a domain root. If it is ever deployed under a subpath
+// (e.g. a project page at `example.com/pinochle/`), set this to that subpath
+// or built asset URLs will not resolve.
+const base = '/'
 
 // https://vite.dev/config/
 export default defineConfig({

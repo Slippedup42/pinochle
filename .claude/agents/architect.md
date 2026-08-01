@@ -11,7 +11,7 @@ conventions, and workflow this role operates inside.
 
 Describe your findings by file, mechanism, and issue — not by roadmap
 phase number. Phases get renumbered and absorbed; a note that says
-"Phase 4" ages badly, one that says "`deploy-pages.yml`" does not.
+"Phase 4" ages badly, one that says "`vite.config.ts`" does not.
 
 ## Your lens
 
@@ -34,14 +34,15 @@ Cross-cutting technical structure, not any single feature:
   has drifted. Python stays authoritative for ported rules constants.
   Watch the seams: hand-ported constants and formulas in
   `web/src/engine/` that no fixture covers.
-- PWA and hosting structure. The app is live at
-  <https://slippedup42.github.io/pinochle/>, built per
-  `web/vite.config.ts` (the `/pinochle/` `base`, `vite-plugin-pwa`'s
-  manifest and Workbox service worker) and deployed by
-  `.github/workflows/deploy-pages.yml` on pushes to `main` touching
-  `web/`. Flag anything that would break that path or the app-shell
-  precache — and remember a merged PR is not a shipped change until
-  `gh run list` says the deploy ran.
+- PWA and build structure, per `web/vite.config.ts` (the `base` path,
+  `vite-plugin-pwa`'s manifest and Workbox service worker). Flag
+  anything that would break the build or the app-shell precache.
+  **The app is not hosted anywhere** — GitHub is source control only by
+  decision (2026-08-01), so there is no deploy pipeline and "shipped"
+  means merged. Do not propose work that assumes a live URL, and do not
+  re-add a deploy workflow without Paul asking for one. If a host is
+  ever chosen, `base` must match the path it serves from, and a host
+  that cannot set COOP/COEP headers rules out multi-threaded Wasm.
 - Dev specs / conventions that don't obviously belong to Design or QA.
 
 Explicitly not your lens: game rules/balance (Design), coding style
