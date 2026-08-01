@@ -1,7 +1,7 @@
 """
 Focused tests for issue #53 - EasyPlayer AI tier and Game.from_players().
-Not a full pytest suite (that's separately deferred, Phase 2) - just plain
-assert-based, pytest-discoverable tests covering:
+One file within the full `pytest` suite (`python -m pytest -q`), scoped
+to plain assert-based, pytest-discoverable tests covering:
 
   1. EasyPlayer only ever produces *legal* moves at each decision point
      (bid, trump, pass, trick-play), across varied hands.
