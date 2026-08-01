@@ -1,8 +1,9 @@
 # Pinochle — web client
 
-The shipped product — React + TypeScript + Vite + Tailwind CSS, live at
-<https://slippedup42.github.io/pinochle/> and deployed from `main` on any
-push touching `web/`. A complete game against three AI opponents.
+The product — React + TypeScript + Vite + Tailwind CSS. A complete game
+against three AI opponents. **Not currently hosted anywhere**: GitHub holds
+the code only, there is no deploy pipeline, and there is no public URL. Run
+it locally with `npm run dev`.
 
 The rules engine (`src/engine/`) is a TypeScript port of the Python
 reference implementation (`../pinochle_engine.py`). Both sides are active
@@ -183,14 +184,17 @@ cannot reach a player or the PWA precache.
   `public/apple-touch-icon.png` are placeholder icons (solid color, generated
   programmatically) — swap for real art whenever it exists; they just need to
   keep the same filenames/sizes referenced in `vite.config.ts`.
-- `base` in `vite.config.ts` is hardcoded to `/pinochle/` for GitHub Pages
-  project-page hosting (`https://slippedup42.github.io/pinochle/`). Update it
-  if a custom domain is ever configured (and switch to `base: '/'`).
-- `.github/workflows/deploy-pages.yml` builds `web/` and deploys `web/dist` to
-  GitHub Pages on every push to `main` that touches `web/`. Requires GitHub
-  Pages to be enabled for the repo with source set to "GitHub Actions"
-  (Settings → Pages) — one-time manual step, not something a workflow file
-  can do.
+- **There is no deploy pipeline.** The app was served from GitHub Pages from
+  2026-07-31 until 2026-08-01, when that was removed by decision — GitHub is
+  source control only. `.github/workflows/` no longer exists.
+- `base` in `vite.config.ts` is `/`. If the build is ever served under a
+  subpath (a project page at `example.com/pinochle/`, say), set `base` to
+  that subpath or the built asset URLs will not resolve. This is the single
+  most common way a working build serves a blank page.
+- Whoever picks a host should know: a static host that cannot set COOP/COEP
+  response headers rules out `SharedArrayBuffer`, and therefore rules out
+  multi-threaded WebAssembly. Single-threaded Wasm is unaffected. GitHub
+  Pages cannot set headers; Cloudflare Pages and Netlify can. Only matters
+  if browser-side rollouts are ever attempted for skills 4–5.
 - To check the production build locally: `npm run build && npm run preview`,
-  then open the printed local URL (it serves under the `/pinochle/` base to
-  match production).
+  then open the printed local URL.

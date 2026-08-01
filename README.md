@@ -1,18 +1,22 @@
 # Pinochle
 
-A Partnership Pinochle game, built from scratch: a shipped TypeScript
-PWA, plus a Python reference implementation that doubles as the
-AI-research and measurement harness.
+A Partnership Pinochle game, built from scratch: a TypeScript PWA, plus
+a Python reference implementation that doubles as the AI-research and
+measurement harness.
 
 ## Status
 
-**The game is live at <https://slippedup42.github.io/pinochle/>.** The
-PWA in [`web/`](web/) is the product — a complete game against three AI
-opponents: deal, misdeal, auction, trump, 3-card pass, meld, trick play,
-round scoring, and multi-round games to ±1000, across five difficulty
-levels, with local autosave across a page reload and installability. It
-deploys from `main` on any push touching `web/`
-(`.github/workflows/deploy-pages.yml`).
+The PWA in [`web/`](web/) is the product — a complete game against three
+AI opponents: deal, misdeal, auction, trump, 3-card pass, meld, trick
+play, round scoring, and multi-round games to ±1000, across five
+difficulty levels, with local autosave across a page reload.
+
+**It is not currently hosted anywhere.** GitHub holds the code only —
+there is no deploy pipeline and no public URL. Run it locally with
+`npm run dev` in [`web/`](web/); see [`web/README.md`](web/README.md).
+The manifest and service worker are still built, so the app stays
+installable from wherever it is eventually served — but "Add to Home
+Screen" needs a real host, so it is unavailable until there is one.
 
 The Python side has two live roles: it is the reference implementation
 the TypeScript port is checked against, *and* the harness all the AI
@@ -42,9 +46,9 @@ is where the next round of strategy work will run. See
 
 ## Contents
 
-- [`web/`](web/) — **the shipped product**: the React + TypeScript +
-  Vite + Tailwind PWA, live at <https://slippedup42.github.io/pinochle/>.
-  Has its own [`web/README.md`](web/README.md). Inside it:
+- [`web/`](web/) — **the product**: the React + TypeScript + Vite +
+  Tailwind PWA. Run locally; not currently hosted. Has its own
+  [`web/README.md`](web/README.md). Inside it:
   - `src/engine/` — the TypeScript rules engine, split one file per
     concern (`card.ts`, `melds.ts`, `bidding.ts`, `passing.ts`,
     `trick.ts`, `tracker.ts`, `round.ts`, `game.ts`, `misdeal.ts`,

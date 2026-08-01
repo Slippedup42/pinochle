@@ -57,11 +57,13 @@ export interface SkillParams {
 /**
  * The dial.
  *
- * #114 landed the evaluator wired but switched on for nobody, because pushing
- * to `main` deploys to GitHub Pages and `DEFAULT_OPTIONS` puts both AI seats on
- * `hard` — enabling it there changes every seat of the default game on merge,
- * and #114 could describe the behaviour change without judging it. #115
- * measured it, and the gate is now open for `hard` and above.
+ * #114 landed the evaluator wired but switched on for nobody. At the time a
+ * push to `main` deployed straight to GitHub Pages, and `DEFAULT_OPTIONS` puts
+ * both AI seats on `hard`, so enabling it there would have changed every seat
+ * of the default game on merge — and #114 could describe the behaviour change
+ * without judging it. #115 measured it, and the gate is now open for `hard`
+ * and above. (The Pages deployment was removed on 2026-08-01; the reasoning
+ * stands on its own, since merging is still what makes a change real.)
  *
  * What #115 found, over 1000 paired deals played twice with the seats mirrored
  * (2000 headless games, `src/ab/`):
