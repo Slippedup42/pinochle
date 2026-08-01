@@ -27,12 +27,13 @@ Cross-cutting technical structure, not any single feature:
   still holds.** TypeScript in `web/` is the shipped product; Python is
   the reference implementation *and* the AI-research and measurement
   harness. Both are live — Python is not frozen. What crosses the
-  boundary is a generated artifact rather than a hand-port
-  (`export_evaluator.py` → `web/src/engine/evaluatorModel.ts` +
-  `evaluatorParity.fixture.ts`, with `--check` failing the Python suite
-  on drift), and Python stays authoritative for ported rules constants.
+  boundary is a generated artifact rather than a hand-port —
+  `export_evaluator.py` → `evaluatorModel.ts`/`evaluatorParity.*` and
+  `export_parity_scenarios.py` → `engineParity.*`, each with a
+  `--check` that fails the Python suite when the committed TypeScript
+  has drifted. Python stays authoritative for ported rules constants.
   Watch the seams: hand-ported constants and formulas in
-  `web/src/engine/`, and the parity net `ROADMAP.md` tracks.
+  `web/src/engine/` that no fixture covers.
 - PWA and hosting structure. The app is live at
   <https://slippedup42.github.io/pinochle/>, built per
   `web/vite.config.ts` (the `/pinochle/` `base`, `vite-plugin-pwa`'s

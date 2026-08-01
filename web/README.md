@@ -26,13 +26,14 @@ npm test        # vitest
 - `src/engine/` — the ported rules engine, one file per concern rather than
   one module with section breaks, each with a matching `*.test.ts`:
   `card.ts`, `melds.ts`, `bidding.ts`, `passing.ts`, `trick.ts`, `tracker.ts`,
-  `round.ts`, `game.ts`, `misdeal.ts`, and `names.ts`/`teamNames.ts`. Tests
-  cover the same edge cases as the Python `__main__` self-checks (Double Run
-  vs. Run, Double Pinochle vs. Pinochle, etc.) plus additional coverage.
+  `round.ts`, `game.ts`, `misdeal.ts`, and `names.ts`/`teamNames.ts`. Those
+  tests cover the same edge cases as the Python `__main__` self-checks (Double
+  Run vs. Run, Double Pinochle vs. Pinochle, etc.) plus additional coverage.
   Alongside them: `skills.ts` (`SKILL_PARAMS`, the five-level difficulty
-  dial) and the shipped AI — `evaluator.ts` plus the generated
-  `evaluatorModel.ts` and `evaluatorParity.fixture.ts`, which come out of
-  `../export_evaluator.py` and are never hand-edited.
+  dial), the shipped AI (`evaluator.ts`), and two generated fixture pairs that
+  check this engine against the Python reference and are never hand-edited —
+  `evaluatorModel.ts` + `evaluatorParity.*` from `../export_evaluator.py`, and
+  `engineParity.*` from `../export_parity_scenarios.py` (described below).
 - `src/App.tsx` — four lines; renders `<GameShell />`.
 - `src/components/` — the UI and the reducers behind it. `GameShell.tsx` owns
   the start-menu/in-game split and the Options overlay; `gameFlowReducer.ts`
