@@ -268,6 +268,28 @@ describe('chooseBid', () => {
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
     })
 
+    it('does not open a hopeless first-bidder hand outside dealer-protection (#126)', () => {
+      // The first seat to speak (passesSoFar 0) used to open at OPENING_BID
+      // unconditionally, which made this the first thing that happened on every
+      // deal and left OPENER_THRESHOLD unreachable. `Player.choose_bid` has no
+      // such tier: with dealer-protection not applicable, the hand decides.
+      // Pinned to a 'static' level so the assertion is about the threshold rule
+      // rather than about the evaluator (#114/#115).
+      // Dealer-protection scores, but the dealer is an opponent, so the tier
+      // does not apply and a hopeless hand stays out of the auction.
+      const context = baseContext({ dealer: 1, scores: { 0: 850, 1: 400 } })
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+      // Same seat, a hand whose ceiling clears the threshold: it opens.
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, baseContext({ dealer: 1 }), 'medium')).toBe(OPENING_BID)
+    })
+
+    it('dealer-protection does not fire when my score is too low or the opponent too close', () => {
+      const scoreTooLow = baseContext({ dealer: 2, scores: { 0: 840, 1: 400 } })
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, scoreTooLow, 'medium')).toBeNull()
+      const oppTooClose = baseContext({ dealer: 2, scores: { 0: 850, 1: 500 } })
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, oppTooClose, 'medium')).toBeNull()
+    })
+
     it('passes for a weak-handed 4th bidder when partner has already had a turn', () => {
       // 4th bidder (passesSoFar=3, dealer=player): partner has had a turn,
       // and the weak hand's ceiling (130) doesn't clear OPENER_THRESHOLD.

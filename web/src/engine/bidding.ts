@@ -473,9 +473,15 @@ export function chooseBid(
       : staticVerdict
 
   if (!context.everBid) {
-    // If partner hasn't had their turn yet (first two bidders), always open
-    // to protect against the auction passing out cheaply.
-    if (context.passesSoFar < 2) {
+    // Dealer-protection, restored from `Player.choose_bid` by the #126 audit.
+    // This tier was dropped in aeb97b3 — the same hand-port slip that took
+    // NEAR_RUN_VALUE/NEAR_DOUBLE_PINOCHLE_VALUE to 60/60 (#118) — and replaced
+    // with "the first two seats always open at 300 regardless of hand". Since
+    // the auction starts with nobody having passed, that rule fired on the very
+    // first seat of every deal, so the opener threshold below was effectively
+    // unreachable and no opening decision was ever a hand judgement.
+    const partnerIsDealer = partner === context.dealer
+    if (partnerIsDealer && myScore >= 850 && oppScore < 500) {
       return OPENING_BID
     }
 

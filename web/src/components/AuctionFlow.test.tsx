@@ -278,7 +278,14 @@ describe('AuctionFlow (component)', () => {
     expect(result.hands[0].some((c) => c.suit === Suit.Hearts && c.rank === 'Q')).toBe(false)
   })
 
-  it('lets a weak-handed AI open as first bidder (partner has not yet had a turn)', () => {
+  // This case used to read "lets a weak-handed AI open as first bidder (partner
+  // has not yet had a turn)" and asserted seat 2 opening at 300 on a 3-card hand
+  // worth nothing. That is not a rule the reference engine has: it came from the
+  // `passesSoFar < 2 -> always open` branch aeb97b3 substituted for
+  // `Player.choose_bid`'s dealer-protection tier, which the #126 audit removed.
+  // The test was green throughout and documented the bug as intended behaviour —
+  // exactly the trap #118 told this audit to watch for.
+  it('passes the auction out to a forced bid when no hand justifies opening (#126)', () => {
     vi.useFakeTimers()
     const hands = buildTestHands()
     const onComplete = vi.fn()
@@ -294,44 +301,51 @@ describe('AuctionFlow (component)', () => {
       />,
     )
 
-    // Left of dealer (1) is seat 2 (Partner) — always opens as first bidder.
+    // Left of dealer (1) is seat 2 (Partner). Its ceiling is far under
+    // OPENER_THRESHOLD and its partner is not the dealer, so it passes.
     act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
-    // Bid amount visible in Scoreboard
-    expect(screen.getByText('300')).not.toBeNull()
-
-    // East (seat 3, opponent holds the bid) passes automatically — the human's turn now.
+    // East (seat 3) passes on the same reasoning — then it is the human's turn.
     act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
     expect(screen.getByRole('button', { name: 'Pass' })).not.toBeNull()
 
-    // Human (seat 0, teammate holds the bid) manually passes.
+    // The human passes too: 3 passes with nobody having bid sticks the dealer
+    // (seat 1) with FORCED_BID. Bidder (1) and partner (3) are both AI, so
+    // naming trump and the 3-card exchange need no human input.
     fireEvent.click(screen.getByRole('button', { name: 'Pass' }))
-
-    // West (seat 1, opponent holds the bid, weak hand) passes — 3 passes
-    // after a bid ends the auction. The AI bid winner (Partner) chooses trump
-    // automatically after a delay, then the AI selects pass cards.
     act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
     act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
-
-    // The human (Partner's partner) sees the pass selector to send cards to the bidder.
-    const passHeading = screen.getByRole('heading', { name: /Choose 3 cards to pass/ })
-    const passPanel = within(passHeading.closest('div') as HTMLElement)
-
-    fireEvent.click(passPanel.getByRole('img', { name: 'A of C' }))
-    fireEvent.click(passPanel.getByRole('img', { name: 'K of D' }))
-    fireEvent.click(passPanel.getByRole('img', { name: 'Q of H' }))
-    fireEvent.click(passPanel.getByRole('button', { name: 'Confirm pass' }))
-
-    // AI bidder passes 3 cards back to the human (simultaneous — already queued).
-    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
-
-    // Pass-reveal: human sees what the bidder sent back
-    expect(screen.getByText('Partner passed you 3 cards')).not.toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(onComplete).toHaveBeenCalledOnce()
     const result = onComplete.mock.calls[0][0] as AuctionResult
-    expect(result.bidWinner).toBe(2)
-    expect(result.bid).toBe(300)
-    expect(result.trumpSuit).toBe(Suit.Clubs)
+    expect(result.bidWinner).toBe(1)
+    expect(result.bid).toBe(FORCED_BID)
+  })
+
+  it('opens as first bidder on a hand that clears the opener threshold', () => {
+    vi.useFakeTimers()
+    const hands = buildTestHands()
+    // Seat 2 gets a full club Run plus a spare Royal Marriage: Base Bid 210,
+    // ceiling 340 at 0/0 — over OPENER_THRESHOLD (320).
+    hands[2] = [
+      ...(['A', '10', 'K', 'Q', 'J'] as const).map((r) => new Card(Suit.Clubs, r, 1)),
+      new Card(Suit.Clubs, 'K', 2),
+      new Card(Suit.Clubs, 'Q', 2),
+    ]
+    const onComplete = vi.fn()
+
+    render(
+      <AuctionFlow
+        initialHands={hands}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        dealer={1}
+        scoresByTeam={SCORES}
+        onComplete={onComplete}
+      />,
+    )
+
+    // Left of dealer (1) is seat 2 (Partner), and this hand is worth a contract.
+    act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+    expect(screen.getByText('300')).not.toBeNull()
   })
 })
