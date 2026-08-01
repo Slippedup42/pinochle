@@ -1,7 +1,7 @@
 """
 Focused tests for issue #53 - EasyPlayer AI tier and Game.from_players().
-Not a full pytest suite (that's separately deferred, Phase 2) - just plain
-assert-based, pytest-discoverable tests covering:
+One file within the full `pytest` suite (`python -m pytest -q`), scoped
+to plain assert-based, pytest-discoverable tests covering:
 
   1. EasyPlayer only ever produces *legal* moves at each decision point
      (bid, trump, pass, trick-play), across varied hands.
@@ -11,9 +11,10 @@ assert-based, pytest-discoverable tests covering:
 Note: this file used to also cover RandomPlayer (issue #53/PR #55), which
 made uniformly-random legal moves at every decision point. It was removed
 in issue #58 per changed product direction - no tier should ever make a
-literal random move. A "Random" tier will return once GeneralStrategy
-exists (see #57/#63), as a random draw over its skill levels rather than
-its own strategy class, at which point it'll get its own coverage here.
+literal random move. The replacement has since landed as `RandomStrategy`
+(issue #63): a random draw over `GeneralStrategy`'s skill levels rather
+than a strategy class of its own. It is covered in
+`test_general_strategy.py`, not here.
 
 Run directly (`python test_ai_tiers.py`) or via pytest.
 """

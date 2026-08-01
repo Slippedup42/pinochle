@@ -1,9 +1,16 @@
 # Pinochle — web client
 
-The PWA client, per [`ROADMAP.md`](../ROADMAP.md) Phase 1. React + TypeScript +
-Vite + Tailwind CSS. The game engine (`src/engine/`) is a TypeScript port of
-the Python reference implementation (`../pinochle_engine.py`, frozen — see
-root `ROADMAP.md`).
+The shipped product — React + TypeScript + Vite + Tailwind CSS, live at
+<https://slippedup42.github.io/pinochle/> and deployed from `main` on any
+push touching `web/`. A complete game against three AI opponents.
+
+The rules engine (`src/engine/`) is a TypeScript port of the Python
+reference implementation (`../pinochle_engine.py`). Both sides are active
+and neither is winding down: player-visible behaviour lands here, while
+Python stays authoritative for ported rules constants and is where the AI
+research and measurement run. The root [`README.md`](../README.md) and
+[`CLAUDE.md`](../CLAUDE.md) describe that split; [`ROADMAP.md`](../ROADMAP.md)
+has the sequencing.
 
 ## Running
 
@@ -16,12 +23,24 @@ npm test        # vitest
 
 ## Structure
 
-- `src/engine/` — ported rules engine (`card.ts`: `Card`/`Deck`; `melds.ts`:
-  `scoreMelds`), one file per concern, mirroring the Python module's section
-  breaks. Each ported piece carries matching tests (`*.test.ts`) covering the
-  same edge cases as the Python `__main__` self-checks (Double Run vs. Run,
-  Double Pinochle vs. Pinochle, etc.) plus additional coverage.
-- `src/App.tsx` — UI shell, currently a placeholder.
+- `src/engine/` — the ported rules engine, one file per concern rather than
+  one module with section breaks, each with a matching `*.test.ts`:
+  `card.ts`, `melds.ts`, `bidding.ts`, `passing.ts`, `trick.ts`, `tracker.ts`,
+  `round.ts`, `game.ts`, `misdeal.ts`, and `names.ts`/`teamNames.ts`. Those
+  tests cover the same edge cases as the Python `__main__` self-checks (Double
+  Run vs. Run, Double Pinochle vs. Pinochle, etc.) plus additional coverage.
+  Alongside them: `skills.ts` (`SKILL_PARAMS`, the five-level difficulty
+  dial), the shipped AI (`evaluator.ts`), and two generated fixture pairs that
+  check this engine against the Python reference and are never hand-edited —
+  `evaluatorModel.ts` + `evaluatorParity.*` from `../export_evaluator.py`, and
+  `engineParity.*` from `../export_parity_scenarios.py` (described below).
+- `src/App.tsx` — four lines; renders `<GameShell />`.
+- `src/components/` — the UI and the reducers behind it. `GameShell.tsx` owns
+  the start-menu/in-game split and the Options overlay; `gameFlowReducer.ts`
+  drives a round end to end, with `auctionReducer.ts` and
+  `trickPlayReducer.ts` owning the auction and trick phases.
+- `src/persistence/` — localStorage autosave (`gameSave.ts`) and stored
+  options.
 - `src/ab/` — the measurement harness (issue #115). Not shipped: nothing under
   `src/` outside the App's import graph reaches the bundle. See below.
 
