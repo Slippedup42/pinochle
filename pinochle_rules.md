@@ -171,13 +171,15 @@ peers:
   product; it is live at <https://slippedup42.github.io/pinochle/>,
   deployed from `main` by `.github/workflows/deploy-pages.yml` on any
   push touching `web/`. A rule that is wrong here is wrong for players.
-- **Python, `pinochle_engine.py` — the frozen reference.** It
-  implements all of the above end-to-end and is tested (deal integrity,
-  legal-move filtering, meld edge cases, bidding/passing card counts,
-  full multi-round games to a winner), and it is still where offline
-  strategy research runs. It is not an active target for shipped
-  behaviour (ROADMAP.md Phase 2) — new player-visible work lands in
-  TypeScript.
+- **Python, `pinochle_engine.py` — the reference implementation, and
+  the research harness.** It implements all of the above end-to-end and
+  is tested (deal integrity, legal-move filtering, meld edge cases,
+  bidding/passing card counts, full multi-round games to a winner), and
+  it is where offline strategy research runs. It is not an active
+  target for *shipped rules behaviour* — new player-visible work lands
+  in TypeScript — but it is not frozen either: the whole rollout/EV/
+  distillation program lives here and is actively developed. See
+  ROADMAP.md's "Settled questions" for the full statement of the split.
 
 ### The AI is real strategy, not placeholders
 
@@ -271,7 +273,9 @@ with the seats mirrored, not on impressions: `ab_harness.py` in Python,
   `InteractiveRound._check_misdeal` remains the only implementation.
   The core `Round.run()` used by AI-only games goes straight from
   `_deal()` into `_bidding_loop()`, so Python AI-vs-AI games and
-  `tournament_sim.py` runs never reshuffle. Left alone on purpose now
-  that `pinochle_engine.py` is a frozen reference — fixing it would
-  change every historical Python tuning baseline for a rule the shipped
-  engine already honours.
+  `tournament_sim.py` runs never reshuffle. Left alone on purpose:
+  closing it would change every historical Python tuning baseline, for
+  a rule the shipped engine already honours. That is a measurement
+  cost, not a shortage of effort — the reason to leave it is that the
+  Python side is still actively used for research, not that it is
+  closed to change.
