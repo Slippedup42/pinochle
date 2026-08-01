@@ -162,20 +162,116 @@ Legal-move rules, applied in order:
 
 ## Implementation Notes (for future chats picking this up)
 
-- `pinochle_engine.py` implements all of the above end-to-end and has
-  been tested (deal integrity, legal-move filtering, meld edge cases,
-  bidding/passing card counts, and full multi-round games to a winner).
-- `choose_bid`, `choose_trump`, `choose_pass_cards`, and `choose_card`
-  on `Player` are currently **placeholder logic** (coin-flip bidding,
-  most-cards-held trump choice, random passing, first-legal-move play).
-  These are the seams where real strategy (or human input) gets added
-  next — the rules engine itself doesn't need to change for that.
-- The misdeal/reshuffle house rule above is only implemented in
-  `human_play.py`'s `InteractiveRound._check_misdeal` — the core
-  `Round.run()` used by AI-only games never calls it, so AI-vs-AI games
-  and tournament-sim runs currently skip reshuffles entirely. Known
-  Python-side parity gap, deferred with the rest of Phase 2 hardening
-  (see ROADMAP.md) since `pinochle_engine.py` is now a frozen reference
-  for the TS port rather than an active target. The TS port's dealing
-  flow (`round.ts`) should implement this rule correctly from the
-  start rather than inheriting the gap.
+### Which engine is the real one
+
+There are two implementations of the rules above, and they are not
+peers:
+
+- **TypeScript, `web/src/engine/` — the shipped one.** The PWA is the
+  product; it is live at <https://slippedup42.github.io/pinochle/>,
+  deployed from `main` by `.github/workflows/deploy-pages.yml` on any
+  push touching `web/`. A rule that is wrong here is wrong for players.
+- **Python, `pinochle_engine.py` — the frozen reference.** It
+  implements all of the above end-to-end and is tested (deal integrity,
+  legal-move filtering, meld edge cases, bidding/passing card counts,
+  full multi-round games to a winner), and it is still where offline
+  strategy research runs. It is not an active target for shipped
+  behaviour (ROADMAP.md Phase 2) — new player-visible work lands in
+  TypeScript.
+
+### The AI is real strategy, not placeholders
+
+An earlier version of this section claimed `choose_bid`,
+`choose_trump`, `choose_pass_cards`, and `choose_card` on `Player` were
+placeholder logic — coin-flip bidding, most-cards-held trump, random
+passing, first-legal-move play. That has not been true since the
+Proficient tier landed. What they actually do:
+
+- `choose_bid` — Proficient bidding on the layered Base Bid valuation
+  (`best_base_bid` → `compute_competitive_adjustment` → `max_bid`'s
+  cap), plus positional and score-context rules: the opener threshold,
+  a forced open as third bidder, dealer protection when a partner
+  dealing near 1000 is a target for a pass-out, the
+  `DEFENSIVE_PUSH_FLOOR` response to a minimum opener, and backing off
+  once a partner is carrying the auction.
+- `choose_trump` — the same per-suit Base Bid comparison, so trump
+  follows real speculative hand strength rather than raw card count.
+- `choose_pass_cards` — role-aware (bidder vs. partner) and split by
+  trump category (Spades/Diamonds vs. Hearts/Clubs), via
+  `_bidder_pass_selection` / `_partner_pass_selection`.
+- `choose_card` — `choose_lead_card` / `choose_follow_card`, reasoning
+  over `PlayTracker`'s record of which of the two copies of each card
+  have already been played.
+- `decide_fold` — whether to concede the contract rather than play it
+  out, asked of the bid winner after meld and before the first lead.
+  Proficient always plays on, deliberately: conceding well needs a read
+  on the tricks that this tier has no way to get.
+
+The degenerate behaviours the old note described do still exist, as
+explicit fallbacks for when a method is called with no context
+(`context is None`, no `trump_suit`/`is_bid_winner`, no `trick`). They
+keep the methods usable in isolation and keep older tests working; a
+real `Round` never reaches them.
+
+### Tiers and the skill dial
+
+- `EasyPlayer` — additive subclass: meld-only hand valuation, static
+  formula plus noise for bidding, flat per-card passing, lowest legal
+  card when following.
+- `GeneralStrategy` — one subclass parameterized by skill level 1–5
+  (`GENERAL_STRATEGY_SKILL_PARAMS`), a dial rather than a branch to a
+  different algorithm. Levels 4–5 spend a rollout budget; 1–3 run the
+  static paths.
+- `RandomStrategy` — draws a skill level once at construction; every
+  move afterwards is ordinary `GeneralStrategy`.
+- `pinochle_rollout.py` — the Monte Carlo determinization + playout
+  sampler behind all of that: `bid_ev` / `bid_ev_differential`,
+  `defend_ev`, `should_fold`, the auto-SET guard, and (via
+  `win_probability.py`) an optional P(win the game) objective.
+
+### How the AI reaches the browser
+
+Full rollouts cannot run in a phone browser, so the expensive thinking
+is done offline and only the conclusion ships:
+
+`generate_rollout_dataset.py` (labelled real decisions) →
+`fit_evaluator.py` (two logistic models, one for bidding and one for
+folding) → `rollout_evaluator.json` → `export_evaluator.py` →
+`web/src/engine/evaluatorModel.ts`, plus a parity fixture the TS suite
+scores against the Python model so the two sides cannot drift.
+
+On the TS side the decision entry points are `chooseBid` /
+`chooseTrump` (`bidding.ts`), `choosePassCards` (`passing.ts`),
+`chooseLeadCard` / `chooseFollowCard` (`tracker.ts`), and `shouldBid` /
+`shouldConcede` (`evaluator.ts`). `SKILL_PARAMS` in `skills.ts` is the
+dial: `hard` and above bid with the distilled evaluator, `easy` and
+`medium` keep the hand-tuned constants, and **all five levels fold with
+the model** — a fold costs the same as being set (`-bid`, meld
+forfeited either way) and denies the defenders their trick points, so
+it is strictly dominant and belongs to shared competence rather than to
+the difficulty dial.
+
+Any strategy change is judged on a paired A/B run over identical deals
+with the seats mirrored, not on impressions: `ab_harness.py` in Python,
+`web/src/ab/` in TypeScript.
+
+### Misdeal rule: where it is implemented
+
+- **TypeScript (shipped): implemented, for every game mode**, so the
+  "applies uniformly across every game mode" line in the rule above is
+  accurate for the engine players actually meet. The pure eligibility
+  check is `web/src/engine/misdeal.ts` (`isMisdealEligible`,
+  `MISDEAL_NINE_THRESHOLD = 5`); the check-each-seat-in-order /
+  ask-the-human / auto-take-for-an-AI / redeal-and-recheck loop is
+  UI-layer state in `gameFlowReducer.ts` + `GameFlow.tsx`, and
+  `web/src/ab/headlessGame.ts` redeals the same way for AI-only harness
+  games. (An earlier note predicted this would land in `round.ts` —
+  it did not; `round.ts` picks up after trump is set.)
+- **Python: still a gap.** `human_play.py`'s
+  `InteractiveRound._check_misdeal` remains the only implementation.
+  The core `Round.run()` used by AI-only games goes straight from
+  `_deal()` into `_bidding_loop()`, so Python AI-vs-AI games and
+  `tournament_sim.py` runs never reshuffle. Left alone on purpose now
+  that `pinochle_engine.py` is a frozen reference — fixing it would
+  change every historical Python tuning baseline for a rule the shipped
+  engine already honours.
