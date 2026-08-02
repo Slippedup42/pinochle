@@ -2648,6 +2648,13 @@ class Round:
         self.trump_suit = None
         self.tracker = PlayTracker()
         self.conceded = False  # set by _concede_phase (issue #100)
+        # True when this round's concession was forced by the auto-SET rule
+        # rather than chosen by the bid winner (issue #178). A strict subset of
+        # `conceded`, kept separate so harnesses can report how often the rule
+        # actually fires - the frequency is what says whether the rule matters,
+        # and it is not recoverable from `conceded` alone once the fold model
+        # also concedes hands.
+        self.auto_set = False
 
     def run(self):
         self._deal()
@@ -2772,10 +2779,34 @@ class Round:
         Only the bid winner is asked: their partner cannot concede a contract
         they did not take, and the defending team has nothing to concede.
 
-        Sets and returns `self.conceded`.
+        Two things can end the round here, in this order:
+
+          1. Auto-SET (issue #178, `pinochle_expert_ai_strategy.md` Section 5).
+             When the bidding team's meld plus every trick point in the round
+             still falls short of the bid, the contract is arithmetically
+             unmakeable: winning all twelve tricks cannot reach it, and playing
+             on can only hand the defenders trick points a concession denies
+             them. `pinochle_rollout.is_auto_set` has pruned exactly this case
+             inside rollouts since #59; #178 is what applies it to a real game.
+             Not a decision, so nobody is asked - it fires for every tier,
+             including the ones whose `decide_fold` never folds, and it fires
+             ahead of `decide_fold` because that is a probabilistic judgement
+             and this is not. A hand that cannot be made must never reach an
+             evaluator that might talk it into playing on.
+
+          2. The bid winner's own `decide_fold`, for everything else.
+
+        Sets `self.auto_set`, and sets and returns `self.conceded`.
         """
+        from pinochle_rollout import is_auto_set
+
         bidding_team = self.bid_winner.team
         defending_team = next(t for t in self.teams if t is not bidding_team)
+
+        if is_auto_set(bidding_team.meld_points, self.current_bid):
+            self.auto_set = True
+            self.conceded = True
+            return True
 
         self.conceded = bool(
             self.bid_winner.decide_fold(

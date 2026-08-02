@@ -1,4 +1,4 @@
-// CLI entry point for the A/B measurements (#115, #123, #153).
+// CLI entry point for the A/B measurements (#115, #123, #153, #178).
 //
 // Run through jiti, which is already a dependency (Tailwind pulls it in) and
 // executes TypeScript directly, so this needs no build step and no new package:
@@ -6,6 +6,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts ab --pairs 400
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts fold --pairs 400
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts play --pairs 400
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts autoset --pairs 5000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts latency --positions 4000
 //
@@ -16,10 +17,12 @@
 //
 // `--policy` names which arm the self-test doubles up, and so also which dial
 // it exercises: `static`/`distilled` are the bidding pair, `simple`/`cascade`
-// the trick-play pair. Worth having each separately — a self-test that never
-// runs a policy cannot vouch for it, and the paths differ in what could go
-// wrong (the evaluator is the one that could be non-deterministic; card play is
-// the one reached tens of times per round rather than once per auction).
+// the trick-play pair, `auto-set` the #178 one. Worth having each separately —
+// a self-test that never runs a policy cannot vouch for it, and the paths
+// differ in what could go wrong (the evaluator is the one that could be
+// non-deterministic; card play is the one reached tens of times per round
+// rather than once per auction; auto-SET is the one that ends a round early and
+// so is the one that could desynchronise dealer rotation or scoring).
 //
 // `process` is reached through `globalThis` because tsconfig.app.json does not
 // load Node's types — this file lives under `src` so it is type-checked with
@@ -29,6 +32,7 @@
 import type { SkillParams } from '../engine/skills'
 import type { SkillLevel } from '../persistence/options'
 import {
+  AUTO_SET_AB_POLICIES,
   BID_AB_POLICIES,
   DISTILLED_LEVEL,
   FOLD_AB_POLICIES,
@@ -47,6 +51,7 @@ const SELFTEST_ARMS: Record<string, { level: SkillLevel; policies: Record<string
   distilled: { level: DISTILLED_LEVEL, policies: BID_AB_POLICIES },
   simple: { level: STATIC_LEVEL, policies: PLAY_AB_POLICIES },
   cascade: { level: DISTILLED_LEVEL, policies: PLAY_AB_POLICIES },
+  'auto-set': { level: DISTILLED_LEVEL, policies: AUTO_SET_AB_POLICIES },
 }
 
 const argv = (globalThis as { process?: { argv: string[] } }).process?.argv ?? []
@@ -70,6 +75,19 @@ if (command === 'fold') {
     labelA: 'fold',
     labelB: 'no-fold',
     policies: FOLD_AB_POLICIES,
+  })
+  console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'autoset') {
+  // #178's measurement: identical distilled bidders, both consulting the fold
+  // model, one also forced to throw in a contract the arithmetic has killed.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: 'auto-set',
+    labelB: 'play-it-out',
+    policies: AUTO_SET_AB_POLICIES,
   })
   console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'play') {
@@ -113,7 +131,7 @@ if (command === 'fold') {
   console.log(formatLatency(runLatencyBenchmark(positions, repeats)))
 } else {
   console.log(
-    'usage: cli.ts [ab|fold|play|selftest|latency] [--pairs N] [--seed N] ' +
+    'usage: cli.ts [ab|fold|play|autoset|selftest|latency] [--pairs N] [--seed N] ' +
       `[--policy ${Object.keys(SELFTEST_ARMS).join('|')}] [--positions N] [--repeats N]`,
   )
 }

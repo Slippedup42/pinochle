@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Card, Suit } from '../engine/card'
 import { shouldConcede } from '../engine/evaluator'
-import { partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
+import { isAutoSet, partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
 import { SKILL_PARAMS } from '../engine/skills'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
 import type { PlayerIndex } from '../engine/trick'
@@ -11,6 +11,7 @@ import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
 import { AuctionLog } from './AuctionLog'
+import { AutoSetNotice } from './AutoSetNotice'
 import { ConfirmDialog } from './ConfirmDialog'
 import { TrickLog } from './TrickLog'
 import {
@@ -33,8 +34,9 @@ export interface TrickPlayFlowProps {
   seatNames: Record<PlayerIndex, string>
   humanPlayer: PlayerIndex
   scoresByTeam: Record<TeamId, number>
-  /** Meld points per team, computed during the meld phase, used to
-   * detect mathematically impossible contracts for the concede button. */
+  /** Meld points per team, computed during the meld phase. Feeds the
+   * scoreboard, `shouldConcede`'s fold model, and the auto-SET check (#178)
+   * that detects a mathematically impossible contract before the first lead. */
   meldPointsByTeam: Record<TeamId, number>
   /** Full auction/pass event log (#77), kept visible during trick-play so
    * the human can review every bid, who bid, and the amounts. */
@@ -129,6 +131,12 @@ export function TrickPlayFlow({
   const trackerRef = useRef(new PlayTracker())
   const completedRef = useRef(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  // Set when the auto-SET rule (#178) fires, cleared when the player
+  // acknowledges the notice. While true it holds the round open: the CONCEDE
+  // has already been dispatched and the hand is decided, but `onComplete`
+  // (below) waits for this to clear before handing off, so the round summary
+  // cannot appear before the explanation of why no cards were played.
+  const [autoSetFired, setAutoSetFired] = useState(false)
 
   // Concede/fold for an AI bid winner (#123), in the same window the human's
   // fold button gets: after meld, before the first card of the round.
@@ -147,19 +155,40 @@ export function TrickPlayFlow({
   useEffect(() => {
     if (foldAskedRef.current) return
     if (state.phase !== 'playing' || cardsPlayed > 0) return
-    if (bidWinner === humanPlayer) return
     foldAskedRef.current = true
+
+    const biddingTeam = teamOf(bidWinner)
+    const biddingMeld = meldPointsByTeam[biddingTeam]
+
+    // Auto-SET (#178) comes first, and applies to *every* bid winner including
+    // the human — hence ahead of the `bidWinner === humanPlayer` guard below
+    // and of any skill lookup. When meld plus all 250 trick points still falls
+    // short of the bid the contract is arithmetically dead, and `shouldConcede`
+    // is a fitted probability model: a hand that cannot be made must never
+    // reach a probabilistic evaluator to be talked into playing on.
+    //
+    // CONCEDE is dispatched immediately rather than on the player's
+    // acknowledgement, so `state.phase` becomes 'complete' in this same commit
+    // and the AI-play effect below stops for the same reason it stops after a
+    // human fold. What waits for the acknowledgement is `onComplete`, not the
+    // fold.
+    if (isAutoSet(biddingMeld, bid)) {
+      setAutoSetFired(true)
+      dispatch({ type: 'CONCEDE' })
+      return
+    }
+
+    if (bidWinner === humanPlayer) return
 
     const skill = skillForPlayer(bidWinner, humanPlayer, options)
     if (SKILL_PARAMS[skill].foldPolicy !== 'model') return
 
-    const biddingTeam = teamOf(bidWinner)
     if (
       shouldConcede({
         hand: state.hands[bidWinner],
         trump: state.trumpSuit,
         bid,
-        biddingMeld: meldPointsByTeam[biddingTeam],
+        biddingMeld,
         defendingMeld: meldPointsByTeam[(1 - biddingTeam) as TeamId],
       })
     ) {
@@ -198,9 +227,13 @@ export function TrickPlayFlow({
     return () => clearTimeout(timer)
   }, [state.phase, state.trickWinners.length])
 
-  // Fire onComplete exactly once, when all 12 tricks are done (or human conceded).
+  // Fire onComplete exactly once, when all 12 tricks are done (or the hand was
+  // conceded). An unacknowledged auto-SET notice (#178) holds this back — the
+  // round is already decided, but handing off would unmount this component and
+  // take the explanation with it, leaving the player at a round summary for a
+  // hand they never saw played.
   useEffect(() => {
-    if (state.phase !== 'complete' || completedRef.current) return
+    if (state.phase !== 'complete' || completedRef.current || autoSetFired) return
     completedRef.current = true
     const result: TrickPlayResult = {
       trickPointsByTeam: state.trickPointsByTeam,
@@ -208,7 +241,7 @@ export function TrickPlayFlow({
       ...(state.conceded ? { conceded: true } : {}),
     }
     onComplete?.(result)
-  }, [state, onComplete])
+  }, [state, onComplete, autoSetFired])
 
   // Local autosave (#54): checkpoint after each completed trick — i.e.
   // whenever currentTrick is empty (a fresh trick just started, or all 12
@@ -217,8 +250,15 @@ export function TrickPlayFlow({
   // cards until CLEAR_TRICK fires) — "not mid-animation", per #54.
   useEffect(() => {
     if (state.currentTrick.length > 0) return
+    // Don't checkpoint an auto-SET (#178) that has not been acknowledged yet.
+    // The state is already 'complete', so saving it would resume straight past
+    // the explanation into the round summary. Leaving the checkpoint null makes
+    // a resume re-enter trick-play from scratch, where the rule fires again and
+    // the notice is shown again — the round is decided either way, so the only
+    // difference is whether the player gets told.
+    if (autoSetFired) return
     onCheckpoint?.(state)
-  }, [state, onCheckpoint])
+  }, [state, onCheckpoint, autoSetFired])
 
   // Concede/fold (#83): show a fold button when the human won the bid, hide
   // it after they play their first card or the hand ends.
@@ -273,8 +313,22 @@ export function TrickPlayFlow({
     setShowConfirmDialog(false)
   }, [])
 
+  const biddingTeamId = teamOf(bidWinner)
+  const defendingTeamId = (1 - biddingTeamId) as TeamId
+
   return (
     <div className="relative">
+      {autoSetFired && (
+        <AutoSetNotice
+          biddingTeamName={teamNames[biddingTeamId]}
+          defendingTeamName={teamNames[defendingTeamId]}
+          bid={bid}
+          biddingMeld={meldPointsByTeam[biddingTeamId]}
+          defendingMeld={meldPointsByTeam[defendingTeamId]}
+          humanIsBidder={bidWinner === humanPlayer}
+          onDismiss={() => setAutoSetFired(false)}
+        />
+      )}
       {canConcede && (
         <>
           <button

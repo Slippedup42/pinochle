@@ -35,7 +35,7 @@ import { shouldConcede } from '../engine/evaluator'
 import { checkGameOutcome } from '../engine/game'
 import { isMisdealEligible } from '../engine/misdeal'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
-import { type Hands, playTrickTakingPhase, scoreRound, teamOf, type TeamId } from '../engine/round'
+import { type Hands, isAutoSet, playTrickTakingPhase, scoreRound, teamOf, type TeamId } from '../engine/round'
 import { SKILL_PARAMS } from '../engine/skills'
 import { PlayTracker, chooseFollowCard, chooseLeadCard } from '../engine/tracker'
 import type { PlayerIndex } from '../engine/trick'
@@ -95,20 +95,28 @@ export function dealFromRng(rand: Rng): Hands {
 }
 
 /** Round-level behaviour for one side, aggregated across a run. Mirrors
- *  `ab_harness.SideStats`, `conceded` included since #123. A conceded contract
- *  counts in `contracts` and in `set` — it is a contract that was taken and not
- *  made, and rolling it into the set rate keeps "made %" answering the same
- *  question it did before folding existed. */
+ *  `ab_harness.SideStats`, `conceded` included since #123 and `autoSet` since
+ *  #178. A conceded contract counts in `contracts` and in `set` — it is a
+ *  contract that was taken and not made, and rolling it into the set rate keeps
+ *  "made %" answering the same question it did before folding existed.
+ *
+ *  `autoSet` is a subset of `conceded`, not a third outcome: an auto-SET *is* a
+ *  concession, taken by arithmetic instead of by the fold model. It is counted
+ *  separately because #178 asks how often the rule fires, and that frequency is
+ *  more useful than the effect size — a rule that never triggers cannot matter
+ *  however favourable its margin looks. It is counted on the arm where the rule
+ *  is enabled; the control arm plays those hands out and reads 0. */
 export interface SideStats {
   contracts: number
   made: number
   set: number
   conceded: number
+  autoSet: number
   bids: number[]
 }
 
 export function newSideStats(): SideStats {
-  return { contracts: 0, made: 0, set: 0, conceded: 0, bids: [] }
+  return { contracts: 0, made: 0, set: 0, conceded: 0, autoSet: 0, bids: [] }
 }
 
 export interface GameResult {
@@ -226,15 +234,31 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
     // — `Round._concede_phase`'s window in Python and `canConcede`'s in
     // `TrickPlayFlow`. The partner cannot concede a contract they did not take
     // and the defenders have nothing to concede.
+    //
+    // Auto-SET (#178) is tested first and short-circuits the model, exactly as
+    // in `TrickPlayFlow` and `Round._concede_phase`: the contract is
+    // unreachable by arithmetic, so there is nothing for a fitted probability
+    // to add. Unlike the two of those this one is gated on `autoSetPolicy`,
+    // which reads `'forced'` on every shipped level — the gate exists only so
+    // `AUTO_SET_AB_POLICIES` can seat an arm without the rule and measure it.
+    const params = SKILL_PARAMS[seatSkills[bidWinner]]
+    // The condition is evaluated and counted whatever the policy says, so both
+    // arms report the same statistic — "how often did this side take a contract
+    // it could not reach", which is a property of the auction, not of the rule.
+    // Only whether it *ends the round* is gated. A control arm that reported 0
+    // would make the enabled arm's rate impossible to sanity-check.
+    const autoSetCondition = isAutoSet(meldPoints[bidWinnerTeam], bid)
+    const autoSet = params.autoSetPolicy === 'forced' && autoSetCondition
     const conceded =
-      SKILL_PARAMS[seatSkills[bidWinner]].foldPolicy === 'model' &&
-      shouldConcede({
-        hand: state.hands[bidWinner],
-        trump: trumpSuit,
-        bid,
-        biddingMeld: meldPoints[bidWinnerTeam],
-        defendingMeld: meldPoints[defendingTeam],
-      })
+      autoSet ||
+      (params.foldPolicy === 'model' &&
+        shouldConcede({
+          hand: state.hands[bidWinner],
+          trump: trumpSuit,
+          bid,
+          biddingMeld: meldPoints[bidWinnerTeam],
+          defendingMeld: meldPoints[defendingTeam],
+        }))
 
     if (conceded) {
       // Same scoring as `gameFlowReducer`'s TRICK_COMPLETE concede branch: the
@@ -252,6 +276,7 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
         side.bids.push(bid)
         side.set++
         side.conceded++
+        if (autoSetCondition) side.autoSet++
       }
 
       scoresByTeam[0] += roundScore[0]
@@ -295,6 +320,10 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
       side.bids.push(bid)
       if (roundScore[bidWinnerTeam] < 0) side.set++
       else side.made++
+      // Reached only when the rule is off for this side (it forces a concede
+      // otherwise), so this counts the dead contracts the control arm played
+      // out — the same statistic the enabled arm records above.
+      if (autoSetCondition) side.autoSet++
     }
 
     scoresByTeam[0] += roundScore[0]

@@ -160,6 +160,12 @@ class SideStats:
     made: int = 0             # ...and made it
     set_: int = 0             # ...and was set (played on and failed)
     conceded: int = 0         # ...and conceded before playing
+    # ...and that concession was forced by the auto-SET rule rather than chosen
+    # (issue #178). A subset of `conceded`, not a fourth outcome. Reported
+    # because the frequency is the number that says whether the rule matters:
+    # a hard prune that almost never fires cannot move a score much, however
+    # obviously correct it is.
+    auto_set: int = 0
     bids: list = field(default_factory=list)
 
     @property
@@ -169,6 +175,10 @@ class SideStats:
     @property
     def fold_rate(self):
         return self.conceded / self.contracts if self.contracts else 0.0
+
+    @property
+    def auto_set_rate(self):
+        return self.auto_set / self.contracts if self.contracts else 0.0
 
     @property
     def make_rate(self):
@@ -313,6 +323,7 @@ class AbReport:
             f"  {'made':22s}{self.stats_a.make_rate:>{col}.1%}{self.stats_b.make_rate:>{col}.1%}",
             f"  {'set':22s}{self.stats_a.set_rate:>{col}.1%}{self.stats_b.set_rate:>{col}.1%}",
             f"  {'conceded':22s}{self.stats_a.fold_rate:>{col}.1%}{self.stats_b.fold_rate:>{col}.1%}",
+            f"  {'  of which auto-set':22s}{self.stats_a.auto_set_rate:>{col}.1%}{self.stats_b.auto_set_rate:>{col}.1%}",
             f"  {'avg bid':22s}{self.stats_a.avg_bid:>{col}.0f}{self.stats_b.avg_bid:>{col}.0f}",
         ]
         return "\n".join(lines)
@@ -354,6 +365,8 @@ def _record_round(round_, round_scores, stats_for_team):
     stats.bids.append(round_.current_bid)
     if round_.conceded:
         stats.conceded += 1
+        if round_.auto_set:
+            stats.auto_set += 1
     elif round_scores[bidding_team] < 0:
         stats.set_ += 1
     else:

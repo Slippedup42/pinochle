@@ -12,8 +12,8 @@
 // module and trick.ts keeps that future glue code consistent with
 // however bidding/passing chooses to represent players/hands.
 
-import type { Card, Suit } from './card'
-import { type PlayerIndex, Trick } from './trick'
+import { COPIES_PER_CARD, type Card, type Suit, SUITS } from './card'
+import { COUNTER_VALUE, POINT_RANKS, type PlayerIndex, Trick } from './trick'
 
 export type TeamId = 0 | 1
 
@@ -51,6 +51,41 @@ export interface TrickTakingResult {
 
 const TRICK_COUNT = 12
 const LAST_TRICK_BONUS = 10 // team that wins the 12th trick gets +10
+
+/**
+ * Every trick point that exists in one round: each counter rank, in each
+ * suit, in each of the deck's two copies, plus the last-trick bonus. 250
+ * today — 24 counters at 10, plus 10 — matching `pinochle_rollout.py`'s
+ * `MAX_TRICK_POINTS`.
+ *
+ * Derived rather than written as a literal so it cannot drift: change the
+ * counter set, what a counter is worth, or the last-trick bonus, and the
+ * ceiling follows. A hardcoded 250 here would silently become wrong.
+ *
+ * **This is not `card.ts`'s `FORCED_BID`**, which is also 250. That one is
+ * the bid the dealer is stuck with when everyone passes; the two numbers
+ * are equal by coincidence and mean unrelated things (#178).
+ */
+export const MAX_TRICK_POINTS =
+  POINT_RANKS.size * SUITS.length * COPIES_PER_CARD.length * COUNTER_VALUE + LAST_TRICK_BONUS
+
+/**
+ * The auto-SET rule (`pinochle_expert_ai_strategy.md` Section 5): true when
+ * the bidding team cannot reach its bid even by taking every trick point on
+ * the table. The contract is then mathematically lost before a card is led,
+ * and playing it out cannot change the bidding team's score — it can only
+ * hand the defenders trick points that conceding denies them.
+ *
+ * A hard arithmetic prune, not a heuristic, so callers check it *before*
+ * consulting `shouldConcede` (`evaluator.ts`): a hand that cannot be made
+ * should never reach a probabilistic evaluator.
+ *
+ * The Python twin is `pinochle_rollout.is_auto_set`, which has run inside
+ * rollouts since #59; #178 is what applies it to a real game in both engines.
+ */
+export function isAutoSet(biddingTeamMeld: number, bid: number): boolean {
+  return biddingTeamMeld + MAX_TRICK_POINTS < bid
+}
 
 /**
  * Plays all 12 tricks of a round. `hands` are cloned internally (not

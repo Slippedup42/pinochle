@@ -8,11 +8,17 @@
 // bidding/passing (#17) lands. round.ts's teamOf() maps a PlayerIndex to
 // its team.
 
-import type { Card, Suit } from './card'
+import type { Card, Rank, Suit } from './card'
 
 export type PlayerIndex = 0 | 1 | 2 | 3
 
-const POINT_RANKS = new Set(['A', '10', 'K'])
+/** The "counters" — the only ranks that carry trick points. Exported so
+ *  round.ts can derive MAX_TRICK_POINTS from the same set that scores a
+ *  trick, rather than restating how many counters a deck holds (#178). */
+export const POINT_RANKS: ReadonlySet<Rank> = new Set<Rank>(['A', '10', 'K'])
+
+/** What one counter is worth to whoever takes the trick it falls in. */
+export const COUNTER_VALUE = 10
 
 export interface TrickPlay {
   readonly player: PlayerIndex
@@ -96,7 +102,7 @@ export class Trick {
   /** Trick points (Ace/10/King = 10 each; Queen/Jack/9 = 0). Excludes the last-trick bonus — that's the caller's job. */
   points(): number {
     return this.plays.reduce(
-      (sum, p) => sum + (POINT_RANKS.has(p.card.rank) ? 10 : 0),
+      (sum, p) => sum + (POINT_RANKS.has(p.card.rank) ? COUNTER_VALUE : 0),
       0,
     )
   }

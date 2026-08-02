@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { Deck, Suit } from './card'
+import { Deck, FORCED_BID, Suit } from './card'
 import {
   type ChooseCardFn,
   type Hands,
+  MAX_TRICK_POINTS,
+  isAutoSet,
   playTrickTakingPhase,
   scoreRound,
   teamOf,
@@ -14,6 +16,56 @@ describe('teamOf', () => {
     expect(teamOf(2)).toBe(0)
     expect(teamOf(1)).toBe(1)
     expect(teamOf(3)).toBe(1)
+  })
+})
+
+describe('MAX_TRICK_POINTS (#178)', () => {
+  it('derives to 250 — 24 counters at 10, plus the last-trick bonus', () => {
+    expect(MAX_TRICK_POINTS).toBe(250)
+  })
+
+  it('equals what a full round actually distributes', () => {
+    // The point of deriving it: the constant and the trick-scoring code must
+    // not be able to disagree. `playTrickTakingPhase` below asserts the same
+    // total from the other direction, by playing all 12 tricks out.
+    const deck = new Deck()
+    deck.shuffle()
+    const { trickPointsByTeam } = playTrickTakingPhase(
+      deck.deal() as Hands,
+      Suit.Hearts,
+      0,
+      chooseFirstLegal,
+    )
+    expect(trickPointsByTeam[0] + trickPointsByTeam[1]).toBe(MAX_TRICK_POINTS)
+  })
+
+  it('is a different number from FORCED_BID even though both read 250', () => {
+    // The collision #178 called out: these are equal today and mean unrelated
+    // things. This test does not assert they differ, only that the two names
+    // exist separately — if a future change moves one, the other must not
+    // follow it by accident.
+    expect(FORCED_BID).toBe(250)
+    expect(MAX_TRICK_POINTS).toBe(250)
+  })
+})
+
+describe('isAutoSet (#178)', () => {
+  it('is true only when meld plus every trick point still falls short', () => {
+    // 49 + 250 = 299 < 300: dead. 50 + 250 = 300: exactly reachable, so live.
+    expect(isAutoSet(49, 300)).toBe(true)
+    expect(isAutoSet(50, 300)).toBe(false)
+    expect(isAutoSet(51, 300)).toBe(false)
+  })
+
+  it('treats an exactly-reachable contract as live, not dead', () => {
+    // The boundary is `<`, not `<=`: needing every last trick point is a
+    // contract that can be made, and the round has to be played to find out.
+    expect(isAutoSet(150, 150 + MAX_TRICK_POINTS)).toBe(false)
+    expect(isAutoSet(150, 150 + MAX_TRICK_POINTS + 1)).toBe(true)
+  })
+
+  it('is never true once meld alone covers the bid', () => {
+    expect(isAutoSet(320, 300)).toBe(false)
   })
 })
 

@@ -17,6 +17,7 @@ import { SKILL_PARAMS } from '../engine/skills'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
 import {
+  AUTO_SET_AB_POLICIES,
   BID_AB_POLICIES,
   DISTILLED_LEVEL,
   FOLD_AB_POLICIES,
@@ -203,8 +204,46 @@ describe('the headless game', () => {
       restore()
     }
 
-    expect(never[0].conceded + never[1].conceded).toBe(0)
-    expect(model[0].conceded + model[1].conceded).toBeGreaterThan(0)
+    // #178: auto-SET forces a concession whatever `foldPolicy` says, and both
+    // arms of FOLD_AB_POLICIES run it, so the `never` arm no longer reads zero.
+    // What it must read is *only* auto-sets — every concession it makes has to
+    // be one the arithmetic forced, never one it chose.
+    expect(never[0].conceded + never[1].conceded).toBe(never[0].autoSet + never[1].autoSet)
+    expect(model[0].conceded + model[1].conceded).toBeGreaterThan(
+      never[0].conceded + never[1].conceded,
+    )
+  })
+
+  it('ends a dead contract without playing it, and plays it out when the rule is off', () => {
+    // #178's dial. Same deals, same seats, same fold model on both sides — the
+    // only difference is whether a contract the arithmetic has already killed
+    // ends the round.
+    const forced = { 0: newSideStats(), 1: newSideStats() } as Record<TeamId, SideStats>
+    const off = { 0: newSideStats(), 1: newSideStats() } as Record<TeamId, SideStats>
+
+    const restore = installPolicies(AUTO_SET_AB_POLICIES)
+    try {
+      const seats = (level: SkillLevel) =>
+        ({ 0: level, 1: level, 2: level, 3: level }) as Record<PlayerIndex, SkillLevel>
+      for (let dealSeed = 1; dealSeed <= 12; dealSeed++) {
+        playHeadlessGame({ seatSkills: seats(DISTILLED_LEVEL), dealSeed, stats: forced })
+        playHeadlessGame({ seatSkills: seats(STATIC_LEVEL), dealSeed, stats: off })
+      }
+    } finally {
+      restore()
+    }
+
+    // The rule has something to act on at all — the premise of the measurement.
+    expect(forced[0].autoSet + forced[1].autoSet).toBeGreaterThan(0)
+    // The control counts the *condition* too, so it is not blind to it; it just
+    // plays those hands out. Without this the enabled arm's firing rate would
+    // have nothing to be checked against.
+    expect(off[0].autoSet + off[1].autoSet).toBeGreaterThan(0)
+    // An auto-set is always a concession, so on the enabled arm it can never
+    // outnumber them.
+    expect(forced[0].autoSet + forced[1].autoSet).toBeLessThanOrEqual(
+      forced[0].conceded + forced[1].conceded,
+    )
   })
 })
 
@@ -233,6 +272,10 @@ describe('the A/B self-test', () => {
     ['distilled', DISTILLED_LEVEL, BID_AB_POLICIES],
     ['simple', STATIC_LEVEL, PLAY_AB_POLICIES],
     ['cascade', DISTILLED_LEVEL, PLAY_AB_POLICIES],
+    // #178's arm. The one that ends rounds early, and therefore the one with
+    // the most scope to desynchronise dealer rotation or scoring between the
+    // two orientations of a pair — exactly what a zero paired margin rules out.
+    ['auto-set', DISTILLED_LEVEL, AUTO_SET_AB_POLICIES],
   ] as const) {
     it(`finds nothing when ${name} plays itself`, () => {
       const report = runAb({ nPairs: 6, seed: 5, levelA: level, levelB: level, policies })
