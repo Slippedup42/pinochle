@@ -1,7 +1,36 @@
 import { describe, expect, it } from 'vitest'
+import type { SkillLevel } from '../persistence/options'
 import { Card, Suit } from './card'
+import { SKILL_PARAMS } from './skills'
 import type { TrickPlay } from './trick'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from './tracker'
+
+/**
+ * Runs `play` with one level temporarily moved onto `'simple'` card play,
+ * handing it the level to pass to `chooseLeadCard` / `chooseFollowCard`.
+ *
+ * Since #156 no `SKILL_PARAMS` row ships `'simple'` — trick play is identical
+ * at all five levels — so it can no longer be reached by naming `easy`, the way
+ * these tests used to reach it. It is still a live policy: `PLAY_AB_POLICIES`
+ * is the baseline every child of epic #152 is measured against, and an arm the
+ * suite never exercises is an arm nothing vouches for.
+ *
+ * This is `installPolicies`' mechanism (`ab/abRun.ts`) narrowed to one level,
+ * rather than that import, to keep the engine's unit tests off the A/B harness
+ * — it pulls the whole headless game in behind it. Restoring in a `finally` is
+ * the load-bearing part: a leaked override would quietly change every later
+ * assertion in this file.
+ */
+function withSimplePlay<T>(play: (skill: SkillLevel) => T): T {
+  const level: SkillLevel = 'easy'
+  const saved = SKILL_PARAMS[level]
+  SKILL_PARAMS[level] = { ...saved, playPolicy: 'simple' }
+  try {
+    return play(level)
+  } finally {
+    SKILL_PARAMS[level] = saved
+  }
+}
 
 describe('PlayTracker', () => {
   it('starts with nothing played', () => {
@@ -164,7 +193,7 @@ describe('chooseLeadCard', () => {
     expect(led.suit).toBe(Suit.Spades)
   })
 
-  // -- The play-policy branch (#153) ----------------------------------------
+  // -- The play-policy branch (#153, #156) ----------------------------------
 
   it("'simple' leads its lowest non-trump non-counter and ignores everything else", () => {
     // Same hand as the defender test above, where `cascade` picks the Ace of
@@ -176,19 +205,43 @@ describe('chooseLeadCard', () => {
       new Card(Suit.Hearts, 'A', 1),
       new Card(Suit.Clubs, '9', 1),
     ]
-    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, 'easy', false)
+    const led = withSimplePlay((skill) =>
+      chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, skill, false),
+    )
     expect(led.suit).toBe(Suit.Clubs)
     expect(led.rank).toBe('9')
   })
 
-  it("'simple' ignores the bidder's forced trump lead, as it did before #153", () => {
-    // The `meld_only` test this branch replaces sat above the `isBidderFirstLead`
-    // rule, so `easy` never honoured it. Preserved deliberately: #153 is a
-    // rename, and changing which cards a level plays belongs to #156 where it
-    // can be measured.
+  it("'simple' ignores the bidder's forced trump lead", () => {
+    // The `meld_only` test this branch replaces sat above the
+    // `isBidderFirstLead` rule, so the shortcut never honoured rule #82 at all.
+    // Kept as a property of the arm, not of a level — since #156 nobody plays
+    // it, and the line below is what `easy` does now.
     const hand = [new Card(Suit.Spades, 'A', 1), new Card(Suit.Clubs, '9', 1)]
-    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), true, 'easy')
+    const led = withSimplePlay((skill) =>
+      chooseLeadCard(hand, Suit.Spades, new PlayTracker(), true, skill),
+    )
     expect(led.suit).toBe(Suit.Clubs)
+  })
+
+  it('easy leads with the cascade like every other level (#156)', () => {
+    // The behaviour change #156 is. Both hands above, played by `easy` as it
+    // now ships: the defender hand goes to the unsecured Ace of Hearts instead
+    // of the Clubs 9, and the bidder's first lead is trump as rule #82 requires
+    // rather than a shrug. A bad bid is invisible to the other seats; a card
+    // this wrong is face up on the table.
+    const defenderHand = [
+      new Card(Suit.Spades, 'A', 1),
+      new Card(Suit.Hearts, 'A', 1),
+      new Card(Suit.Clubs, '9', 1),
+    ]
+    const defenderLed = chooseLeadCard(defenderHand, Suit.Spades, new PlayTracker(), false, 'easy', false)
+    expect(defenderLed.suit).toBe(Suit.Hearts)
+    expect(defenderLed.rank).toBe('A')
+
+    const bidderHand = [new Card(Suit.Spades, 'A', 1), new Card(Suit.Clubs, '9', 1)]
+    const bidderLed = chooseLeadCard(bidderHand, Suit.Spades, new PlayTracker(), true, 'easy')
+    expect(bidderLed.suit).toBe(Suit.Spades)
   })
 
   // -- The bidder's opening lead (#159) --------------------------------------
@@ -251,7 +304,7 @@ describe('chooseLeadCard', () => {
 
   it('changes nothing after the opening trick — the bidding side still cashes a trump Ace', () => {
     // #159's other half, "hold trump back", was measured and did not ship: over
-    // 5000 paired deals, suppressing this tier costs 14 points a deal. The
+    // 5000 paired deals, suppressing this tier costs 13.6 points a deal. The
     // holding-back it describes is already what `offenseTrumpLead` does — the
     // Ace is the only trump it ever chooses to lead.
     const hand = [
@@ -405,7 +458,7 @@ describe('chooseFollowCard', () => {
     expect(played.rank).toBe('9')
   })
 
-  // -- The play-policy branch (#153) ----------------------------------------
+  // -- The play-policy branch (#153, #156) ----------------------------------
 
   it("'simple' plays the lowest legal card, skipping every tier above", () => {
     // Partner is winning, so `cascade` feeds them the King (the tier asserted
@@ -417,20 +470,24 @@ describe('chooseFollowCard', () => {
       new Card(Suit.Hearts, 'K', 1),
       new Card(Suit.Hearts, '10', 1),
     ]
-    const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, 'easy')
+    const played = withSimplePlay((skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
     expect(played.rank).toBe('9')
   })
 
-  it('every other level follows with the cascade, unchanged by #153', () => {
-    // The mapping `playPolicy` extracted from `handValuation === 'meld_only'`:
-    // `easy` alone took the shortcut, and it alone still does.
+  it('every level follows with the cascade, easy included (#156)', () => {
+    // `easy` used to be the one level that took the shortcut; now there is no
+    // such level. This is the assertion that fails if a future change gives a
+    // tier its own card play again — trick play is shared competence, and
+    // difficulty lives in `bidPolicy`.
     const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
     const legalMoves = [
       new Card(Suit.Hearts, '9', 1),
       new Card(Suit.Hearts, 'K', 1),
       new Card(Suit.Hearts, '10', 1),
     ]
-    for (const skill of ['medium', 'hard', 'proficient', 'expert'] as const) {
+    for (const skill of ['easy', 'medium', 'hard', 'proficient', 'expert'] as const) {
       const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill)
       expect(played.rank).toBe('K')
     }

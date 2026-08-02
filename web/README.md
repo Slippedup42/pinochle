@@ -178,10 +178,12 @@ alone. `SkillParams.playPolicy` is the field that fixed that, and epic #152's
 remaining children are each a change to it that has to be measured before it
 ships.
 
-It has two arms and both already shipped: `'cascade'` is the ported Proficient
-strategy (`chooseLeadCard`'s safe-card cascade, `chooseFollowCard`'s tiers) and
-`'simple'` is `easy`'s shortcut — lead the lowest non-trump non-counter, follow
-with the lowest legal card. The field is an extraction of the
+It has two arms, and both shipped when it was introduced: `'cascade'` is the
+ported Proficient strategy (`chooseLeadCard`'s safe-card cascade,
+`chooseFollowCard`'s tiers) and `'simple'` was `easy`'s shortcut — lead the
+lowest non-trump non-counter, follow with the lowest legal card. (#156 moved
+`easy` onto the cascade; `'simple'` is now an A/B arm only, and the section
+below says why it is kept.) The field is an extraction of the
 `handValuation === 'meld_only'` test that used to gate card play inside
 `tracker.ts`, and `SKILL_PARAMS` reproduces that mapping exactly, so introducing
 it changed no behaviour. Splitting it off `handValuation` is what makes #156
@@ -193,8 +195,9 @@ play meant changing how easy bids in the same breath.
 games, cascade swept 158 deals to simple's 37 (805 split), 95% CI 74.9%–85.9%,
 p < 1e-4, **+121 score margin per deal, 95% CI +103 to +138** — cascade makes
 68.5% of its contracts against simple's 64.5% on the same deals and the same
-bids. That is a reading of the gap the dial spans, not a decision: acting on it
-is #156's job.
+bids. Re-run at #152's 5000 pairs it reads **+120, CI +112 to +127** (759–159,
+4082 split), which is the same number at five times the sample. That is a
+reading of the gap the dial spans, not a decision; acting on it was #156's job.
 
 ### Feeding partner the lowest counter (#154)
 
@@ -239,6 +242,54 @@ on the `PlayPolicy` union plus a temporary `cli.ts feed` command, added in the
 shape the section below describes and deleted before the fix was committed — the
 same call #126 and #153 made, since a permanent "feed the wrong card" switch is
 not a difficulty setting.
+
+### One card-play strategy at every level (#156)
+
+Trick play is now identical at all five skill levels. `easy` was the one row on
+`'simple'`; it is on `'cascade'` with everyone else, and the change is a single
+field of `SKILL_PARAMS` — the branches in `tracker.ts` were untouched, because
+#153 had already made this a data change rather than a code one.
+
+The reason is about what a player can see, not about strength. Paul: *"humans
+get really mad if you play this last part wrong, but bidding they never know
+what you have."* A weak bid is invisible — nobody else sees the hand it was made
+on — while a weak card is face up on the table, and it does not read as an easy
+opponent, it reads as a partner who is broken. So card play joins `foldPolicy`
+as shared competence, and a level's strength stays in `bidPolicy`.
+
+What `easy` keeps is `handValuation: 'meld_only'`, so it still values a hand on
+meld alone and still bids like `easy`. That separation is the whole point of
+#153 splitting the two fields: while one flag carried both, this change was not
+expressible without rewriting how easy bids, and the measurement would have had
+two causes.
+
+Measured behind *easy's own* bidding rather than through `cli.ts play`, which
+runs the two card rules behind `distilled` — both sides the easy row verbatim,
+differing in `playPolicy` alone, over 5000 pairs / 10 000 games:
+
+| seed | margin per deal | 95% CI | swept | split | p |
+| --- | --- | --- | --- | --- | --- |
+| 1 | **+228** | +216 to +241 | 1251–225 | 3524 | < 1e-4 |
+| 7 | **+221** | +209 to +233 | 1186–220 | 3594 | < 1e-4 |
+
+Cascade makes 37.0% of its contracts against simple's 32.8% from the same bids
+on the same deals (average bid 251 on both sides, folding at the same rate). Both
+arms self-tested to *exactly* nothing first — every pair split, paired margin 0.
+
+Roughly twice the +120 the same two rules show behind `distilled` bidding, and
+the reason is that `easy` is set on 63% of its contracts where the distilled
+bidder is set on 31%. Card play matters most in the rounds a bidder has no
+business being in, which is precisely the tier that used to play cards worst. It
+is also the largest effect epic #152 has measured, an order of magnitude above
+#154's +3.55 — the shortcut was not a difficulty setting, it was bad play.
+
+That leaves `'simple'` referenced by no `SKILL_PARAMS` row and both `tracker.ts`
+branches unreachable in a real game. **It is kept anyway**, in
+`PLAY_AB_POLICIES` and documented at `PlayPolicy` in `skills.ts`, on the
+precedent `FoldPolicy` set with `'never'`: the harness needs two levels
+differing in exactly one field, and this is the baseline every remaining child
+of #152 is judged against. Deleting it as dead code would leave a one-member
+union and take the ruler away days after #153 built it.
 
 ### The bidder's opening lead, and the trump it does not hold back (#159)
 
@@ -304,6 +355,11 @@ from an exception worth 13.6 points a deal, and removing that exception loses;
 `LAST_TRICK_BONUS` is still never explicitly played for, and the lever for it is
 not which trump the offense *leads* but which trump `chooseFollowCard` spends —
 follow-side work, and a separate issue.
+
+Both arms ran behind `distilled` bidding and `installPolicies` writes both
+`SkillParams` rows explicitly, so these numbers do not depend on where the
+shipped dial sits — but note that after #156 every level runs `'cascade'`, so
+this opening lead reaches all five, `easy` included.
 
 The four throwaway arms (`open_q`, `hold_all`, `hold_ace`, `last_trick`) on the
 `PlayPolicy` union, the `LEAD_AB_ARMS` map, the `cli.ts lead` / `leaddump` /
