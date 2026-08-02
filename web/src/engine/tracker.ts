@@ -76,6 +76,27 @@ function isUnsecuredAce(card: Card, hand: readonly Card[], tracker: PlayTracker)
  * Offense trump lead: when the bidding team is leading, draw trump by
  * leading the trump Ace if held. Without a trump Ace, abandon the aggressive
  * trump-draw plan and lead non-trump conservatively.
+ *
+ * #159 proposed replacing this with "hold trump back to ruff a counter-heavy
+ * trick later", and measured it instead. Two findings, both in `web/README.md`:
+ *
+ *   - **The holding back is already here.** Over 300 headless games this is
+ *     reached 9651 times on a bidding-side lead. 3444 are all-trump hands with
+ *     no other legal lead, 421 take the Ace tier below, and the other 5786 lead
+ *     a side suit while still holding trump. The Ace is the only trump the
+ *     offense ever *chooses* to lead.
+ *   - **Suppressing that one exception loses**, by 13.63 points a deal (95% CI
+ *     -16.85 to -10.60, 5000 paired deals), with make-rate falling alongside it
+ *     — a boss trump that takes the trick and draws a round of trump in one move
+ *     is not a card to sit on. Narrowing the tier to *unsecured* Aces measures
+ *     identically, because the mandatory trump lead on trick 1 plus the
+ *     beat-if-possible rule means the twin is always gone by the time this is
+ *     reached: unsecured on 0 of those 421.
+ *
+ * So this is unchanged, and it is reached only after the opening trick — the
+ * bidder's first lead is answered by `chooseLeadCard`'s `isBidderFirstLead`
+ * branch before it ever gets here, and nobody on the bidding side is on lead
+ * before trick 2.
  */
 function offenseTrumpLead(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
   const trumpAces = hand.filter((c) => c.suit === trump && c.rank === 'A')
@@ -156,10 +177,19 @@ function leadSafeCascade(hand: readonly Card[], trump: Suit, tracker: PlayTracke
 /**
  * Choose what to lead when you have control. Priority, matching Python's
  * `choose_lead_card`:
- *   0. Bidder's first lead (#82) — must lead trump if any is held
+ *   0. Bidder's first lead (#82) — must lead trump if any is held, choosing
+ *      an unsecured trump Ace, then any trump Ace, then the highest
+ *      *non-counter* trump (Q -> J -> 9, #159), then the highest trump
  *   1. When the side is known: the bidding team draws trump
  *      (`offenseTrumpLead`), the defending team avoids it (`defenderLead`)
  *   2. Otherwise the safe-card cascade (`leadSafeCascade`)
+ *
+ * Tier 0 is the only place this AI plans past the current trick, and it is a
+ * weak form of it: it spends the one lead the bidder is guaranteed on drawing
+ * the opponents' counters out at no cost, rather than on winning a trick now.
+ * #159's stronger proposal — hold trump back afterwards to ruff a counter-heavy
+ * trick and take `LAST_TRICK_BONUS` — was measured and rejected; see
+ * `offenseTrumpLead`.
  *
  * @param isBidderFirstLead - When true (bidder opening the first trick of the
  *   round), forces a trump lead if the player has any trump cards remaining.
@@ -194,7 +224,16 @@ export function chooseLeadCard(
       if (unsecuredAce) return unsecuredAce
       const ace = trumps.find((c) => c.rank === 'A')
       if (ace) return ace
-      return maxByRank(trumps)
+      // Aceless: the highest *non-counter* trump, cascading Q -> J -> 9 (#159).
+      // This was `maxByRank`, which leads the 10 — ten points handed to whoever
+      // holds the Ace, in exchange for drawing one round of trump. The Queen
+      // drags out a King and an Ace while donating nothing, and can leave this
+      // hand's own 10 as the boss trump. Worth +7.6 to +9.8 points a deal across
+      // three seeds of 5000 paired deals, with make-rate up on all three; see
+      // `web/README.md`.
+      const nonCounters = trumps.filter((c) => !POINT_RANKS.has(c.rank))
+      if (nonCounters.length > 0) return maxByRank(nonCounters)
+      return maxByRank(trumps) // nothing but counters held — take the round of trump
     }
   }
 
