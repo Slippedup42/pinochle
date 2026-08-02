@@ -18,10 +18,11 @@ Covers:
   3. Endgame loser-first sequencing: once all trump is accounted for
      outside a near-empty hand, losers lead first and trump is held back.
   4. Following-suit heuristics: duck vs. feed when partner is already
-     winning, count-card protection on both a forced non-beat and a free
-     sluff (including the case where a naive shortest-suit tie-break would
-     get it wrong), and over-trump-vs-under-trump judgment when first to
-     trump a trick.
+     winning (including *which* counter goes across, and that the
+     mandatory-beat tier above pre-empts the choice - #168), count-card
+     protection on both a forced non-beat and a free sluff (including the
+     case where a naive shortest-suit tie-break would get it wrong), and
+     over-trump-vs-under-trump judgment when first to trump a trick.
   5. The defender static/rollout-compare split (doc Section 9 Q5, revised
      resolution): static mode never leads trump; rollout-compare mode CAN
      override that default when the injected evaluator prefers it.
@@ -216,6 +217,68 @@ def test_follow_feeds_partner_when_a_count_card_is_free():
     hand = [C(Suit.CLUBS, "9"), C(Suit.CLUBS, "K", 2)]  # 2nd copy of K ties, doesn't beat
     card = choose_expert_follow_card(hand, hand, trick_plays, trump, {partner}, PlayTracker())
     assert card.rank == "K", "should feed the count card across to partner's secured trick"
+
+
+def test_expert_follow_feeds_the_king_not_the_ten():
+    """#168 - the third and last copy of the bug #154 fixed in TypeScript and
+    #164 fixed in `choose_follow_card`. King and 10 are worth 10 points each
+    (`pinochle_rules.md`), so the trick banks the same score either way; the
+    only difference is what stays in hand, and the 10 is beaten by nothing but
+    an Ace. This tier called `max` - throwing the 10, keeping the King - for
+    the whole life of the function, and it is the copy skills 4-5 actually
+    follow with.
+
+    The legal set is taken from `Trick.legal_moves` rather than written by
+    hand: partner is sitting on the Ace, so no card of this suit beats it, no
+    beat is mandatory, and the feed tier is genuinely the one that runs."""
+    trump = Suit.SPADES
+    partner = "partner"
+    trick = Trick(trump)
+    trick.play(partner, C(Suit.HEARTS, "A"))
+    hand = [C(Suit.HEARTS, "9"), C(Suit.HEARTS, "K"), C(Suit.HEARTS, "10")]
+    legal = trick.legal_moves(hand)
+    assert {c.rank for c in legal} == {"9", "K", "10"}, "no beater exists, so nothing is forced"
+    card = choose_expert_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker())
+    assert card.rank == "K", card
+
+
+def test_expert_follow_holds_the_ace_when_it_is_the_only_counter():
+    """The half of the rule that was measured rather than reasoned out. "Feed
+    your cheapest counter" read literally orders K -> 10 -> A and would donate
+    the Ace here for the same 10 points; #154 ran that variant as its own arm
+    over 5000 paired deals, where it was a null against the pre-fix behaviour
+    and 3.5 points a deal behind excluding the Ace. The trick pays the same
+    either way, the boss of the suit does not. Settled in both engines - #168
+    kept the exclusion rather than re-opening it.
+
+    Partner leads one copy of the Ace, so the second copy ties instead of
+    beating it and is legal without being forced."""
+    trump = Suit.SPADES
+    partner = "partner"
+    trick = Trick(trump)
+    trick.play(partner, C(Suit.HEARTS, "A", 1))
+    hand = [C(Suit.HEARTS, "9"), C(Suit.HEARTS, "A", 2)]
+    legal = trick.legal_moves(hand)
+    assert len(legal) == 2, "the tying second Ace is legal, not a mandatory beat"
+    card = choose_expert_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker())
+    assert card.rank == "9", card
+
+
+def test_expert_follow_forced_beat_pre_empts_the_feed_tier():
+    """Guards the tier ordering: when every legal card already beats the card
+    on the table the mandatory-beat tier runs first and wins as cheaply as
+    possible, so `_feed_partner` is never reached. Chosen so the two tiers
+    disagree - the cheapest legal card is the zero-count Queen, while the feed
+    tier would have spent the King."""
+    trump = Suit.SPADES
+    partner = "partner"
+    trick = Trick(trump)
+    trick.play(partner, C(Suit.HEARTS, "J"))
+    hand = [C(Suit.HEARTS, "Q"), C(Suit.HEARTS, "K")]
+    legal = trick.legal_moves(hand)
+    assert len(legal) == 2, "both cards beat the Jack, so the beat is mandatory"
+    card = choose_expert_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker())
+    assert card.rank == "Q", card
 
 
 def test_follow_protects_count_card_when_unable_to_beat():

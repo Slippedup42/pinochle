@@ -590,6 +590,25 @@ def _feed_partner(legal_moves):
     much noisier (260 decisive pairs against Proficient's 42), so it could not
     have resolved an effect this size regardless. Skills 1-3 are the levels this
     moves, and skill 3 measured byte-identical to Proficient.
+
+    #168 then found a third copy of the same `max`, inline in
+    `_expert_follow_card_honest` - the one skills 4-5 follow with *at the table*,
+    rather than only inside their rollouts. That copy now calls this helper, so
+    Python has one implementation of the rule, and the skill 4-5 arms #164 could
+    not move were re-run against it, same harness and same 5000 paired deals:
+
+        skill 4, seed 168000   +6.69/deal   95% CI +3.26 to +10.03   swept  89-67
+        skill 4, seed 270000  +10.56/deal   95% CI +7.22 to +13.95   swept 117-55
+        skill 5, seed 168000   +6.22/deal   95% CI +2.79 to  +9.63   swept  91-62
+
+    All three intervals exclude zero, so the rule is worth roughly twice at the
+    top of the dial what it is at Proficient (+3.55 to +3.61). That is consistent
+    with the reason it works: skills 4-5 hold their counters into the late tricks
+    far more often, so the difference between banking the King and banking the 10
+    keeps mattering for longer. It also closes out the "skill 4 is a null" line
+    above - that null was a property of #164's scope, not of the rule, and the
+    two are not in conflict. Both readings needed the measurement; neither could
+    have been argued from the code.
     """
     counters = [c for c in legal_moves if c.rank in ("K", "10")]
     if counters:
@@ -1584,8 +1603,12 @@ def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_pl
         is where "third-hand-high" is mechanically enforced by the rules
         engine itself, so there's no separate heuristic needed for it.
       - Duck when partner is already winning: don't spend a big card on a
-        trick that's already secured; feed K/10 across if doing so is
-        free (doesn't cost the trick).
+        trick that's already secured; feed a counter across if doing so is
+        free (doesn't cost the trick). Delegates to `_feed_partner` — this
+        tier had its own inline copy of that rule, and the copy carried the
+        `max`-instead-of-`min` bug for the whole life of the function
+        (#168, after #154 in TypeScript and #164 in `choose_follow_card`).
+        Sharing the one helper is what stops a fourth copy drifting.
       - Protect count cards (A/10/K): when following suit but unable to
         beat, or when free-sluffing, prefer a zero-count card (9/J/Q)
         over a count card whenever one is legal.
@@ -1612,10 +1635,7 @@ def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_pl
         if forced_beat:
             return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
         if partner_winning:
-            feed_cards = [c for c in legal_moves if c.rank in ("K", "10")]
-            if feed_cards:
-                return max(feed_cards, key=lambda c: RANK_VALUE[c.rank])
-            return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
+            return _feed_partner(legal_moves)
         non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
         if non_points:
             return min(non_points, key=lambda c: RANK_VALUE[c.rank])
