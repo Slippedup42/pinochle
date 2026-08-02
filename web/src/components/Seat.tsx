@@ -1,5 +1,6 @@
 import type { Card } from '../engine/card'
 import { sortHandForDisplay } from '../engine/card'
+import { splitHandIntoRows } from './handRows'
 import { PlayingCard } from './PlayingCard'
 import type { SeatPosition, SeatState } from './tableTypes'
 
@@ -64,47 +65,59 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
         <div className="text-xs text-white/60">{seat.statusText}</div>
       )}
       {isHuman ? (
-        // A single row, not `flex-wrap`: the fanned-overlap look below relies
-        // on `first:ml-0` to zero out the leading card's negative margin, which
-        // only identifies the true first card in the DOM — with wrapping on, a
-        // second row's leading card still carried the big negative margin and
-        // rendered shifted/misaligned relative to the row above it. One row
-        // that scrolls horizontally instead keeps every row's cards flush.
-        // -ml-11 against a 64px card leaves 24px of every card showing, which
-        // is enough for the corner index and puts all 12 in 328px — inside a
-        // 360px phone (#161). The overlap is paired with the card width, so
-        // changing one without the other either re-overflows or hides the
-        // indices. `w-full` is what makes `overflow-x-auto` mean anything: it
-        // resolves against the seat's stretched width (Table.tsx), so the row
-        // is as wide as the column and scrolls, instead of sizing to the fan.
-        <div className="flex w-full justify-center gap-1 overflow-x-auto">
-          {sortHandForDisplay(seat.hand).map((card) => {
-            const cardFace = <PlayingCard suit={card.suit} rank={card.rank} />
-            if (!playable) {
-              return (
-                <div key={card.toString()} className="-ml-11 first:ml-0">
-                  {cardFace}
-                </div>
-              )
-            }
-            const isLegal = playable.legalCards.includes(card)
-            return (
-              <button
-                key={card.toString()}
-                type="button"
-                disabled={!isLegal}
-                onClick={() => playable.onPlay(card)}
-                aria-label={`Play ${card.rank} of ${card.suit}`}
-                className={`-ml-11 first:ml-0 rounded-lg transition-transform ${
-                  isLegal
-                    ? 'cursor-pointer ring-2 ring-amber-400 hover:-translate-y-2'
-                    : 'cursor-not-allowed opacity-40'
-                }`}
-              >
-                {cardFace}
-              </button>
-            )
-          })}
+        // Explicit rows, never `flex-wrap` (#187, and the #161 note it replaces).
+        // The fanned-overlap look relies on `first:ml-0` to zero the leading
+        // card's negative margin, and `first:` only matches the first child of
+        // its own container — under `flex-wrap` a visual second row is still mid-
+        // list in the DOM, so its leading card kept the negative margin and hung
+        // left of the row above it. Giving each row its own flex container is
+        // what makes `first:` mean "first of this row" and the two line up.
+        //
+        // Pitch is `card + gap + margin = 64 + 4 - 24 = 44px`, so six cards span
+        // `5 * 44 + 64 = 284px` — inside the ~304px a 320px viewport leaves after
+        // the board's padding, and comfortably inside a 390px phone. The reveal
+        // goes from 24px (a corner index) to 44px (most of the card).
+        //
+        // The overlap is paired with the card width: change `w-16` on
+        // `PlayingCard` without changing `-ml-6` here and this either re-overflows
+        // or buries the indices again.
+        //
+        // `w-full` is what makes `overflow-x-auto` mean anything — it resolves
+        // against the seat's stretched width (Table.tsx) so a row is as wide as
+        // the column and scrolls, instead of sizing itself to its cards. It is a
+        // backstop now rather than the mechanism: at 320px and up nothing scrolls.
+        <div className="flex w-full flex-col items-center gap-1">
+          {splitHandIntoRows(sortHandForDisplay(seat.hand)).map((row, rowIndex) => (
+            <div key={rowIndex} className="flex w-full justify-center gap-1 overflow-x-auto">
+              {row.map((card) => {
+                const cardFace = <PlayingCard suit={card.suit} rank={card.rank} />
+                if (!playable) {
+                  return (
+                    <div key={card.toString()} className="-ml-6 first:ml-0">
+                      {cardFace}
+                    </div>
+                  )
+                }
+                const isLegal = playable.legalCards.includes(card)
+                return (
+                  <button
+                    key={card.toString()}
+                    type="button"
+                    disabled={!isLegal}
+                    onClick={() => playable.onPlay(card)}
+                    aria-label={`Play ${card.rank} of ${card.suit}`}
+                    className={`-ml-6 first:ml-0 rounded-lg transition-transform ${
+                      isLegal
+                        ? 'cursor-pointer ring-2 ring-amber-400 hover:-translate-y-2'
+                        : 'cursor-not-allowed opacity-40'
+                    }`}
+                  >
+                    {cardFace}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
         </div>
       ) : exposeCards ? (
         <div className="flex w-full justify-center gap-1 overflow-x-auto">
