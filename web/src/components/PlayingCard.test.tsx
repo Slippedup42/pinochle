@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { Suit } from '../engine/card'
 import { PlayingCard } from './PlayingCard'
 
-describe('PlayingCard', () => {
+// #170: raised from the 5 s default — these assertions are trivial, but this is
+// the file's first `render()`, so it absorbs jsdom/React/RTL first-render
+// warmup inside its own wall-clock budget, which balloons under parallel load.
+// See TrickPlayFlow.test.tsx.
+describe('PlayingCard', { timeout: 20_000 }, () => {
   it('renders rank and suit glyph for a face-up card', () => {
     render(<PlayingCard suit={Suit.Spades} rank="A" />)
     const card = screen.getByRole('img', { name: 'A of S' })
