@@ -552,17 +552,53 @@ describe('every bid chooseBid can return is legal (#177)', () => {
     expect(offGrid.slice(0, 10)).toEqual([])
   }, 30_000)
 
-  it('takes the partner-passed floor to 330, the first legal bid clearing OPENER_THRESHOLD', () => {
-    // The decision the fix encodes, asserted directly rather than only through
-    // the sweep: 330 is not an arbitrary rounding of 321, it is "above 320" —
-    // the same strictness `chooseBid`'s static verdict applies to the ceiling
-    // when the partner has passed.
-    expect(PARTNER_PASSED_FLOOR).toBe(330)
+  it('takes the partner-passed floor to OPENER_THRESHOLD itself (#180)', () => {
+    // **What this used to assert, and why it changed.** #179 pinned
+    // `PARTNER_PASSED_FLOOR` to 330 with a `- OPENER_THRESHOLD === 10` guard
+    // whose stated purpose was "guards against a later 'simplify' that sets the
+    // floor to OPENER_THRESHOLD itself". #180 is that change — made as a
+    // decision rather than as a simplification. Paul's call is that a seat
+    // bidding alone must *reach* the opener threshold, not clear it, and 320
+    // measured 8-11 points per deal ahead of 330 on the shipped levels
+    // (`web/README.md`). The guard is inverted rather than deleted, so a later
+    // drift back to 330 fails here just as loudly.
+    expect(PARTNER_PASSED_FLOOR).toBe(320)
+    expect(PARTNER_PASSED_FLOOR).toBe(OPENER_THRESHOLD)
+    // Unchanged, and the part #177 was actually about: the floor is a bid, not
+    // a ceiling, so it has to be one the ladder and the +/- buttons can reach.
+    // 321 fails this; 320 and 330 both pass, which is why the choice between
+    // them was a design question and not a correctness one.
     expect(PARTNER_PASSED_FLOOR % 10).toBe(0)
-    expect(PARTNER_PASSED_FLOOR).toBeGreaterThan(OPENER_THRESHOLD)
-    // 320 would also be a legal bid; it is rejected because it only *equals*
-    // the threshold. Guards against a later "simplify" that sets the floor to
-    // OPENER_THRESHOLD itself.
-    expect(PARTNER_PASSED_FLOOR - OPENER_THRESHOLD).toBe(10)
+    expect(PARTNER_PASSED_FLOOR).toBeGreaterThanOrEqual(OPENING_BID)
+  })
+
+  it('opens a partner-passed seat on a ceiling of exactly OPENER_THRESHOLD (#180)', () => {
+    // The half of #180 the constant swap does not cover, and the half the
+    // ~10-per-deal table did not measure: collapsing
+    // `partnerPassed ? ceiling > OPENER_THRESHOLD : ceiling >= ...` to one
+    // `>=` lets a hand whose ceiling is *exactly* 320 open where it used to
+    // decline. Ceilings move in tens, so that is a whole rung of hands, not a
+    // rounding edge.
+    //
+    // Pinned to `medium`, the one shipped level still on `bidPolicy: 'static'`
+    // — a `'distilled'` level discards the static verdict entirely, so this
+    // branch is only reachable there (see `worthContract`). Asserting the
+    // ceiling first so a drift in the valuation constants fails as itself
+    // rather than as a bidding regression.
+    const ceiling320Hand = [...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)), new Card(Suit.Spades, 'A', 1)]
+    const { trump, total } = bestBaseBid(ceiling320Hand, 0, 0)
+    expect(trump).toBe(Suit.Hearts)
+    expect(total).toBe(OPENER_THRESHOLD) // Run 150 + two Aces 40 + baseline adj 130
+
+    // 4th bidder (dealer), partner (seat 2) has passed, nobody has bid.
+    const context: AuctionContext = {
+      everBid: false,
+      passesSoFar: 3,
+      bidHistory: [],
+      dealer: 0,
+      scores: { 0: 0, 1: 0 },
+      passedPlayers: [2],
+    }
+    expect(chooseBid(0, ceiling320Hand, OPENING_BID - 10, 10, context, 'medium')).toBe(PARTNER_PASSED_FLOOR)
   })
 })
