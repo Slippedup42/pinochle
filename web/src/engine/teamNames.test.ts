@@ -9,6 +9,13 @@ describe('TEAM_NAME_POOL', () => {
   it('has no duplicate entries', () => {
     expect(new Set(TEAM_NAME_POOL).size).toBe(50)
   })
+
+  // #162: Paul wants no team name containing "trump" in any casing. The word
+  // is everywhere in this codebase as the game mechanic (trumpSuit, etc.) —
+  // this guard is scoped to the *name pool* only, so it can't drift back in.
+  it('contains no name matching /trump/i', () => {
+    expect(TEAM_NAME_POOL.filter((name) => /trump/i.test(name))).toEqual([])
+  })
 })
 
 describe('sampleTeamNames', () => {

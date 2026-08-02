@@ -16,7 +16,7 @@ export const TEAM_NAME_POOL: readonly string[] = [
   'Nova Squadron', 'Quantum Drifters', 'Voidrunner Fleet', 'Ironstar Collective', 'Photon Vanguard',
   'Nebula Task Force', 'Cryo Raiders', 'Orbital Sentinels', 'Fusion Reactants', 'Starforge Division',
   // Normal / casual (10)
-  'The Card Sharks', 'Trump Tight', 'Meld Squad', 'The Bid Bandits', 'Table Talk',
+  'The Card Sharks', 'Trick Takers', 'Meld Squad', 'The Bid Bandits', 'Table Talk',
   'Deal Breakers', 'The Aces High', 'Suit Yourselves', 'Full House Crew', 'Pinochle Posse',
 ]
 
