@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  Dev-only portrait-fit probe for #161. Served by `npm run dev` at /layout/
+  (it follows `base` in vite.config.ts, which is `/`); never an input to
+  `vite build` — Vite's build input is the root index.html alone — so it
+  cannot reach a player or the PWA precache. Same arrangement as bench/.
+  See src/layout/layoutProbe.tsx.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pinochle — portrait fit probe (#161)</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/layout/layoutProbe.tsx"></script>
+  </body>
+</html>

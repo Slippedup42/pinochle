@@ -280,7 +280,9 @@ export function TrickPlayFlow({
           <button
             type="button"
             onClick={() => setShowConfirmDialog(true)}
-            className="absolute top-2 right-2 z-20 rounded bg-red-800 px-3 py-1 text-xs font-semibold text-white hover:bg-red-900"
+            // Safe-area insets (#161): pinned to the top-right corner, which is
+            // where the status bar / notch sits on an installed instance.
+            className="absolute top-[calc(0.5rem_+_var(--safe-top))] right-[calc(0.5rem_+_var(--safe-right))] z-20 rounded bg-red-800 px-3 py-1 text-xs font-semibold text-white hover:bg-red-900"
           >
             Concede hand
           </button>

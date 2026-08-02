@@ -2,6 +2,20 @@
 
 :root {
   color-scheme: light dark;
+
+  /* Safe-area insets (#161). index.html sets `viewport-fit=cover` and the app
+     is `apple-mobile-web-app-capable`, so an installed instance renders *under*
+     the notch and the home indicator — the usable height is less than the
+     viewport height, and anything pinned to an edge lands under hardware.
+     env() is only readable in a property value, so it is captured here once and
+     composed at the call sites (`calc(0.5rem + var(--safe-top))`) rather than
+     repeated. Naming them also makes them overridable, which is how
+     src/layout/layoutProbe.tsx simulates an installed render in a plain browser
+     tab, where every env(safe-area-inset-*) is 0 and the problem is invisible. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 body {
