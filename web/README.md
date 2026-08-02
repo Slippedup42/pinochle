@@ -166,8 +166,8 @@ before the fix was committed, since a permanent switch for "play the port bug"
 is not a difficulty setting.
 
 `bench/index.html` is the browser side of the latency measurement, served by
-`npm run dev` at `/pinochle/bench/`. It is never an input to `vite build`, so it
-cannot reach a player or the PWA precache.
+`npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
+input to `vite build`, so it cannot reach a player or the PWA precache.
 
 ## Notes
 
@@ -184,17 +184,59 @@ cannot reach a player or the PWA precache.
   `public/apple-touch-icon.png` are placeholder icons (solid color, generated
   programmatically) — swap for real art whenever it exists; they just need to
   keep the same filenames/sizes referenced in `vite.config.ts`.
-- **There is no deploy pipeline.** The app was served from GitHub Pages from
-  2026-07-31 until 2026-08-01, when that was removed by decision — GitHub is
-  source control only. `.github/workflows/` no longer exists.
+- **There is no automatic deploy pipeline, and no site yet.** The app was
+  served from GitHub Pages from 2026-07-31 until 2026-08-01, when that was
+  removed by decision — GitHub is source control only and `.github/` no
+  longer exists. What replaces it is a *manual* target, described next: the
+  config is committed, but no Netlify site exists yet (#144), so there is
+  still no public URL.
+- **Deploying to Netlify (manual).** `netlify.toml` at the repo root sets
+  `publish = "web/dist"` and nothing else build-related. The repo is
+  deliberately **not** connected to Netlify's git integration — a
+  push-triggered build would recreate the coupling that removing GitHub
+  Pages took out. Netlify never builds this repo; you build locally and
+  upload the result:
+
+  ```
+  cd web && npm ci && npm run build
+  cd .. && npx netlify deploy --prod     # uploads web/dist as-is
+  ```
+
+  Run the deploy from the **repo root** — `publish` resolves relative to
+  `netlify.toml`, so running it from `web/` looks for `web/web/dist`. For the
+  same reason there is no `command` and no `NODE_VERSION` in that file: they
+  would be dead config implying a build that never happens. Node 24 locally.
+- **No SPA fallback redirect, on purpose.** `netlify.toml` sets no redirects.
+  The usual `/* /index.html 200` rule exists for client-side routers, and
+  this app has none — nothing imports `react-router`, nothing calls
+  `pushState`. Every real URL is a file in `dist/`, so the rule would only
+  turn genuine 404s into a 200 serving the app shell. Add it when a router
+  lands, not before.
 - `base` in `vite.config.ts` is `/`. If the build is ever served under a
   subpath (a project page at `example.com/pinochle/`, say), set `base` to
   that subpath or the built asset URLs will not resolve. This is the single
-  most common way a working build serves a blank page.
-- Whoever picks a host should know: a static host that cannot set COOP/COEP
-  response headers rules out `SharedArrayBuffer`, and therefore rules out
-  multi-threaded WebAssembly. Single-threaded Wasm is unaffected. GitHub
-  Pages cannot set headers; Cloudflare Pages and Netlify can. Only matters
-  if browser-side rollouts are ever attempted for skills 4–5.
+  most common way a working build serves a blank page. **The manifest's
+  `id` / `start_url` / `scope` have to move with it** — they were left at
+  the old GitHub Pages `/pinochle/` path after `base` went back to `/`, which
+  meant an installed app launched into a 404 and the page at `/` fell outside
+  its own manifest scope. Fixed in #143; the failure is invisible in a
+  browser tab and only shows up once the app is installed.
+- **Security headers** are set in `netlify.toml` for `/*`: a strict
+  allowlist CSP (the bundle has no backend, no outbound requests, no forms,
+  no third-party scripts and no `eval`, so `'unsafe-inline'` is not needed
+  anywhere), plus `X-Content-Type-Options`, `Referrer-Policy`, and a
+  `Permissions-Policy` denying device APIs the game never uses. Hashed
+  `/assets/*` are cached immutably; `sw.js` is explicitly
+  `max-age=0, must-revalidate`, since a stale service worker would pin a
+  device to an old build.
+- Whoever maintains the host should know: a static host that cannot set
+  COOP/COEP response headers rules out `SharedArrayBuffer`, and therefore
+  rules out multi-threaded WebAssembly. Single-threaded Wasm is unaffected.
+  GitHub Pages could not set headers — **Netlify can**, via the `[[headers]]`
+  block already in `netlify.toml`. They are deliberately left off: nothing
+  uses either today, and COEP breaks cross-origin subresources for no gain.
+  Turn them on only if browser-side rollouts are attempted for skills 4–5.
 - To check the production build locally: `npm run build && npm run preview`,
-  then open the printed local URL.
+  then open the printed local URL. Note that `preview` does **not** apply
+  `netlify.toml`'s headers — it serves the files without them, so a CSP
+  problem will not reproduce there.
