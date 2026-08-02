@@ -1,22 +1,40 @@
 # Pinochle
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/8da01171-1d8b-4cbe-849e-4ef994fc0b68/deploy-status)](https://app.netlify.com/projects/pinochle-house-rulez/deploys)
+
 A Partnership Pinochle game, built from scratch: a TypeScript PWA, plus
 a Python reference implementation that doubles as the AI-research and
 measurement harness.
 
 ## Status
 
+**Play it: <https://pinochle-house-rulez.netlify.app>**
+
 The PWA in [`web/`](web/) is the product — a complete game against three
 AI opponents: deal, misdeal, auction, trump, 3-card pass, meld, trick
 play, round scoring, and multi-round games to ±1000, across five
-difficulty levels, with local autosave across a page reload.
+difficulty levels, with local autosave across a page reload. On a phone
+it installs to the home screen and launches full-screen.
 
-**It is not currently hosted anywhere.** GitHub holds the code only —
-there is no deploy pipeline and no public URL. Run it locally with
-`npm run dev` in [`web/`](web/); see [`web/README.md`](web/README.md).
-The manifest and service worker are still built, so the app stays
-installable from wherever it is eventually served — but "Add to Home
-Screen" needs a real host, so it is unavailable until there is one.
+**Deploys are manual, and merging does not ship.** GitHub is source
+control only — the repo is deliberately not connected to Netlify's git
+integration (see [`netlify.toml`](netlify.toml) and the 2026-08-01
+decision in [`ROADMAP.md`](ROADMAP.md)). A merged PR is not live until
+someone builds and deploys:
+
+```
+cd web && npm ci && npm run build
+cd .. && npx netlify deploy --prod
+```
+
+Run the deploy from the repo root — `publish` in `netlify.toml` resolves
+relative to that file. To run the app locally instead, `npm run dev` in
+[`web/`](web/); see [`web/README.md`](web/README.md).
+
+The badge above reports the last deploy Netlify processed. Since nothing
+builds on their servers it is a thin signal — it says an upload
+succeeded, not that `main` is live. Compare the deployed asset hash
+against a local build if you need to know what is actually out there.
 
 The Python side has two live roles: it is the reference implementation
 the TypeScript port is checked against, *and* the harness all the AI
@@ -47,8 +65,8 @@ is where the next round of strategy work will run. See
 ## Contents
 
 - [`web/`](web/) — **the product**: the React + TypeScript + Vite +
-  Tailwind PWA. Run locally; not currently hosted. Has its own
-  [`web/README.md`](web/README.md). Inside it:
+  Tailwind PWA, deployed to <https://pinochle-house-rulez.netlify.app>.
+  Has its own [`web/README.md`](web/README.md). Inside it:
   - `src/engine/` — the TypeScript rules engine, split one file per
     concern (`card.ts`, `melds.ts`, `bidding.ts`, `passing.ts`,
     `trick.ts`, `tracker.ts`, `round.ts`, `game.ts`, `misdeal.ts`,

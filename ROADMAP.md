@@ -40,18 +40,33 @@ Stack: **React + TypeScript + Vite + Tailwind CSS**, PWA via
 polished UI without heavy build overhead, and first-class PWA tooling on
 top of Vite.
 
-**Hosting: none, by decision (2026-08-01).** The app was served from
-GitHub Pages from 2026-07-31; Paul removed that deployment the next day,
-scoping GitHub to source control only. There is no deploy pipeline and
-no public URL — run it locally with `npm run dev`. "Shipped" in this
-document therefore means *merged to `main`*, not deployed.
+**Hosting: Netlify, manual deploys (2026-08-01).** Live at
+<https://pinochle-house-rulez.netlify.app>.
 
-Choosing a host is deliberately left open. Two constraints for whoever
-picks one up: `base` in `web/vite.config.ts` is `/` and must match the
-path the build is served under, and a host that cannot set COOP/COEP
-response headers rules out `SharedArrayBuffer`, and so rules out
-multi-threaded WebAssembly if browser-side rollouts are ever attempted
-(see Open questions).
+Two moves in one day, and the reasoning matters more than the dates. The
+app was served from GitHub Pages from 2026-07-31; Paul removed that
+deployment the next day (#141), scoping GitHub to source control only.
+It moved to Netlify hours later (#143/#144) for a specific reason: the
+alternative on the table was mailing a single self-contained HTML file,
+and that does not work on iOS — Quick Look does not execute JavaScript.
+Reliable `localStorage` and Add to Home Screen both require a real
+`https` origin, which is what hosting actually buys here. Sharing was
+never the constraint; persistence was.
+
+**Merging does not ship.** The repo is deliberately *not* connected to
+Netlify's git integration — that would rebuild the coupling #141
+removed, in a different service. Deploys are manual from a locally built
+`web/dist` (`npx netlify deploy --prod` from the repo root; see
+`netlify.toml`). "Shipped" in this document means merged to `main`; a
+change reaches players only when someone deploys.
+
+Two standing constraints: `base` in `web/vite.config.ts` must match the
+path the build is served under — and the manifest's `id`/`start_url`/
+`scope` must move with it, which #143 caught after #141 missed it and
+left an installed app launching into a 404. Second, COOP/COEP headers
+would be needed for `SharedArrayBuffer` and multi-threaded WebAssembly;
+Netlify *can* set them (GitHub Pages could not), and they are off
+because nothing needs them yet (see Open questions).
 
 1. **Decisions** — done. Opening-bid mismatch resolved (engine value,
    300 min / 250 forced, is canonical; `pinochle_rules.md` updated to

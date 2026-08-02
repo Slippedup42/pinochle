@@ -168,9 +168,10 @@ There are two implementations of the rules above, and they are not
 peers:
 
 - **TypeScript, `web/src/engine/` — the shipped one.** The PWA is the
-  product, and a rule that is wrong here is wrong for players. It is not
-  currently hosted anywhere — GitHub holds the code only — so "shipped"
-  means merged to `main`, not deployed.
+  product, and a rule that is wrong here is wrong for players. It is live
+  at <https://pinochle-house-rulez.netlify.app>, but deploys are manual —
+  merging to `main` does not publish anything, so a rules fix reaches
+  players only once someone deploys.
 - **Python, `pinochle_engine.py` — the reference implementation, and
   the research harness.** It implements all of the above end-to-end and
   is tested (deal integrity, legal-move filtering, meld edge cases,

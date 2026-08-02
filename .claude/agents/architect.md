@@ -37,12 +37,19 @@ Cross-cutting technical structure, not any single feature:
 - PWA and build structure, per `web/vite.config.ts` (the `base` path,
   `vite-plugin-pwa`'s manifest and Workbox service worker). Flag
   anything that would break the build or the app-shell precache.
-  **The app is not hosted anywhere** — GitHub is source control only by
-  decision (2026-08-01), so there is no deploy pipeline and "shipped"
-  means merged. Do not propose work that assumes a live URL, and do not
-  re-add a deploy workflow without Paul asking for one. If a host is
-  ever chosen, `base` must match the path it serves from, and a host
-  that cannot set COOP/COEP headers rules out multi-threaded Wasm.
+  The app is hosted on **Netlify**, live at
+  <https://pinochle-house-rulez.netlify.app>, configured by `netlify.toml`.
+  **Deploys are manual and merging does not ship** — the repo is
+  deliberately not git-connected (GitHub is source control only, decided
+  2026-08-01). Do not re-add a deploy workflow or wire up continuous
+  deployment without Paul asking; that is the coupling #141 removed.
+  When judging whether a change reached players, check the deployed
+  asset hash, not whether the PR merged.
+  Two things that must move together: `base` in `vite.config.ts` and the
+  manifest's `id`/`start_url`/`scope` — #141 changed one and not the
+  other, which left an installed app launching into a 404 and was
+  invisible until #143 caught it. COOP/COEP are available on Netlify if
+  multi-threaded Wasm is ever wanted; they are off deliberately.
 - Dev specs / conventions that don't obviously belong to Design or QA.
 
 Explicitly not your lens: game rules/balance (Design), coding style
