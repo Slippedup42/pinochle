@@ -552,11 +552,63 @@ def _current_winner(trick_plays, trump):
     return max(pool, key=lambda pc: RANK_VALUE[pc[1].rank])
 
 
+def _feed_partner(legal_moves):
+    """
+    Partner is winning and you cannot take the trick off them: bank a counter
+    into it, and make it the *cheapest* one you hold (#164).
+
+    A, 10 and K are worth exactly 10 points each (`pinochle_rules.md:140`), so
+    which counter goes in does not change what the trick pays - only what is
+    left in hand afterwards. The King is the one to spend: it banks the same
+    10 while the 10 it keeps is beaten by nothing but an Ace and will often take
+    a later trick outright. This used to be `max`, which threw the 10 and kept
+    the King - identical points for a worse hand, on every deal.
+
+    The Ace stays out of it, so a hand holding an Ace and no other counter
+    donates junk rather than the boss of the suit. That exclusion is measured,
+    not assumed: #154 ran the "play your lowest legal point" variant (which
+    orders K -> 10 -> A and so puts the Ace in) as its own arm over 5000 paired
+    deals, where it was a null against the old `max` behaviour (+0.4 per deal,
+    95% CI -1.7 to +2.5) and 3.6 points a deal behind this one - donating the
+    Ace gives back the whole gain of spending the King. Both results reproduced
+    on a second seed; see `web/README.md`. That question is settled, in both
+    engines, and this side did not re-open it.
+
+    Re-measured here rather than inherited, because the Python AI reaches this
+    tier differently - `ab_harness.py`, 5000 paired deals per arm, this against
+    the old `max`:
+
+        Proficient, seed 164   +3.61/deal   95% CI +1.83 to +5.45   swept 32-10
+        Proficient, seed 27    +2.16/deal   95% CI +0.66 to +3.70   swept 16-8
+        GeneralStrategy 4      -3.07/deal   95% CI -7.67 to +1.54   swept 125-135
+
+    Proficient reproduces the TypeScript result almost exactly (+3.55 there),
+    on both seeds. Skill 4 is a null, and expected to be: skills 4-5 follow with
+    `choose_expert_follow_card`, so the only thing this function changes for
+    them is how the *rollouts* play - and a rollout is self-play, so both sides
+    of the simulated playout get the same 10 points either way. That arm is also
+    much noisier (260 decisive pairs against Proficient's 42), so it could not
+    have resolved an effect this size regardless. Skills 1-3 are the levels this
+    moves, and skill 3 measured byte-identical to Proficient.
+    """
+    counters = [c for c in legal_moves if c.rank in ("K", "10")]
+    if counters:
+        return min(counters, key=lambda c: RANK_VALUE[c.rank])
+    return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])  # avoid donating a live Ace unless forced
+
+
 def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, tracker=None):
     """
     Choose which legal card to play when following (not leading).
     `legal_moves` already has the mandatory beat-if-possible / trump-if-void
     rules applied by Trick.legal_moves - this only picks which one to use.
+
+    Following suit, off-trump, in priority order:
+      1. Forced beat (every legal card already beats the current winner) -
+         play the lowest one, saving the bigger cards for later.
+      2. Partner is winning - feed them the cheapest counter (`_feed_partner`).
+      3. Otherwise - lowest non-point card, falling back to the lowest legal
+         card when only point cards are left.
     """
     if len(legal_moves) == 1:
         return legal_moves[0]
@@ -575,10 +627,7 @@ def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, t
         if forced_beat:
             return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
         if partner_winning:
-            feed_cards = [c for c in legal_moves if c.rank in ("K", "10")]
-            if feed_cards:
-                return max(feed_cards, key=lambda c: RANK_VALUE[c.rank])
-            return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])  # avoid donating a live Ace unless forced
+            return _feed_partner(legal_moves)
         non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
         if non_points:
             return min(non_points, key=lambda c: RANK_VALUE[c.rank])
