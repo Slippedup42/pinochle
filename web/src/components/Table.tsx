@@ -96,19 +96,11 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
     // top inset is handled by the Scoreboard, whose own background then fills
     // the strip behind the status bar instead of leaving a bare gap.
     <div className="relative flex min-h-svh flex-col bg-green-900 pr-[var(--safe-right)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] text-white">
-      {onOpenMenu && (
-        <button
-          type="button"
-          onClick={onOpenMenu}
-          aria-label="Open menu"
-          // Absolute offsets resolve against the padding box, i.e. the very
-          // top-left corner, so this needs the inset added in explicitly or it
-          // sits under the notch.
-          className="absolute top-[calc(0.5rem_+_var(--safe-top))] left-[calc(0.5rem_+_var(--safe-left))] z-10 rounded bg-black/40 px-2 py-1 text-xs font-semibold text-white hover:bg-black/60"
-        >
-          ☰ Menu
-        </button>
-      )}
+      {/* The menu button lives inside the Scoreboard now (#187). Floated here as
+          `absolute top-2 left-2 z-10` it was painted over the strip's first line
+          — "☰ Menu" across "Trump: —" on a phone — and the strip had no way to
+          know it was there. In the strip's own flow it cannot collide, and it
+          inherits the safe-area insets the strip already carries. */}
       <Scoreboard
         scoresByTeam={scoresByTeam}
         teamNames={teamNames}
@@ -116,6 +108,7 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
         bidWinnerName={bidWinnerSeat?.name}
         trumpSuit={trumpSuit}
         meldPoints={meldPoints}
+        onOpenMenu={onOpenMenu}
       />
       {/* Columns are capped, not proportional (#161). `1fr 2fr 1fr` let the
           centre column be sized by its contents, so the trick circle set a
@@ -124,10 +117,21 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
           the circle's width and lets it shrink below that on a narrow screen,
           and `minmax(0, 1fr)` lets the side seats fall to zero rather than
           widening the board — together they make the grid physically unable to
-          exceed the viewport down to ~240px. Rows stay content-sized top and
-          bottom with the circle taking the slack. Gutters halved from 4 to 2
-          (16px -> 8px): 32px of the 390 was board margin. */}
-      <div className="grid flex-1 grid-cols-[minmax(0,1fr)_minmax(0,13rem)_minmax(0,1fr)] grid-rows-[auto_1fr_auto] items-center justify-items-center gap-2 p-2">
+          exceed the viewport down to ~240px. Gutters halved from 4 to 2
+          (16px -> 8px): 32px of the 390 was board margin.
+
+          Rows are `1fr auto 1fr`, not `auto 1fr auto` (#187). Sizing the outer
+          rows to their content and giving the slack to the middle centred the
+          circle *within the middle row*, and that row is only centred on the
+          board when the top and bottom seats are the same height — which they
+          never are, since the bottom seat carries the human's hand and the top
+          seat carries a name. At 390x844 that put the circle 37px above centre
+          (row centre 416, board centre 453), and the two-row hand widened the
+          gap further. Giving the middle row to the circle and splitting the
+          remainder equally makes the circle's centre the board's centre by
+          construction. `1fr` (min-content floor), not `minmax(0,1fr)`: the
+          outer rows must never shrink below the hand they hold. */}
+      <div className="grid flex-1 grid-cols-[minmax(0,1fr)_minmax(0,13rem)_minmax(0,1fr)] grid-rows-[1fr_auto_1fr] items-center justify-items-center gap-2 p-2">
         {seats.map((seat) => (
           <div
             key={seat.player}
