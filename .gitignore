@@ -5,3 +5,7 @@ venv/
 .pytest_cache/
 *.egg-info/
 game_state.pkl
+
+# Netlify CLI scratch state, written on every `netlify deploy`. Local
+# artifact only — the committed config is the root `netlify.toml`.
+.netlify/
