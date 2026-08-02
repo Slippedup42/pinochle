@@ -623,11 +623,31 @@ def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, t
     rules applied by Trick.legal_moves - this only picks which one to use.
 
     Following suit, off-trump, in priority order:
-      1. Forced beat (every legal card already beats the current winner) -
+      1. Forced beat (every legal card already beats the current winner,
+         measured as trick-winning power rather than raw rank - #173) -
          play the lowest one, saving the bigger cards for later.
       2. Partner is winning - feed them the cheapest counter (`_feed_partner`).
       3. Otherwise - lowest non-point card, falling back to the lowest legal
          card when only point cards are left.
+
+    Tier 1's *detection* is #173's subject, and it is worth recording what it
+    is worth, because the answer is small and the temptation is to round it to
+    nothing. `ab_harness.py`, 5000 paired deals per arm, this against the
+    pre-fix suit-blind comparison, Proficient on both sides:
+
+        seed 173   +1.32/deal   95% CI +0.55 to +2.13   swept  7-1   p 0.070
+        seed  27   +2.01/deal   95% CI +1.20 to +2.94   swept 11-3   p 0.057
+
+    Both margin intervals exclude zero; the sign test reaches significance on
+    neither, off eight and fourteen decisive deals in 5000. That is the reading
+    to report as margin and not as games-won, and it reproduces #155's
+    TypeScript measurement of the same fix (+1.81 and +1.77 per deal, 12-4 and
+    7-1) closely enough to be the same effect. It is small because the position
+    is rare: instrumented over 300 paired deals, the old predicate fired on 11%
+    of follow decisions, 2.4% of them against a trump winner, and only 0.19%
+    changed the card actually played - the divergence needs partner (not an
+    opponent) to have ruffed in, this seat to still hold the lead suit, and the
+    legal set to contain both a counter and a non-counter.
     """
     if len(legal_moves) == 1:
         return legal_moves[0]
@@ -640,8 +660,20 @@ def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, t
     all_trump = all(c.suit == trump for c in legal_moves)
 
     if all_lead_suit and lead_suit != trump:
+        # Trick-winning power, not raw rank (#173, after #155 in TypeScript).
+        # `_current_winner` returns a *trump* whenever one has been played, and
+        # `RANK_VALUE` is rank-only and suit-blind, so the comparison this
+        # replaces - `RANK_VALUE[c.rank] > RANK_VALUE[winner_card.rank]` - read a
+        # partner who had ruffed in with the 9 of trump (the lowest RANK_VALUE
+        # there is) as beatable by every Queen in hand. That is not a near miss:
+        # it skipped the feed-partner tier below and threw the cheapest card into
+        # a trick this side had already won. `Card.beats` asks the question that
+        # is actually being asked - trump over non-trump, else rank within the
+        # suit - and here every legal card is of the lead suit, so it returns
+        # False against any trump, correctly: no card of the lead suit can take a
+        # trick a trump is winning.
         forced_beat = winner_card is not None and all(
-            RANK_VALUE[c.rank] > RANK_VALUE[winner_card.rank] for c in legal_moves
+            c.beats(winner_card, trump) for c in legal_moves
         )
         if forced_beat:
             return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
@@ -1629,8 +1661,20 @@ def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_pl
     all_trump = all(c.suit == trump for c in legal_moves)
 
     if all_lead_suit and lead_suit != trump:
+        # Same fix as `choose_follow_card`'s copy, and for the same reason
+        # (#173) - `winner_card` can be a trump from another suit, and comparing
+        # a Heart's `RANK_VALUE` against a trump Spade's is not a trick-winning
+        # comparison. `Card.beats` returns False for any lead-suit card against
+        # a trump, which is the truth: this seat cannot take the trick, so it
+        # should fall through to the feed/protect tiers below.
+        #
+        # This copy is the one skills 4-5 follow with at the table, so it is a
+        # separate A/B arm from `choose_follow_card`'s (which Proficient and
+        # skills 1-3 take). See that function's docstring for the measured
+        # numbers there, and PR/issue #173 for this arm's - it is the slow,
+        # noisy one #164 flagged, ~1.1 s/game against Proficient's 20 ms.
         forced_beat = winner_card is not None and all(
-            RANK_VALUE[c.rank] > RANK_VALUE[winner_card.rank] for c in legal_moves
+            c.beats(winner_card, trump) for c in legal_moves
         )
         if forced_beat:
             return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
@@ -1647,6 +1691,23 @@ def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_pl
             current_best_trump = max(
                 (c for _, c in trick_plays if c.suit == trump), key=lambda c: RANK_VALUE[c.rank]
             )
+            # The third `forced_beat` in this file, and the one that is *correct*
+            # on raw `RANK_VALUE` - deliberately not converted to `Card.beats`
+            # when #173 converted the other two. This branch is `all_trump`, so
+            # every card in `legal_moves` is trump and `current_best_trump` is
+            # trump by construction: both sides of the comparison are already the
+            # same suit, which is the precondition `Card.beats` exists to handle.
+            # A search for `forced_beat` returns three hits and this one looks
+            # identical out of context; changing it would be a regression.
+            #
+            # It is also inert either way, which is the belt to that braces and
+            # is why no test can tell the two readings apart here: this tier and
+            # the protect-count-card fallback below it return the *same card* for
+            # every possible legal set, because pinochle's rank order (9 J Q K 10
+            # A) puts every non-counter strictly below every counter, so
+            # "min over the whole legal set" and "min over its non-counters"
+            # coincide whenever a non-counter exists. Checked exhaustively over
+            # all 2509 legal-set shapes up to six cards: zero disagreements.
             forced_beat = all(
                 RANK_VALUE[c.rank] > RANK_VALUE[current_best_trump.rank] for c in legal_moves
             )

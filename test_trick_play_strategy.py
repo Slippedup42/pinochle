@@ -36,6 +36,9 @@ Covers:
   8. The Proficient-tier `choose_follow_card`'s feed-partner tier (#164) -
      not a #62 function, but the same rule as section 4's feed case, so it
      is asserted here rather than in a file of its own.
+  9. Forced-beat *detection* on both follow paths (#173): a trump ruff is
+     not something a lead-suit card can beat, in either direction, plus the
+     all-trump `forced_beat` that is correct on raw rank and was left alone.
 
 Run directly (`python test_trick_play_strategy.py`) or via pytest.
 """
@@ -485,6 +488,128 @@ def test_proficient_follow_forced_beat_still_wins_cheaply():
     legal = [C(Suit.HEARTS, "K"), C(Suit.HEARTS, "A")]
     card = choose_follow_card(legal, legal, trick_plays, trump, set(), PlayTracker())
     assert card.rank == "K"
+
+
+# ---------------------------------------------------------------------------
+# 9. Forced-beat detection compares trick-winning power, not raw rank (#173).
+#
+# `_current_winner` returns a trump whenever one has been played, and
+# `RANK_VALUE` is rank-only and suit-blind, so both follow paths read a partner
+# who had ruffed in with the 9 of trump - the lowest `RANK_VALUE` there is - as
+# beatable by every Queen in hand. Both directions are pinned, on both paths:
+# `choose_follow_card` is what Proficient and skills 1-3 follow with, and
+# `_expert_follow_card_honest` (via `choose_expert_follow_card`) is what skills
+# 4-5 follow with. Same bug #155 fixed in `web/src/engine/tracker.ts`.
+# ---------------------------------------------------------------------------
+
+def _ruffed_trick(ruffer, trump):
+    """An opponent leads the 9 of Hearts, `ruffer` is void and trumps in with
+    the 9 of trump, the fourth seat sluffs. The trump is the lowest rank in the
+    deck, which is what made the suit-blind comparison fire."""
+    trick = Trick(trump)
+    trick.play("opener", C(Suit.HEARTS, "9"))
+    trick.play(ruffer, C(trump, "9"))
+    trick.play("sluffer", C(Suit.DIAMONDS, "9"))
+    return trick
+
+
+def test_proficient_follow_partner_ruff_is_not_a_forced_beat():
+    """The #173 bug, on the path Proficient and skills 1-3 take. A Heart cannot
+    beat a Spade at any rank, so this is not a forced beat and the seat must
+    fall through to the feed-partner tier and bank the King into a trick its own
+    side has already won. The old comparison fired here and threw the Queen."""
+    trump = Suit.SPADES
+    partner = "partner"
+    trick = _ruffed_trick(partner, trump)
+    hand = [C(Suit.HEARTS, "Q"), C(Suit.HEARTS, "K")]
+    legal = trick.legal_moves(hand)
+    assert len(legal) == 2, "both Hearts beat the led 9, so the beat is mandatory"
+    card = choose_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker())
+    assert card.rank == "K", card
+
+
+def test_proficient_follow_opponent_ruff_changes_nothing():
+    """The other direction, pinned because it is the half that must *not* move.
+    Pinochle's rank order (9 J Q K 10 A) puts every non-counter strictly below
+    every counter, so the forced-beat tier and the dump-low tier pick the same
+    Queen - the fix is a null on the opponent side by construction, and this
+    records that rather than leaving it to be re-derived."""
+    trump = Suit.SPADES
+    trick = _ruffed_trick("opponent", trump)
+    hand = [C(Suit.HEARTS, "Q"), C(Suit.HEARTS, "K")]
+    legal = trick.legal_moves(hand)
+    card = choose_follow_card(hand, legal, trick.plays, trump, {"partner"}, PlayTracker())
+    assert card.rank == "Q", card
+
+
+def test_expert_follow_partner_ruff_is_not_a_forced_beat():
+    """The same bug in `_expert_follow_card_honest`, the copy skills 4-5 follow
+    with at the table (as opposed to only inside their rollouts)."""
+    trump = Suit.SPADES
+    partner = "partner"
+    trick = _ruffed_trick(partner, trump)
+    hand = [C(Suit.HEARTS, "Q"), C(Suit.HEARTS, "K")]
+    legal = trick.legal_moves(hand)
+    card = choose_expert_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker())
+    assert card.rank == "K", card
+
+
+def test_expert_follow_opponent_ruff_changes_nothing():
+    """Opponent side of the expert path - unchanged, for the rank-order reason."""
+    trump = Suit.SPADES
+    trick = _ruffed_trick("opponent", trump)
+    hand = [C(Suit.HEARTS, "Q"), C(Suit.HEARTS, "K")]
+    legal = trick.legal_moves(hand)
+    card = choose_expert_follow_card(hand, legal, trick.plays, trump, {"partner"}, PlayTracker())
+    assert card.rank == "Q", card
+
+
+def test_forced_beat_over_trump_still_fires_on_an_all_trump_legal_set():
+    """The third `forced_beat` in `pinochle_engine.py` - inside
+    `_expert_follow_card_honest`'s `all_trump` branch - is *correct* on raw
+    `RANK_VALUE` and was deliberately left alone by #173: there every legal card
+    is trump and so is the card being compared against, which is the same-suit
+    precondition `Card.beats` exists to enforce.
+
+    This asserts the branch's behaviour, not the predicate's value, and cannot
+    assert the latter: that tier and the protect-count-card fallback under it
+    return the same card for every possible legal set, because the rank order
+    (9 J Q K 10 A) puts every non-counter below every counter, so "lowest legal
+    card" and "lowest non-counter" coincide whenever a non-counter exists. So
+    the third site is inert as well as correct - a second, independent reason
+    not to touch it."""
+    trump = Suit.SPADES
+    trick = Trick(trump)
+    trick.play("opener", C(Suit.HEARTS, "9"))
+    trick.play("opponent", C(trump, "9"))
+    hand = [C(trump, "Q"), C(trump, "K")]
+    legal = trick.legal_moves(hand)
+    assert len(legal) == 2, "void of Hearts, holding trump - both trumps must beat the 9"
+    card = choose_expert_follow_card(hand, legal, trick.plays, trump, {"partner"}, PlayTracker())
+    assert card.rank == "Q", "cheapest sufficient over-trump, not a fall-through to protect/feed"
+
+
+def test_the_worked_example_is_decided_before_the_comparison_matters():
+    """#155's worked example, which is the position that makes the bug look
+    reachable and is not: partner leads the King of Diamonds, an opponent ruffs
+    with the 9 of trump, this seat holds the Ace and the 9 of Diamonds.
+    `Trick.legal_moves` forces the set to the Ace alone. `choose_follow_card`
+    then returns on its single-legal-move line without evaluating `forced_beat`
+    at all; the expert path has no such line, reaches the comparison, and plays
+    the Ace either way because it is the only card there is. A one-card legal
+    set can never distinguish the two readings - it is the multi-card positions
+    above that expose the bug."""
+    trump = Suit.SPADES
+    partner = "partner"
+    trick = Trick(trump)
+    trick.play(partner, C(Suit.DIAMONDS, "K"))
+    trick.play("opponent", C(trump, "9"))
+    hand = [C(Suit.DIAMONDS, "A"), C(Suit.DIAMONDS, "9")]
+    legal = trick.legal_moves(hand)
+    assert [c.rank for c in legal] == ["A"], legal
+    assert choose_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker()).rank == "A"
+    expert = choose_expert_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker())
+    assert expert.rank == "A", expert
 
 
 if __name__ == "__main__":
