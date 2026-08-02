@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Card, OPENING_BID, Suit } from './card'
+import type { SkillLevel } from '../persistence/options'
+import { Card, Deck, OPENING_BID, Suit } from './card'
 import {
   ACE_VALUE,
   type AuctionContext,
@@ -14,7 +15,11 @@ import {
   MAX_BID_DEFAULT,
   NEAR_DOUBLE_PINOCHLE_VALUE,
   NEAR_RUN_VALUE,
+  OPENER_THRESHOLD,
+  PARTNER_PASSED_FLOOR,
 } from './bidding'
+import { partnerOf } from './round'
+import type { PlayerIndex } from './trick'
 
 const trump = Suit.Spades
 const RUN_RANKS = ['A', '10', 'K', 'Q', 'J'] as const
@@ -412,5 +417,152 @@ describe('parity with the Python reference engine (#118)', () => {
     expect(NEAR_DOUBLE_PINOCHLE_VALUE).toBe(225)
     expect(ACE_VALUE).toBe(20)
     expect(MAX_BID_DEFAULT).toBe(400)
+  })
+})
+
+// -- The multiple-of-10 invariant (#177) ------------------------------------
+//
+// Bids move in tens. Nothing in the engine said so: the only multiple-of-10
+// check anywhere was the disabled state of one button in `BiddingControls`,
+// which is a *display* rule enforced after the fact and on the human's side
+// only. So `Math.max(321, ...)` — "strictly above OPENER_THRESHOLD", written as
+// `320 + 1` by someone thinking in points rather than in bids — reached players
+// as a real AI bid, and from 321 the whole ladder ran 331, 341, 351, every rung
+// of it a minimum the +/- buttons could not produce.
+//
+// The specific constant is a one-line fix. What made it possible to ship is
+// that no test could have caught it: the case-by-case tests above each assert
+// one hand against one expected number, so they only cover paths someone
+// already thought about, and `engineParity.test.ts` compares rules against
+// Python rather than AI decisions (Python never had this constant — it is
+// TypeScript-only, not a port slip).
+//
+// Hence a property rather than another case: sweep the decision surface and
+// assert the shape of every answer. The next off-grid constant fails here
+// instead of reaching a player, wherever in `chooseBid` someone puts it.
+const SKILL_LEVELS: readonly SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
+const SEATS: readonly PlayerIndex[] = [0, 1, 2, 3]
+
+/** mulberry32, the generator `src/ab/headlessGame.ts` uses. Inlined rather than
+ *  imported so an engine test does not depend on the measurement harness.
+ *  `meldOnlyBid`'s noise term reads `Math.random`, so an unseeded sweep would be
+ *  a different test on every run — and a property test that cannot be replayed
+ *  from its failure is not much of a property test. */
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+describe('every bid chooseBid can return is legal (#177)', () => {
+  it('is a multiple of 10 and at least OPENING_BID, across skills, auction states and seats', () => {
+    const realRandom = Math.random
+    Math.random = seededRandom(0x1770_2026)
+    const offGrid: string[] = []
+
+    // Dealer seat and running score are cycled through the case list rather
+    // than nested as two more loops. They are independent of the auction state
+    // for this property's purposes — the branches that read them (dealer
+    // protection, `computeCompetitiveAdjustment`) do not interact with the
+    // branches that set a bid level — and 8 deals x 4 seats re-rolls the offset,
+    // so every state still meets every dealer and every score pairing across
+    // the sweep. Nesting them instead multiplied the run by 12x for ~85s, which
+    // is the difference between a property test that gets run and one that gets
+    // skipped.
+    const SCORE_CASES: Record<0 | 1, number>[] = [
+      { 0: 0, 1: 0 },
+      { 0: 850, 1: 400 },
+      { 0: 400, 1: 900 },
+    ]
+
+    try {
+      for (let deal = 0; deal < 8; deal++) {
+        const deck = new Deck()
+        deck.shuffle()
+        const hands = deck.deal()
+
+        for (const player of SEATS) {
+          const partner = partnerOf(player)
+          const opponent = ((player + 1) % 4) as PlayerIndex
+
+          // Auction states worth sweeping, each paired with the currentBid that
+          // actually goes with it. The partner-passed rows are the ones #177
+          // lived in; the rest are there so the property covers the whole
+          // function rather than the one branch known to have been wrong.
+          const cases: { currentBid: number; context: AuctionContext }[] = []
+          const spin = deal * 4 + player
+          const push = (currentBid: number, partial: Omit<AuctionContext, 'dealer' | 'scores'>) => {
+            const n = cases.length + spin
+            cases.push({
+              currentBid,
+              context: { ...partial, dealer: (n % 4) as PlayerIndex, scores: SCORE_CASES[n % 3] },
+            })
+          }
+
+          for (const passedPlayers of [[], [partner], [opponent], [partner, opponent]] as PlayerIndex[][]) {
+            // Nobody has bid: opener, 3rd-bidder-opens-cheap, and dealer seats.
+            for (const passesSoFar of [0, 1, 2, 3]) {
+              push(OPENING_BID - 10, { everBid: false, passesSoFar, bidHistory: [], passedPlayers })
+            }
+            // Someone holds the bid — opponents, then partner, then this seat's
+            // own earlier bid, at rungs on both sides of the partner-passed
+            // floor so the raise ladder and the floor are both exercised.
+            for (const currentBid of [300, 310, 320, 330, 390, 400]) {
+              for (const lastBidder of [opponent, partner, player] as PlayerIndex[]) {
+                push(currentBid, {
+                  everBid: true,
+                  passesSoFar: passedPlayers.length,
+                  bidHistory: [
+                    { player: opponent, amount: OPENING_BID },
+                    { player: lastBidder, amount: currentBid },
+                  ],
+                  passedPlayers,
+                })
+              }
+            }
+          }
+
+          for (const skill of SKILL_LEVELS) {
+            for (const { currentBid, context } of cases) {
+              const bid = chooseBid(player, hands[player], currentBid, 10, context, skill)
+              if (bid === null) continue
+              if (bid % 10 !== 0 || bid < OPENING_BID) {
+                offGrid.push(
+                  `${bid} (skill ${skill}, seat ${player}, dealer ${context.dealer}, currentBid ${currentBid}, ` +
+                    `everBid ${context.everBid}, passed [${context.passedPlayers.join(',')}])`,
+                )
+              }
+            }
+          }
+        }
+      }
+    } finally {
+      Math.random = realRandom
+    }
+
+    // Reported as a list rather than as the first failure: if a constant is off
+    // the grid it is off it in several places at once (#177 had three), and
+    // seeing them together is what says "one wrong constant" rather than "one
+    // wrong branch".
+    expect(offGrid.slice(0, 10)).toEqual([])
+  }, 30_000)
+
+  it('takes the partner-passed floor to 330, the first legal bid clearing OPENER_THRESHOLD', () => {
+    // The decision the fix encodes, asserted directly rather than only through
+    // the sweep: 330 is not an arbitrary rounding of 321, it is "above 320" —
+    // the same strictness `chooseBid`'s static verdict applies to the ceiling
+    // when the partner has passed.
+    expect(PARTNER_PASSED_FLOOR).toBe(330)
+    expect(PARTNER_PASSED_FLOOR % 10).toBe(0)
+    expect(PARTNER_PASSED_FLOOR).toBeGreaterThan(OPENER_THRESHOLD)
+    // 320 would also be a legal bid; it is rejected because it only *equals*
+    // the threshold. Guards against a later "simplify" that sets the floor to
+    // OPENER_THRESHOLD itself.
+    expect(PARTNER_PASSED_FLOOR - OPENER_THRESHOLD).toBe(10)
   })
 })

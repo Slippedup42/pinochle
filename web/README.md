@@ -441,6 +441,77 @@ The four throwaway arms (`open_q`, `hold_all`, `hold_ace`, `last_trick`) on the
 measurement in the shape the section below describes and deleted before the fix
 was committed — the same call #126, #153 and #154 made.
 
+### The partner-passed bid floor (#177)
+
+The first measurement in this file that is not about *strength*. Bids move in
+tens; `chooseBid`'s partner-passed floor was **321**, written as `320 + 1` to
+encode "strictly above `OPENER_THRESHOLD`" by someone thinking in ceiling points
+rather than in bids. `OPENER_THRESHOLD` and `DEFENSIVE_PUSH_FLOOR` really are
+points — thresholds a hand's valuation is compared against, where 321 is a
+perfectly ordinary number — and the floor sits one line away from them but is an
+actual bid placed on the table. It is now `PARTNER_PASSED_FLOOR = 330`.
+
+What it cost while it was wrong, over 20 000 headless auctions: **11 553 of
+40 200 bids placed — 28.7% — were not multiples of 10**, and 18.3% of deals
+settled on a contract of exactly 321. The floor branch is not a corner case; it
+fires in about 28% of auctions. And one off-grid bid is not one bad bid, because
+it reseeds `currentBid`: from 321 the ladder runs 331, 341, 351, and
+`BiddingControls` gates its Bid button on `amount % 10 === 0`, so the panel shows
+the human "Minimum: 331" — a number the +/− buttons, which step in tens, cannot
+produce. Typing 340 by hand works. Nothing says so.
+
+**Why 330 and not 320**, since both are legal and the code and its comment
+disagreed about which was meant. The rule (#93/#95) is that a seat whose partner
+has passed is buying the contract alone and must *clear* the opener threshold,
+not merely equal it — and `chooseBid` already says exactly that one tier up, in
+the other direction: it wants `ceiling > OPENER_THRESHOLD` when the partner has
+passed against `ceiling >= OPENER_THRESHOLD` when they have not. 320 would make
+the floor "at least 320" and leave that strict `>` arbitrary. So 330, on the
+rule, not on the arithmetic.
+
+Measured with a throwaway `partnerPassedFloor` field on `SkillParams` plus a
+temporary `cli.ts floor --baseline N` command, added in the shape the section
+below describes and deleted before the fix was committed — the same call #126,
+#153, #154 and #159 made. 5000 pairs / 10 000 games per row, A = 330:
+
+| vs 321 (the fix) | margin per deal | 95% CI | swept | p |
+| --- | --- | --- | --- | --- |
+| seed 1 | −2.89 | −5.37 to −0.39 | 37–56 | 0.061 |
+| seed 2 | −0.57 | −2.85 to +1.72 | 29–47 | 0.051 |
+| seed 3 | −2.27 | −4.85 to +0.28 | 39–61 | 0.035 |
+| seed 4 | −2.71 | −5.04 to −0.55 | 31–50 | 0.045 |
+
+Negative on all four seeds, excluding zero on two of them, ~2 points per deal in
+a game to 1000. Read it as a small real cost rather than a null: the sign never
+flips and the sign test sits at p ≈ 0.05 pointing the same way. The mechanism is
+not subtle — 321 is nine points cheaper to commit to than 330, so the old value
+took slightly more contracts (23 885 vs 23 352) at the same make rate. **Shipped
+anyway.** A bid the human cannot make is not a strategy setting, and two points
+per deal is the price of the ladder being legal.
+
+| vs 320 (the other reading) | margin per deal | 95% CI | swept | p |
+| --- | --- | --- | --- | --- |
+| seed 1 | **−9.82** | −14.85 to −4.98 | 148–170 | 0.239 |
+| seed 2 | **−6.76** | −11.35 to −2.12 | 140–171 | 0.089 |
+| seed 3 | **−10.68** | −15.56 to −5.94 | 130–193 | 0.0005 |
+| seed 4 | **−12.10** | −16.96 to −7.43 | 126–196 | 0.0001 |
+
+That one is not small and it is not ambiguous: four seeds, four intervals
+excluding zero, ~10 points per deal — larger than #159's +7.61 and #154's +3.55,
+both of which shipped on their numbers. **320 plays better than 330.** It is
+left unshipped deliberately, because it is a different question: #177 is a
+legality fix, both candidates are legal, and lowering the floor changes what
+#93/#95's rule *means* rather than correcting how it is spelled. Deciding that
+on a strength number alone would settle a design rule in passing under cover of
+a bug fix. It wants its own issue, and this table is the evidence for it.
+
+Controls, run first as the section below requires: `selftest --policy distilled`
+split all 200 pairs with a paired margin of exactly 0, and so did the floor arm
+against itself (`floor --baseline 330`), which is the same check for the new
+dial. The dial's ability to *see* a change is carried by the 320 rows rather than
+by a deliberately-bad arm — four intervals that clean is not what a field which
+is written but never read produces.
+
 ### Checking that a dial can see a change
 
 A self-test proves a dial reports nothing when nothing differs. It does not

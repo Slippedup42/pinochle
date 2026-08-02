@@ -71,6 +71,36 @@ export const OPENER_THRESHOLD = 320
 // hopeless" hands (no meld, no aces — ceiling ~130) fall below this floor.
 export const DEFENSIVE_PUSH_FLOOR = 200
 
+/**
+ * The bid a seat must commit to once its partner has passed (#93/#95).
+ *
+ * Not a ceiling like the two above — it is an actual bid, placed on the table,
+ * and **bids move in tens**. That distinction is what #177 was: this was
+ * written as `320 + 1` to encode "strictly above OPENER_THRESHOLD", which is
+ * the right *intent* and an impossible *bid*. Once any seat bid 321 the whole
+ * ladder went off-grid (331, 341, ...) and `BiddingControls` — which gates its
+ * Bid button on `amount % 10 === 0` — displayed a minimum the human could not
+ * reach with the +/- buttons.
+ *
+ * Why 330 and not 320. The rule this encodes is that a hand bidding alone must
+ * *clear* the opener threshold, not merely equal it: with no partner left to
+ * speak, the seat is buying the contract outright, so it should be worth more
+ * than the hand that would open with help still to come. `chooseBid`'s static
+ * verdict one tier up already says so in the other direction — it asks for
+ * `ceiling > OPENER_THRESHOLD` when the partner has passed against
+ * `ceiling >= OPENER_THRESHOLD` when they have not. 320 would make the floor
+ * "at least 320", which collapses that distinction and makes the strict `>` on
+ * the ceiling arbitrary. The next legal bid above 320 is 330.
+ *
+ * That settles what the rule *means*. It does not settle which value plays
+ * better, and those turned out to differ: 320 measures ~10 points per deal
+ * ahead of 330 over 5000 paired deals, replicated on four seeds (`web/README.md`,
+ * "The partner-passed bid floor"). #177 is a legality fix and both candidates
+ * are legal, so that is left as an open strategy question rather than settled
+ * in passing by a bug fix.
+ */
+export const PARTNER_PASSED_FLOOR = 330
+
 function handCount(hand: readonly Card[], suit: Suit, rank: Rank): number {
   return hand.reduce((count, c) => count + (c.suit === suit && c.rank === rank ? 1 : 0), 0)
 }
@@ -444,11 +474,12 @@ export function chooseBid(
   const partnerHasBid = context.bidHistory.some((b) => b.player === partner)
 
   // When partner has already passed they cannot come back in (#93), so a bid
-  // here is one this hand must carry alone — which means committing to at
-  // least 321. That raises the *bid floor*, not the hand's ceiling: the
-  // ceiling still reflects what the cards are actually worth, so a hopeless
-  // hand declines rather than being talked into 321 it cannot make.
-  const minBidAfterPartnerPass = Math.max(321, currentBid + minIncrement)
+  // here is one this hand must carry alone — which means committing to
+  // PARTNER_PASSED_FLOOR (330), the first legal bid clearing OPENER_THRESHOLD.
+  // That raises the *bid floor*, not the hand's ceiling: the ceiling still
+  // reflects what the cards are actually worth, so a hopeless hand declines
+  // rather than being talked into a 330 it cannot make.
+  const minBidAfterPartnerPass = Math.max(PARTNER_PASSED_FLOOR, currentBid + minIncrement)
 
   // "Is this hand worth committing to a contract at `level`?" — the single
   // question `OPENER_THRESHOLD` and `DEFENSIVE_PUSH_FLOOR` were each a crude
@@ -485,9 +516,10 @@ export function chooseBid(
       return OPENING_BID
     }
 
-    // With partner passed the bid must clear 321, so the static rule wants the
-    // ceiling strictly above the opener threshold rather than merely level
-    // with it. (Ceilings move in tens, so the two differ only at exactly 320.)
+    // With partner passed the bid must clear OPENER_THRESHOLD (so, 330), so the
+    // static rule wants the ceiling strictly above the opener threshold rather
+    // than merely level with it. (Ceilings move in tens, so the two differ only
+    // at exactly 320.)
     const openingLevel = partnerPassed ? minBidAfterPartnerPass : OPENING_BID
     const opens = worthContract(
       openingLevel,
@@ -544,13 +576,16 @@ export function chooseBid(
   // contract. The distilled rule asks the evaluator about the level actually
   // being pushed to; declining here is not the end of the auction, it just
   // falls through to the ordinary raise ladder below.
-  const pushLevel = partnerPassed ? Math.max(nextBid, 321) : nextBid
+  const pushLevel = partnerPassed ? Math.max(nextBid, PARTNER_PASSED_FLOOR) : nextBid
   if (currentBid <= OPENING_BID && worthContract(pushLevel, ceiling >= DEFENSIVE_PUSH_FLOOR)) {
     return pushLevel
   }
 
-  // When partner passed, the bid must be at least 320 regardless of ceiling.
-  if (partnerPassed && nextBid < 321) return competitiveCeiling >= 321 ? 321 : null
+  // When partner passed, the bid must clear OPENER_THRESHOLD regardless of
+  // ceiling — so PARTNER_PASSED_FLOOR (330), not a bid one point over 320.
+  if (partnerPassed && nextBid < PARTNER_PASSED_FLOOR) {
+    return competitiveCeiling >= PARTNER_PASSED_FLOOR ? PARTNER_PASSED_FLOOR : null
+  }
   return nextBid <= competitiveCeiling ? nextBid : null
 }
 
