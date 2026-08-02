@@ -111,10 +111,13 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
  * and #154-#159 each propose replacing one of them. None of that can be judged
  * without a way to sit two card-play rules at one table.
  *
- * The two arms are the two that already ship: `'simple'` is what `easy` plays
- * and `'cascade'` is what every other level plays. Nothing here enables
- * anything — the comparison is available to the harness while `SKILL_PARAMS`
- * keeps the mapping it has always had. Acting on the number is #156's job.
+ * When this map was written both arms shipped: `'simple'` was what `easy`
+ * played and `'cascade'` what every other level played. #156 acted on the
+ * number — every level now plays `'cascade'` — so outside `tracker.test.ts`
+ * this map is the **only** thing that selects `'simple'`, and deleting it
+ * would take the arm with it: a one-member `PlayPolicy` union and no baseline
+ * for the rest of epic #152 to be measured against. Load-bearing, not
+ * leftover; `PlayPolicy` in `skills.ts` says the same from the other side.
  *
  * Both sides bid `'distilled'` rather than `'static'` for the same reason
  * `FOLD_AB_POLICIES` does: it describes card play as it will actually ship on

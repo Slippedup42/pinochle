@@ -75,6 +75,17 @@ export type FoldPolicy = 'never' | 'model'
  * `passing.ts`), so while one flag carried both, "give easy the same card play
  * as everyone else" (#156) was not expressible without also changing how easy
  * bids — two effects in one measurement, and no way to attribute the result.
+ *
+ * **`'simple'` is retained deliberately and is not dead code.** #156 moved
+ * `easy` onto `'cascade'`, so no `SKILL_PARAMS` row selects it and neither
+ * branch in `tracker.ts` is reachable in a real game. It stays for the reason
+ * `FoldPolicy` keeps `'never'`: `abRun.ts` needs two levels differing in
+ * exactly one field to measure this, and `PLAY_AB_POLICIES` is the only reason
+ * the trick-play dial has a span at all. Deleting the arm would leave
+ * `PlayPolicy` a one-member union and take the ruler away from epic #152 days
+ * after #153 built it — every child of that epic is judged against the
+ * `simple` baseline. Removing it is a decision to stop measuring card play,
+ * not a cleanup.
  */
 export type PlayPolicy = 'simple' | 'cascade'
 
@@ -154,16 +165,34 @@ export interface SkillParams {
  * `bidPolicy`; a level's strength is meant to come from what it is willing to
  * bid, not from whether it is allowed to notice a dead contract.
  *
- * `playPolicy` (#153) is written out per row rather than derived, but it is
- * only the `handValuation === 'meld_only'` card-play gate that used to live in
- * `tracker.ts`, spelled where it can be read: `easy` alone was the `meld_only`
- * row, so `easy` alone is `'simple'`. Nothing about the game changed when this
- * column appeared, by design — #114 landed the bid evaluator the same way,
- * wired but switched on for nobody, and #115 measured it separately. Epic #152
- * is where the column starts moving, one measured change at a time.
+ * `playPolicy` (#153) reads `'cascade'` on every row, and that column is the
+ * one place the table deliberately does *not* express a difficulty setting
+ * (#156). Paul's reasoning, which is about what a player can see rather than
+ * about strength: *"humans get really mad if you play this last part wrong,
+ * but bidding they never know what you have."* A weak bid is invisible — the
+ * other three seats never see the hand it was made on — while a weak card is
+ * face up on the table, and it does not read as an easy opponent, it reads as
+ * a partner who is broken. So trick play is shared competence, like
+ * `foldPolicy`, and a level's strength comes from what it is willing to bid.
+ *
+ * `easy` was the one row on `'simple'`, inherited from the
+ * `handValuation === 'meld_only'` card-play gate that used to live in
+ * `tracker.ts`. That shortcut cost **+121 points per deal** measured against
+ * the cascade on identical deals (#153, confirmed at 5000 pairs in #156) — the
+ * largest effect epic #152 has found, and far too large to be a difficulty
+ * notch even if it were an invisible one.
+ *
+ * Note what did *not* change: `easy` keeps `handValuation: 'meld_only'`, so it
+ * still bids on meld alone. Easy bids like easy and plays cards like everyone
+ * else, and that separation is precisely what #153 split the two fields apart
+ * to allow — while one flag carried both, this change was not expressible
+ * without also rewriting how easy bids.
+ *
+ * `'simple'` itself survives as an A/B arm and must not be deleted as dead
+ * code — see `PlayPolicy` for why.
  */
 export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
-  easy: { handValuation: 'meld_only', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'simple' },
+  easy: { handValuation: 'meld_only', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade' },
   medium: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade' },
   hard: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade' },
   proficient: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade' },
