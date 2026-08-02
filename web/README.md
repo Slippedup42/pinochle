@@ -1,9 +1,10 @@
 # Pinochle — web client
 
 The product — React + TypeScript + Vite + Tailwind CSS. A complete game
-against three AI opponents. **Not currently hosted anywhere**: GitHub holds
-the code only, there is no deploy pipeline, and there is no public URL. Run
-it locally with `npm run dev`.
+against three AI opponents. Live at
+<https://pinochle-house-rulez.netlify.app>. Run it locally with
+`npm run dev`; **deploys are manual and merging does not ship** — see
+"PWA / deployment" below.
 
 The rules engine (`src/engine/`) is a TypeScript port of the Python
 reference implementation (`../pinochle_engine.py`). Both sides are active
@@ -184,12 +185,17 @@ input to `vite build`, so it cannot reach a player or the PWA precache.
   `public/apple-touch-icon.png` are placeholder icons (solid color, generated
   programmatically) — swap for real art whenever it exists; they just need to
   keep the same filenames/sizes referenced in `vite.config.ts`.
-- **There is no automatic deploy pipeline, and no site yet.** The app was
-  served from GitHub Pages from 2026-07-31 until 2026-08-01, when that was
-  removed by decision — GitHub is source control only and `.github/` no
-  longer exists. What replaces it is a *manual* target, described next: the
-  config is committed, but no Netlify site exists yet (#144), so there is
-  still no public URL.
+- **There is no automatic deploy pipeline.** The app was served from GitHub
+  Pages from 2026-07-31 until 2026-08-01, when that was removed by decision
+  — GitHub is source control only and `.github/` no longer exists. It now
+  lives on Netlify at <https://pinochle-house-rulez.netlify.app>, deployed
+  manually. **A merged PR is not live.** To check what is actually deployed,
+  compare the asset hash in the served `index.html` against a local build:
+
+  ```
+  curl -s https://pinochle-house-rulez.netlify.app/ | grep -o 'src="/assets/[^"]*"'
+  grep -o 'src="/assets/[^"]*"' dist/index.html
+  ```
 - **Deploying to Netlify (manual).** `netlify.toml` at the repo root sets
   `publish = "web/dist"` and nothing else build-related. The repo is
   deliberately **not** connected to Netlify's git integration — a

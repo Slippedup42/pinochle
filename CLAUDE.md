@@ -8,9 +8,11 @@ Partnership Pinochle, in two implementations that are not peers:
 
 - **`web/` — the TypeScript PWA, and the product.** React + TS + Vite +
   Tailwind. The rules engine is `web/src/engine/`. New player-visible
-  work lands here. **Not currently hosted anywhere** — GitHub holds the
-  code only, and there is no deploy pipeline. Run it locally with
-  `npm run dev`. A change is shipped when it is merged, not deployed.
+  work lands here. Live at <https://pinochle-house-rulez.netlify.app>.
+  **Merging does not ship.** GitHub is source control only; the repo is
+  deliberately not git-connected to Netlify. Deploys are manual — build
+  `web/`, then `npx netlify deploy --prod` from the repo root. Assume a
+  merged change is *not* live unless someone deployed it.
 - **`pinochle_engine.py` — Python, the reference implementation *and*
   the AI-research and measurement harness.** Both roles are live. It
   implements the same rules end-to-end, it is what the TS port is
