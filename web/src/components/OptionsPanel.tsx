@@ -34,14 +34,6 @@ export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) 
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={options.showMeldHint}
-              onChange={(e) => onChange({ ...options, showMeldHint: e.target.checked })}
-            />
-            Show meld breakdown
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
               checked={!options.hideTrickLog}
               onChange={(e) => onChange({ ...options, hideTrickLog: !e.target.checked })}
             />

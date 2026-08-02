@@ -18,10 +18,6 @@ export interface GameOptions {
   readonly opponentSkill: SkillLevel
   /** AI skill level for the human's teammate (#79). */
   readonly teammateSkill: SkillLevel
-  /** Show the per-card meld breakdown list in MeldFlow. Off by default
-   * (just shows total points) — players who want to verify the AI's meld
-   * detection can turn it on. */
-  readonly showMeldHint: boolean
   /** Hide the trick-play event log (card plays, trick winners). Default on
    * (#81) so the table is less cluttered; turn off to see every play logged
    * in the right-hand panel. The bid/auction history is always shown. */
@@ -32,7 +28,6 @@ export const DEFAULT_OPTIONS: GameOptions = {
   showBaseBidHint: true,
   opponentSkill: 'hard',
   teammateSkill: 'hard',
-  showMeldHint: false,
   hideTrickLog: true,
 }
 
@@ -52,16 +47,16 @@ export function loadOptions(): GameOptions {
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_OPTIONS
     // Destructures only the fields it knows about, so keys left behind by
-    // removed options (`hideOpponentCards`, dropped in #142) are ignored
-    // rather than migrated. That is why OPTIONS_KEY is *not* bumped when an
-    // option goes away: a new key would silently reset every player's
-    // surviving preferences — the skill levels especially.
-    const { showBaseBidHint, opponentSkill, teammateSkill, showMeldHint, hideTrickLog } = parsed as Partial<GameOptions>
+    // removed options (`hideOpponentCards`, dropped in #142; `showMeldHint`,
+    // dropped in #148) are ignored rather than migrated. That is why
+    // OPTIONS_KEY is *not* bumped when an option goes away: a new key would
+    // silently reset every player's surviving preferences — the skill levels
+    // especially.
+    const { showBaseBidHint, opponentSkill, teammateSkill, hideTrickLog } = parsed as Partial<GameOptions>
     return {
       showBaseBidHint: typeof showBaseBidHint === 'boolean' ? showBaseBidHint : DEFAULT_OPTIONS.showBaseBidHint,
       opponentSkill: parseSkill(opponentSkill, DEFAULT_OPTIONS.opponentSkill),
       teammateSkill: parseSkill(teammateSkill, DEFAULT_OPTIONS.teammateSkill),
-      showMeldHint: typeof showMeldHint === 'boolean' ? showMeldHint : DEFAULT_OPTIONS.showMeldHint,
       hideTrickLog: typeof hideTrickLog === 'boolean' ? hideTrickLog : DEFAULT_OPTIONS.hideTrickLog,
     }
   } catch {
