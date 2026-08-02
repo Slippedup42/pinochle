@@ -215,6 +215,33 @@ function maxByRank(cards: readonly Card[]): Card {
 }
 
 /**
+ * Partner is winning and you cannot take the trick off them: bank a counter
+ * into it, and make it the **cheapest** one you hold (#154).
+ *
+ * A, 10 and K are worth exactly 10 points each (`pinochle_rules.md:140`), so
+ * which counter goes in does not change what the trick pays — only what is left
+ * in hand afterwards. The K is therefore strictly the one to spend: it banks the
+ * same 10 while the 10 it keeps is beaten by nothing but an Ace and will often
+ * take a later trick outright. This used to be `maxByRank`, which threw the 10
+ * and kept the K — identical points for a worse hand, on every deal.
+ *
+ * The Ace stays out of it, so a hand holding an Ace and no other counter donates
+ * junk rather than the boss of the suit. That exclusion is measured, not
+ * assumed. A literal reading of the rule — "play your lowest legal point" —
+ * orders K -> 10 -> A and would put the Ace in, and #154 ran that variant as its
+ * own arm. Over 5000 paired deals it is a null against the old `maxByRank`
+ * (+0.4 per deal, 95% CI -1.7 to +2.5, p = 0.58) and loses to this one by
+ * +3.6 per deal (95% CI +2.0 to +5.1) — donating the Ace gives back the whole
+ * gain of spending the King. Both results reproduce on a second seed. See
+ * `web/README.md`.
+ */
+function feedPartner(legalMoves: readonly Card[]): Card {
+  const counters = legalMoves.filter((c) => c.rank === 'K' || c.rank === '10')
+  if (counters.length > 0) return minByRank(counters)
+  return minByRank(legalMoves) // no cheap counter — donate junk, not a live Ace
+}
+
+/**
  * Who's currently winning the trick-in-progress: highest trump if any
  * trump has been played, else highest card of the lead suit. Ties go to
  * whichever copy was played first (`reduce` only replaces the running
@@ -240,9 +267,10 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *       1. Forced beat (every legal card already beats the current
  *          winner) - play the lowest one that still wins, saving bigger
  *          cards for later.
- *       2. Partner is currently winning - feed them points: the highest
- *          King/10 available, or (if none) the lowest card, to avoid
- *          donating a live Ace unless forced.
+ *       2. Partner is currently winning - feed them points: the lowest
+ *          King/10 available (#154 - every counter pays 10, so spend the
+ *          weakest), or (if none) the lowest card, to avoid donating a
+ *          live Ace unless forced.
  *       3. Otherwise - play the lowest non-point card, falling back to
  *          the lowest legal card if only point cards are available.
  *   - Forced to play trump (void in the lead suit):
@@ -286,11 +314,7 @@ export function chooseFollowCard(
     const forcedBeat = winner !== undefined && legalMoves.every((c) => c.rankValue > winner.card.rankValue)
     if (forcedBeat) return minByRank(legalMoves)
 
-    if (partnerWinning) {
-      const feedCards = legalMoves.filter((c) => c.rank === 'K' || c.rank === '10')
-      if (feedCards.length > 0) return maxByRank(feedCards)
-      return minByRank(legalMoves) // avoid donating a live Ace unless forced
-    }
+    if (partnerWinning) return feedPartner(legalMoves)
 
     const nonPoints = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
     if (nonPoints.length > 0) return minByRank(nonPoints)
