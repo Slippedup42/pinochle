@@ -113,15 +113,32 @@ describe('the policy override', () => {
     expect(SKILL_PARAMS).toEqual(before)
   })
 
-  it('leaves the shipped dial playing cards exactly as it did before #153', () => {
-    // `playPolicy` is an extraction of the `handValuation === 'meld_only'` test
-    // that used to gate card play inside `tracker.ts`, not a new setting. If
-    // these two ever disagree it is because a level's card play was changed —
-    // which is legitimate from #156 on, but is a behaviour change and has to be
-    // measured as one rather than arriving as a side effect of a refactor.
+  it('ships one card-play rule at every skill level (#156)', () => {
+    // Replaces #153's invariant, which asserted `playPolicy` still tracked
+    // `handValuation === 'meld_only'` exactly. That held while `playPolicy` was
+    // a rename of the old card-play gate and existed to catch a level's card
+    // play changing as an unmeasured side effect of the refactor. #156 is that
+    // change, made deliberately and measured: `easy` moved to `'cascade'` while
+    // keeping `meld_only` *bidding*, so the two fields are now decoupled by
+    // intent and the old assertion would forbid the thing it was guarding.
+    //
+    // What replaces it is stronger. Trick play is not a difficulty setting —
+    // a bad bid is invisible, a bad card is face up — so every row is
+    // `'cascade'`, and a future row that is not has to come back through here.
     for (const params of Object.values(SKILL_PARAMS)) {
-      expect(params.playPolicy).toBe(params.handValuation === 'meld_only' ? 'simple' : 'cascade')
+      expect(params.playPolicy).toBe('cascade')
     }
+  })
+
+  it("keeps 'simple' reachable as an A/B arm now that no level ships it", () => {
+    // The other half of #156. `'simple'` is unreferenced by `SKILL_PARAMS` and
+    // both `tracker.ts` branches are unreachable in a real game, which reads
+    // exactly like dead code — but deleting it would leave `PlayPolicy` a
+    // one-member union and strip epic #152 of the baseline every one of its
+    // children is measured against. `PLAY_AB_POLICIES` is what keeps it alive,
+    // and this asserts that it does.
+    expect(PLAY_AB_POLICIES[STATIC_LEVEL].playPolicy).toBe('simple')
+    expect(Object.values(SKILL_PARAMS).map((p) => p.playPolicy)).not.toContain('simple')
   })
 })
 
