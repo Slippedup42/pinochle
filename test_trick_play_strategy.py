@@ -32,6 +32,9 @@ Covers:
      move.
   7. General legality across randomized hands/trick states for both the
      lead and follow entry points.
+  8. The Proficient-tier `choose_follow_card`'s feed-partner tier (#164) -
+     not a #62 function, but the same rule as section 4's feed case, so it
+     is asserted here rather than in a file of its own.
 
 Run directly (`python test_trick_play_strategy.py`) or via pytest.
 """
@@ -44,6 +47,7 @@ from pinochle_engine import (
     Trick,
     choose_expert_follow_card,
     choose_expert_lead_card,
+    choose_follow_card,
     generate_fake_void_candidates,
     generate_false_card_candidates,
 )
@@ -373,6 +377,51 @@ def test_follow_always_returns_a_legal_move():
         legal = trick.legal_moves(follower_hand)
         card = choose_expert_follow_card(follower_hand, legal, trick.plays, trump, {"p0"}, tracker)
         assert card in legal
+
+
+# ---------------------------------------------------------------------------
+# 8. Proficient-tier choose_follow_card - the feed-partner tier (#164).
+# ---------------------------------------------------------------------------
+
+def test_proficient_follow_feeds_partner_the_lowest_counter():
+    """King and 10 bank the same 10 points, so spend the King and keep the 10 -
+    it loses only to an Ace and often takes a later trick outright. This tier
+    used to call `max` and throw the 10; #154 fixed the identical bug in
+    `web/src/engine/tracker.ts` and #164 fixed it here."""
+    trump = Suit.SPADES
+    partner = object()
+    # Partner leads a Queen; the 9 does not beat it, so this is not a forced
+    # beat and the feed tier is what runs.
+    trick_plays = [(partner, C(Suit.HEARTS, "Q"))]
+    legal = [C(Suit.HEARTS, "9"), C(Suit.HEARTS, "K"), C(Suit.HEARTS, "10")]
+    card = choose_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker())
+    assert card.rank == "K"
+
+
+def test_proficient_follow_holds_the_ace_back_when_it_is_the_only_counter():
+    """The measured half of #154, mirrored into Python. "Play your lowest legal
+    point" read literally orders K -> 10 -> A and would donate the Ace here for
+    the same 10 points; that variant was a null against the pre-fix behaviour
+    over 5000 paired deals and 3.6 points a deal behind this one. The trick pays
+    the same either way; the boss of a suit does not."""
+    trump = Suit.SPADES
+    partner = object()
+    trick_plays = [(partner, C(Suit.HEARTS, "Q"))]
+    legal = [C(Suit.HEARTS, "9"), C(Suit.HEARTS, "A")]
+    card = choose_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker())
+    assert card.rank == "9"
+
+
+def test_proficient_follow_forced_beat_still_wins_cheaply():
+    """Guards the tier above it: when every legal card already beats the current
+    winner the forced-beat branch runs first, so `_feed_partner` must not be
+    reached and the cheapest winner goes in."""
+    trump = Suit.SPADES
+    opponent = object()
+    trick_plays = [(opponent, C(Suit.HEARTS, "J"))]
+    legal = [C(Suit.HEARTS, "K"), C(Suit.HEARTS, "A")]
+    card = choose_follow_card(legal, legal, trick_plays, trump, set(), PlayTracker())
+    assert card.rank == "K"
 
 
 if __name__ == "__main__":
