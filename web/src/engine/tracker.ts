@@ -193,9 +193,11 @@ function leadSafeCascade(hand: readonly Card[], trump: Suit, tracker: PlayTracke
  *
  * @param isBidderFirstLead - When true (bidder opening the first trick of the
  *   round), forces a trump lead if the player has any trump cards remaining.
- * @param skill - Skill level, read for `playPolicy` (#153). `'simple'` uses
- *   simplified logic: prefers low non-trump non-count cards. Defaults to 'hard'
- *   (`'cascade'`, the full Proficient cascade).
+ * @param skill - Skill level, read for `playPolicy` (#153). Since #156 every
+ *   shipped row is `'cascade'` — the full Proficient cascade — so this argument
+ *   no longer varies the strategy in a real game. `'simple'` (low non-trump
+ *   non-counter) survives as an A/B arm, reachable only through an override.
+ *   Defaults to 'hard'.
  * @param isBiddingTeam - Which side this seat is on. Undefined = fallback.
  */
 export function chooseLeadCard(
@@ -206,10 +208,11 @@ export function chooseLeadCard(
   skill: SkillLevel = 'hard',
   isBiddingTeam?: boolean,
 ): Card {
-  // Simplified leading — prefer low non-trump non-count cards. Reached by
-  // `easy` and nothing else, which is the mapping the `meld_only` test this
-  // replaces produced (#153); `playPolicy` is the field to change, not the
-  // valuation one, because that one also decides how the seat bids.
+  // Simplified leading — prefer low non-trump non-count cards. No shipped
+  // `SKILL_PARAMS` row selects this since #156 moved `easy` onto the cascade
+  // with everyone else, so nothing reaches it in a real game; it stays as the
+  // `'simple'` arm of `PLAY_AB_POLICIES`, the baseline every remaining child of
+  // epic #152 is measured against, and is reachable only by overriding the dial.
   if (SKILL_PARAMS[skill].playPolicy === 'simple') {
     const safeLeads = hand.filter((c) => c.suit !== trump && c.rank !== 'A' && c.rank !== '10' && c.rank !== 'K')
     const pool = safeLeads.length > 0 ? safeLeads : hand
@@ -281,6 +284,36 @@ function feedPartner(legalMoves: readonly Card[]): Card {
 }
 
 /**
+ * Forced to take the trick: every legal card already beats whoever is winning,
+ * so the only question left is which one to spend (#155). Paul's rule — "if you
+ * are going to beat, you want to take with either no point, or take with the
+ * lowest point that cannot be beat":
+ *
+ *   1. A non-counter (Q, J, 9) if any legal beater is one — take the trick
+ *      without also donating 10 points into it.
+ *   2. Otherwise the lowest counter that cannot itself be beaten. **Not
+ *      implemented here.** Knowing a counter is safe means knowing what is still
+ *      outstanding, which is #158 on top of #157's trump memory; this gap is the
+ *      seam it slots into, left deliberately rather than approximated.
+ *   3. Otherwise the lowest counter.
+ *
+ * Tiers 1 and 3 pick the card `minByRank` picked before this function existed,
+ * and that is worth stating rather than relying on silently: pinochle's rank
+ * order (9 J Q K 10 A) happens to put every non-counter strictly below every
+ * counter, so "lowest legal card" already reads as "cheapest free beat, else
+ * cheapest counter". Spelling the tiers out costs nothing, makes the preference
+ * a tested property instead of a side effect of `RANK_VALUE`, and means #158
+ * inserts one branch rather than re-deriving the rule. The behaviour #155
+ * measured is all in `chooseFollowCard`'s *detection* of the forced beat below,
+ * not in this selection.
+ */
+function chooseForcedBeat(legalMoves: readonly Card[]): Card {
+  const nonCounters = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
+  if (nonCounters.length > 0) return minByRank(nonCounters)
+  return minByRank(legalMoves)
+}
+
+/**
  * Who's currently winning the trick-in-progress: highest trump if any
  * trump has been played, else highest card of the lead suit. Ties go to
  * whichever copy was played first (`reduce` only replaces the running
@@ -304,8 +337,9 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  * rules, and each gets its own tiered strategy:
  *   - Forced to follow a non-trump lead suit:
  *       1. Forced beat (every legal card already beats the current
- *          winner) - play the lowest one that still wins, saving bigger
- *          cards for later.
+ *          winner, measured as trick-winning power rather than raw rank
+ *          - #155) - take it with a non-counter if one is legal, else
+ *          with the cheapest counter. See `chooseForcedBeat`.
  *       2. Partner is currently winning - feed them points: the lowest
  *          King/10 available (#154 - every counter pays 10, so spend the
  *          weakest), or (if none) the lowest card, to avoid donating a
@@ -323,8 +357,11 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *     suits - work toward voiding the shortest suit, lowest rank within
  *     it.
  *
- * @param skill Skill level, read for `playPolicy` (#153). `'simple'` plays the
- *   lowest legal card. Defaults to 'hard' (`'cascade'`, the tiered logic above).
+ * @param skill Skill level, read for `playPolicy` (#153). Since #156 every
+ *   shipped row is `'cascade'` — the tiered logic above — so this argument no
+ *   longer varies the strategy in a real game. `'simple'` (play the lowest legal
+ *   card) survives as an A/B arm, reachable only through an override. Defaults
+ *   to 'hard'.
  */
 export function chooseFollowCard(
   hand: readonly Card[],
@@ -337,7 +374,9 @@ export function chooseFollowCard(
 ): Card {
   if (legalMoves.length === 1) return legalMoves[0]
 
-  // Simplified following: always play the lowest legal card (#153)
+  // Simplified following: always play the lowest legal card (#153). Unreachable
+  // from a shipped `SKILL_PARAMS` row since #156, and kept for the same reason
+  // as its counterpart in `chooseLeadCard` above — it is the A/B baseline.
   if (SKILL_PARAMS[skill].playPolicy === 'simple') {
     return legalMoves.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
   }
@@ -350,8 +389,18 @@ export function chooseFollowCard(
   const allTrump = legalMoves.every((c) => c.suit === trump)
 
   if (allLeadSuit && leadSuit !== trump) {
-    const forcedBeat = winner !== undefined && legalMoves.every((c) => c.rankValue > winner.card.rankValue)
-    if (forcedBeat) return minByRank(legalMoves)
+    // Trick-winning power, not raw rank (#155). `currentWinner` returns a trump
+    // whenever one has been played, and `rankValue` is suit-blind, so the
+    // comparison this replaces — `c.rankValue > winner.card.rankValue` — read a
+    // partner who had ruffed in with the 9 of trump as beatable by any Queen.
+    // That is not a near miss: it skipped the feed-partner tier below and threw
+    // the cheapest card into a trick this side had already won. `Card.beats`
+    // answers the question actually being asked (trump over non-trump, rank
+    // within the suit), and here every legal card is of the lead suit, so it
+    // returns false against any trump — correctly, since no card of the lead
+    // suit can take a trick a trump is winning.
+    const forcedBeat = winner !== undefined && legalMoves.every((c) => c.beats(winner.card, trump))
+    if (forcedBeat) return chooseForcedBeat(legalMoves)
 
     if (partnerWinning) return feedPartner(legalMoves)
 

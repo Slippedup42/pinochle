@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SkillLevel } from '../persistence/options'
 import { Card, Suit } from './card'
 import { SKILL_PARAMS } from './skills'
-import type { TrickPlay } from './trick'
+import { Trick, type TrickPlay } from './trick'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from './tracker'
 
 /**
@@ -334,6 +334,84 @@ describe('chooseFollowCard', () => {
     const hand = legalMoves
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
     expect(played.rank).toBe('10')
+  })
+
+  // -- Forced-beat selection (#155) -----------------------------------------
+
+  it('forced beat: prefers a non-counter beater over a counter, taking the trick for free', () => {
+    // Step 1 of Paul's rule. Opponent is winning with the Jack; the Queen, King
+    // and 10 all beat it, so the trick is taken either way — the Queen takes it
+    // without also putting 10 points into it.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'J', 1) }]
+    const legalMoves = [
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Hearts, 'Q', 1),
+      new Card(Suit.Hearts, '10', 1),
+    ]
+    const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('Q')
+  })
+
+  it('forced beat with only counters legal: spends the cheapest one (King before 10 before Ace)', () => {
+    // Step 3. There is no free beat available, so a counter has to go in; the
+    // King is the one to spend, for #154's reason — every counter pays the same
+    // 10, and the 10 it keeps loses to nothing but an Ace.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const legalMoves = [
+      new Card(Suit.Hearts, '10', 1),
+      new Card(Suit.Hearts, 'A', 1),
+      new Card(Suit.Hearts, 'K', 1),
+    ]
+    const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('K')
+  })
+
+  it('a trump ruff by partner is not a forced beat — no card of the lead suit can touch it', () => {
+    // The #155 bug. `currentWinner` returns the trump, and the old test compared
+    // `rankValue` alone: the 9 of trump has the lowest rank there is, so every
+    // legal Heart "beat" it and the seat skipped the feed-partner tier to throw
+    // its cheapest card into a trick its own side had already won. A Heart
+    // cannot beat a Spade at any rank — partner is winning, so feed the King.
+    const trickPlays: TrickPlay[] = [
+      { player: 3, card: new Card(Suit.Hearts, '9', 1) }, // opponent leads
+      { player: 0, card: new Card(Suit.Spades, '9', 1) }, // partner is void, ruffs
+      { player: 1, card: new Card(Suit.Diamonds, '9', 1) }, // opponent sluffs
+    ]
+    // Seat 2 holds Hearts, so it must follow, and must beat the 9 of Hearts.
+    const legalMoves = [new Card(Suit.Hearts, 'Q', 1), new Card(Suit.Hearts, 'K', 1)]
+    const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('K')
+  })
+
+  it('a trump ruff by an opponent is not a forced beat either, and still costs them nothing', () => {
+    // Same suit-blind comparison, opponent side. Both the old and the fixed
+    // reading play the Queen here — the forced-beat tier and the dump-low tier
+    // agree, because pinochle's rank order puts every non-counter below every
+    // counter — so this pins that the fix changed nothing on this side.
+    const trickPlays: TrickPlay[] = [
+      { player: 3, card: new Card(Suit.Hearts, '9', 1) },
+      { player: 1, card: new Card(Suit.Spades, '9', 1) }, // opponent ruffs
+    ]
+    const legalMoves = [new Card(Suit.Hearts, 'Q', 1), new Card(Suit.Hearts, 'K', 1)]
+    const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('Q')
+  })
+
+  it("#155's worked example is decided before the comparison is reached", () => {
+    // Partner leads the King of Diamonds, an opponent ruffs with the 9 of
+    // trump, this seat holds the Ace and the 9 of Diamonds. `legalMoves` is
+    // forced to the Ace alone, so `chooseFollowCard` returns on the
+    // single-legal-move line and never evaluates `forcedBeat` at all — the
+    // suit-blind comparison was unreachable in exactly the position that made
+    // it look suspicious. It is the multi-card positions above that expose it.
+    const trick = new Trick(Suit.Spades)
+    trick.play(0, new Card(Suit.Diamonds, 'K', 1))
+    trick.play(1, new Card(Suit.Spades, '9', 1))
+    const hand = [new Card(Suit.Diamonds, 'A', 1), new Card(Suit.Diamonds, '9', 1)]
+    const legalMoves = trick.legalMoves(hand)
+    expect(legalMoves.map((c) => c.rank)).toEqual(['A'])
+    const played = chooseFollowCard(hand, legalMoves, trick.plays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('A')
   })
 
   it('feeds partner the lowest King/10 when partner is winning and not every card is a forced beat', () => {

@@ -291,6 +291,67 @@ differing in exactly one field, and this is the baseline every remaining child
 of #152 is judged against. Deleting it as dead code would leave a one-member
 union and take the ruler away days after #153 built it.
 
+### Fixing the forced-beat comparison (#155)
+
+`Trick.legalMoves` forces a seat to beat the best **lead-suit** card on the table
+whenever it can, and does not care who played it — so a seat is regularly
+compelled to overtake its own partner. `chooseFollowCard`'s first tier is what
+decides which card to take with, and until this issue that tier was gated on
+
+    legalMoves.every((c) => c.rankValue > winner.card.rankValue)
+
+`rankValue` is rank-only and suit-blind, and `currentWinner` returns a **trump**
+whenever one has been played. So a partner who had ruffed in with the 9 of trump
+— the lowest `rankValue` there is — read as beatable by every Queen in hand: the
+forced-beat tier fired, and the seat threw its cheapest card into a trick its own
+side had already won. The feed-partner tier underneath, which #154 had just
+finished tuning, never ran. The condition is now `Card.beats(winner.card, trump)`
+— trump over non-trump, rank within the suit.
+
+The blast radius is small and worth stating exactly, because it is what sizes the
+result. The fixed reading is strictly weaker than the old one (no card of the
+lead suit beats a trump at any rank), so the only positions that change are those
+where a trump was winning and the comparison fired anyway. Of *those*, only the
+ones where **partner** holds that trump change the card actually played:
+pinochle's rank order (9 J Q K 10 A) puts every non-counter strictly below every
+counter, so on the opponent side "lowest legal card" and "lowest non-counter,
+else lowest counter" are the same card and the tiers agree.
+
+That last point is also why the selection rule this issue specifies —
+
+1. beat with a non-counter (Q, J, 9) if any legal beater is one;
+2. else the lowest counter that cannot itself be beaten — **not implemented**,
+   it needs #157's outstanding-card memory and is #158's job, left as a gap
+   rather than approximated;
+3. else the lowest counter
+
+— picks the same card as the `minByRank` it replaces. `chooseForcedBeat` spells
+it out anyway, so the preference is a tested property rather than a side effect
+of `RANK_VALUE`, and so #158 inserts one branch instead of re-deriving the rule.
+
+Measured with a throwaway `'legacy-beat'` arm on `PlayPolicy` plus a temporary
+`cli.ts beat` command, in the shape the section below describes and deleted
+before the fix was committed, over 5000 pairs / 10 000 games:
+
+| | margin per deal | 95% CI | swept | p |
+| --- | --- | --- | --- | --- |
+| seed 1 | **+1.81** | +0.86 to +2.77 | 12–4 | 0.077 |
+| seed 2 | **+1.77** | +0.93 to +2.64 | 7–1 | 0.070 |
+
+The margin interval excludes zero on both seeds and the sign test reaches
+significance on neither, off sixteen and eight decisive deals in 5000 —
+which is precisely the reading #154's methodology note exists to prevent being
+mistaken for a null. Half the size of #154, and #154 was already two orders of
+magnitude under the dial's own span, because the divergence needs four things at
+once: partner ruffs in, this seat still holds the lead suit, `legalMoves` forces
+a beat, and the legal set holds both a counter and a non-counter. When it does
+fire it is worth a whole counter.
+
+`pinochle_engine.py` carries the identical comparison, in `choose_follow_card`
+and again in the expert follow path — this is a faithful port of a reference bug,
+not a porting error. Fixing it there is its own issue on the Python side, the way
+#164 followed #154.
+
 ### The bidder's opening lead, and the trump it does not hold back (#159)
 
 Epic #152's largest proposed change, and the only one that reasons about a
@@ -360,6 +421,19 @@ Both arms ran behind `distilled` bidding and `installPolicies` writes both
 `SkillParams` rows explicitly, so these numbers do not depend on where the
 shipped dial sits — but note that after #156 every level runs `'cascade'`, so
 this opening lead reaches all five, `easy` included.
+
+The table above was measured before #155 and #156 merged, and both of those
+change card play, so it was re-run on the merged tree rather than assumed:
+
+| seed | margin per deal | 95% CI | swept | make-rate, Q vs 10 |
+| --- | --- | --- | --- | --- |
+| 1 | **+7.61** | +5.70 to +9.54 | 56–15 | 71.23% vs 70.81% |
+| 2 | **+7.24** | +5.12 to +9.42 | 52–19 | 70.89% vs 70.55% |
+
+Seed 1 is unchanged to two decimals with one deal moving from split to decisive.
+That is what a change confined to the opening lead should do against a fix
+confined to the follow tiers (#155) and a dial move that does not touch either
+(#156) — but it is cheap to check and expensive to assume.
 
 The four throwaway arms (`open_q`, `hold_all`, `hold_ace`, `last_trick`) on the
 `PlayPolicy` union, the `LEAD_AB_ARMS` map, the `cli.ts lead` / `leaddump` /
