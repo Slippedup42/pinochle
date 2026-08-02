@@ -21,12 +21,20 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        id: '/pinochle/',
+        // `id`, `start_url`, and `scope` must track `base` above. They were
+        // left at the GitHub Pages project-page path (`/pinochle/`) when that
+        // deploy was removed and `base` went back to `/`, which pointed an
+        // installed app at a URL the build does not contain: tapping the home
+        // screen icon loaded `/pinochle/` and 404'd, and the document at `/`
+        // sat outside the declared scope, so browsers declined to install it
+        // at all. The service worker registers at `/` either way, so the two
+        // disagreed. If `base` ever changes, change these with it.
+        id: '/',
         name: 'Pinochle',
         short_name: 'Pinochle',
         description: 'Partnership Pinochle — play against AI opponents.',
-        start_url: '/pinochle/',
-        scope: '/pinochle/',
+        start_url: '/',
+        scope: '/',
         display: 'standalone',
         orientation: 'portrait',
         theme_color: '#14532d',

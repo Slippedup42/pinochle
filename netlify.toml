@@ -1,0 +1,99 @@
+# Netlify configuration for the Pinochle PWA.
+#
+# Deploys are MANUAL, from a locally prebuilt directory. This repo is
+# deliberately NOT connected to Netlify's git integration: GitHub is source
+# control only (decided 2026-08-01, #141, which removed the GitHub Pages
+# workflow and the `.github/` directory). A push-triggered build configured
+# here would rebuild exactly the coupling that decision removed, in a
+# different service.
+#
+#     cd web
+#     npm ci && npm run build       # built locally on Node 24
+#     cd ..
+#     npx netlify deploy --prod     # uploads web/dist exactly as built
+#
+# Run the deploy from the repo root — `publish` below is resolved relative to
+# this file, so invoking the CLI from `web/` would look for `web/web/dist`.
+#
+# There is deliberately no `command` and no NODE_VERSION here. Netlify never
+# runs a build for this repo, so build settings would be dead config whose
+# only real effect is to imply that it does.
+
+[build]
+  publish = "web/dist"
+
+# ---------------------------------------------------------------------------
+# Redirects — intentionally none.
+# ---------------------------------------------------------------------------
+# In particular there is no SPA fallback (`/* /index.html 200`). That rule is
+# standard Netlify boilerplate for client-side routers, and this app has no
+# router: nothing imports `react-router` and nothing calls `pushState` /
+# `replaceState`. Every real URL is a file that exists in `web/dist`, so the
+# fallback would only convert genuine 404s into a silent 200 serving the app
+# shell. Add one if and when a router lands, not before.
+
+# ---------------------------------------------------------------------------
+# Security headers
+# ---------------------------------------------------------------------------
+# The build is self-contained: no backend, no outbound requests, no forms, no
+# third-party scripts or fonts, no `eval`. That makes a strict allowlist CSP
+# cheap to hold, so it lists exactly what the bundle uses rather than starting
+# permissive. `frame-ancestors 'none'` is what X-Frame-Options would do, so
+# that header is not duplicated.
+#
+# `style-src 'self'` (no 'unsafe-inline') is safe here because the build emits
+# no inline `<style>` blocks and no `style="..."` attributes. `useDraggable.ts`
+# does write `element.style.*` at runtime, but that is the CSSOM, which CSP
+# does not govern — only style attributes parsed from markup are.
+#
+# NOT set: Cross-Origin-Opener-Policy / Cross-Origin-Embedder-Policy. Netlify
+# *can* set them where GitHub Pages could not, and they are the prerequisite
+# for SharedArrayBuffer and therefore for multi-threaded WebAssembly. Nothing
+# here uses either today, and COEP breaks cross-origin subresources, so they
+# stay off until browser-side rollouts for skills 4-5 (ROADMAP Phase 3)
+# actually need them.
+
+[[headers]]
+  for = "/*"
+
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+
+# ---------------------------------------------------------------------------
+# Caching
+# ---------------------------------------------------------------------------
+# Vite fingerprints everything under /assets/, so those URLs are immutable by
+# construction and can be cached hard.
+
+[[headers]]
+  for = "/assets/*"
+
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# The service worker is the one file that must never be served stale: it is
+# how every other file gets updated. `vite-plugin-pwa` runs `registerType:
+# 'autoUpdate'`, so a cached `sw.js` would pin a device to an old build with
+# no way to recover short of clearing site data. This matches Netlify's
+# current default rather than relying on it staying the default.
+
+[[headers]]
+  for = "/sw.js"
+
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/registerSW.js"
+
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
