@@ -228,6 +228,25 @@ class InteractiveRound(Round):
 
         if self._phase == "meld":
             self._meld_phase()
+            self._phase = "auto-set"
+
+        if self._phase == "auto-set":
+            # Auto-SET (issue #178). `InteractiveRound` had skipped `Round`'s
+            # concede window entirely, which was harmless while conceding was a
+            # choice the CLI never offered - but auto-SET is not a choice, and
+            # leaving it out would put the CLI on different rules from `Round`,
+            # the exact drift CODING_STANDARDS warns this duplication invites.
+            #
+            # `Round._concede_phase` is called whole rather than re-testing the
+            # inequality here, so there is still one implementation. Its second
+            # half (`decide_fold`) is a no-op for every player the CLI seats -
+            # `HumanPlayer` does not override it and `Player` never folds - so
+            # this adds the arithmetic rule without quietly adding AI folding.
+            # It is not a decision point, so nothing here can raise
+            # `NeedsHumanInput` and the phase needs no resume bookkeeping.
+            if self._concede_phase():
+                self._discard_hands()
+                return self._score_conceded_round()
             self._phase = "tricks"
 
         if self._phase == "tricks":

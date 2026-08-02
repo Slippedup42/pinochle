@@ -68,12 +68,14 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     bidPolicy: 'static',
     foldPolicy: 'model',
     playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
     bidPolicy: 'distilled',
     foldPolicy: 'model',
     playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
   },
 }
 
@@ -92,12 +94,48 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     bidPolicy: 'distilled',
     foldPolicy: 'never',
     playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
     bidPolicy: 'distilled',
     foldPolicy: 'model',
     playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+  },
+}
+
+/**
+ * Auto-SET A/B (#178): identical bidders, identical card play, both consulting
+ * the same fold model — differing only in whether a contract the arithmetic
+ * has already killed ends the round.
+ *
+ * `foldPolicy: 'model'` on **both** sides on purpose. The alternative, turning
+ * folding off entirely, would measure auto-SET against a straw man that never
+ * concedes anything, and this is a change landing on top of #123's shipped
+ * behaviour, not instead of it. What this map asks is the question that
+ * matters: with the fold model already running, what does forcing the
+ * arithmetic add? Any hand `shouldConcede` was folding anyway contributes
+ * nothing, so a small effect here is the honest reading and not a
+ * disappointment — the `auto-set %` row in the summary is what says whether
+ * the rule has anything to act on at all.
+ *
+ * As with `FOLD_AB_POLICIES`, side A (`DISTILLED_LEVEL`) is the arm under test.
+ */
+export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
+  [STATIC_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'off',
+  },
+  [DISTILLED_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
   },
 }
 
@@ -130,12 +168,14 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     bidPolicy: 'distilled',
     foldPolicy: 'model',
     playPolicy: 'simple',
+    autoSetPolicy: 'forced',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
     bidPolicy: 'distilled',
     foldPolicy: 'model',
     playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
   },
 }
 
@@ -366,6 +406,11 @@ export function summarise(report: AbReport, analysis = analyse(report)): string 
     // side that never folds reads 0% here, which is what makes the fold A/B
     // legible at a glance rather than only through the margin.
     `  ${'  of which folded'.padEnd(18)}${rate(report.statsA.conceded, report.statsA.contracts).padStart(12)}${rate(report.statsB.conceded, report.statsB.contracts).padStart(12)}`,
+    // How often the auto-SET condition arose (#178) — counted on both arms
+    // whatever their policy, so the two columns should read alike. This is the
+    // number that says whether the rule has anything to act on; the margin
+    // above cannot mean much if this is near zero.
+    `  ${'  auto-set hands'.padEnd(18)}${rate(report.statsA.autoSet, report.statsA.contracts).padStart(12)}${rate(report.statsB.autoSet, report.statsB.contracts).padStart(12)}`,
     `  ${'avg bid'.padEnd(18)}${avg(report.statsA.bids).toFixed(0).padStart(12)}${avg(report.statsB.bids).toFixed(0).padStart(12)}`,
   ].join('\n')
 }

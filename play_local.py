@@ -14,6 +14,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 from human_play import HumanPlayer, InteractiveRound, NeedsHumanInput, hand_grouped
 from pinochle_engine import Player, Team, GAME_WIN_SCORE, GAME_LOSE_SCORE
+from pinochle_rollout import MAX_TRICK_POINTS
 
 SUIT_NAME = {"S": "Spades", "H": "Hearts", "D": "Diamonds", "C": "Clubs"}
 SUIT_ORDER = ["S", "H", "D", "C"]
@@ -123,6 +124,18 @@ def play_game():
 
         print("\n=== ROUND COMPLETE ===")
         print(f"Bid winner: {round_.bid_winner.name} at {round_.current_bid}, trump {round_.trump_suit.name}")
+        if round_.auto_set:
+            # Say why no tricks were played (issue #178). A round that ends
+            # straight after meld reads as a crash unless the arithmetic is
+            # spelled out, and this is the CLI's only chance to spell it out.
+            bidding_team = round_.bid_winner.team
+            ceiling = bidding_team.meld_points + MAX_TRICK_POINTS
+            print(
+                f"AUTO-SET: {bidding_team.name} melded {bidding_team.meld_points}, and every "
+                f"trick point in a round is {MAX_TRICK_POINTS}, so the most they could reach was "
+                f"{ceiling} - short of {round_.current_bid}. The contract could not be made, so "
+                f"no tricks were played."
+            )
         for team, score in result.items():
             team.score += score
             print(f"{team.name}: {'+' if score >= 0 else ''}{score} -> total {team.score}")

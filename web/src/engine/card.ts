@@ -25,10 +25,19 @@ export const RANK_VALUE: Record<Rank, number> = Object.fromEntries(
 
 export type CopyId = 1 | 2
 
+/** A pinochle deck holds two copies of every card (pinochle_rules.md), which
+ *  is what makes 48 cards out of 24 distinct ones. Named rather than written
+ *  as a literal `[1, 2]` at each use so anything counting cards — `Deck.build`
+ *  below, `round.ts`'s MAX_TRICK_POINTS — derives from one place. */
+export const COPIES_PER_CARD: readonly CopyId[] = [1, 2]
+
 export const GAME_WIN_SCORE = 1000
 export const GAME_LOSE_SCORE = -1000
 export const OPENING_BID = 300
 // What the dealer is stuck with if everyone passes without ever bidding.
+// Coincidentally equal to round.ts's MAX_TRICK_POINTS and entirely unrelated
+// to it — one is an auction floor, the other the trick points in a deck. Do
+// not use either in place of the other (#178).
 export const FORCED_BID = 250
 
 export class Card {
@@ -99,7 +108,7 @@ export class Deck {
     const cards: Card[] = []
     for (const suit of SUITS) {
       for (const rank of RANKS) {
-        for (const copyId of [1, 2] as const) {
+        for (const copyId of COPIES_PER_CARD) {
           cards.push(new Card(suit, rank, copyId))
         }
       }

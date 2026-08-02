@@ -317,9 +317,15 @@ def test_conceding_scores_negative_bid_and_denies_defenders_their_tricks():
     rnd.current_bid = 350
     rnd.trump_suit = Suit.CLUBS
     rnd._meld_phase()
+    # Pin the bidders' meld above the auto-SET floor (#178), so this stays a
+    # test of `_AlwaysFolds` choosing to concede. The deal is unseeded, so
+    # without this the branch taken would depend on the shuffle: 350 needs 100
+    # meld to be reachable at all, and a real deal often falls short.
+    team_a.meld_points = 200
     defending_meld = team_b.meld_points
 
     assert rnd._concede_phase() is True
+    assert rnd.auto_set is False
     scores = rnd._score_conceded_round()
 
     assert scores[team_a] == -350                 # bidders forfeit their meld
@@ -352,3 +358,119 @@ def test_conceding_clears_the_hands_so_the_next_deal_is_clean():
     for player in players:
         assert len(player.hand) == 12
         assert len(set(player.hand)) == 12
+
+
+# ---------------------------------------------------------------------------
+# 8. Auto-SET in real play (issue #178). `is_auto_set` had run inside rollouts
+#    since #59 but was never applied to an actual round; these cover the wiring
+#    into `Round._concede_phase`, not the arithmetic (that is test_rollout.py's
+#    `test_is_auto_set_*`).
+# ---------------------------------------------------------------------------
+
+class _RefusesToFold(Player):
+    """Records whether it was consulted. `Player` never folds anyway, so a bare
+    `Player` could not tell "auto-SET fired first" from "the fold was declined
+    and nothing else happened"."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fold_asked = False
+
+    def decide_fold(self, trump, bid, bidding_meld, defending_meld):
+        self.fold_asked = True
+        return False
+
+
+def _round_with_stubborn_bidder(bid, bidding_meld):
+    players = [_RefusesToFold(f"P{i}", None) for i in range(4)]
+    team_a = Team("A", [players[0], players[2]])
+    team_b = Team("B", [players[1], players[3]])
+    players[0].team = players[2].team = team_a
+    players[1].team = players[3].team = team_b
+    rnd = Round(players, [team_a, team_b], dealer_index=3)
+    rnd._deal()
+    rnd.bid_winner = players[0]
+    rnd.current_bid = bid
+    rnd.trump_suit = Suit.CLUBS
+    rnd._meld_phase()
+    # Overriding the dealt meld keeps the branch under test independent of an
+    # unseeded shuffle - the fold decision reads `team.meld_points`, not the
+    # cards.
+    team_a.meld_points = bidding_meld
+    return rnd, players, team_a, team_b
+
+
+def test_auto_set_concedes_a_dead_contract_without_asking_the_bidder():
+    # 20 + 250 = 270 < 400: unreachable even taking every trick point.
+    rnd, players, _team_a, _team_b = _round_with_stubborn_bidder(bid=400, bidding_meld=20)
+
+    assert rnd._concede_phase() is True
+    assert rnd.auto_set is True
+    assert rnd.conceded is True
+    # The whole ordering requirement of #178: arithmetic settles it, so the
+    # bid winner's judgement is never consulted. A tier that never folds must
+    # still end this round.
+    assert players[0].fold_asked is False
+
+
+def test_auto_set_reuses_the_existing_concession_scoring():
+    rnd, players, team_a, team_b = _round_with_stubborn_bidder(bid=400, bidding_meld=20)
+    defending_meld = team_b.meld_points
+
+    rnd._concede_phase()
+    scores = rnd._score_conceded_round()
+
+    assert scores[team_a] == -400            # bidders forfeit their meld
+    assert scores[team_b] == defending_meld  # defenders keep meld, no tricks
+    assert team_a.trick_points == 0
+    assert team_b.trick_points == 0
+
+
+def test_a_reachable_contract_still_goes_to_the_bid_winner():
+    # 150 + 250 = 400, exactly the bid, so it is makeable and not auto-SET.
+    rnd, players, _team_a, _team_b = _round_with_stubborn_bidder(bid=400, bidding_meld=150)
+
+    assert rnd._concede_phase() is False
+    assert rnd.auto_set is False
+    assert players[0].fold_asked is True
+
+
+class _RiggedRound(Round):
+    """
+    `Round` with the auction result and the bidding team's meld pinned, so a
+    full `run()` can be driven onto a known auto-SET. Both are pinned because
+    neither is controllable otherwise: the shuffle is unseeded here, and
+    `Player.choose_bid` is placeholder logic that can leave everyone passing
+    (which lands on FORCED_BID = 250, exactly the trick-point ceiling and
+    therefore never auto-SET).
+    """
+
+    def _bidding_loop(self):
+        self.bid_winner = self.players[0]
+        self.current_bid = 400
+
+    def _meld_phase(self):
+        super()._meld_phase()
+        self.bid_winner.team.meld_points = 20  # 20 + 250 = 270 < 400
+
+
+def test_auto_set_ends_the_round_through_run():
+    """
+    End to end through `Round.run`, which is the half that was missing: the
+    rule existed and the concession path existed, and nothing connected them.
+    """
+    players = [_RefusesToFold(f"P{i}", None) for i in range(4)]
+    team_a = Team("A", [players[0], players[2]])
+    team_b = Team("B", [players[1], players[3]])
+    players[0].team = players[2].team = team_a
+    players[1].team = players[3].team = team_b
+
+    rnd = _RiggedRound(players, [team_a, team_b], dealer_index=3)
+    scores = rnd.run()
+
+    assert rnd.auto_set is True
+    assert scores[team_a] == -400                 # bidders forfeit their meld
+    assert scores[team_b] == team_b.meld_points   # defenders keep meld only
+    # Not one of the twelve tricks was played, and nobody was asked to decide.
+    assert all(len(p.hand) == 0 for p in players)
+    assert all(p.fold_asked is False for p in players)

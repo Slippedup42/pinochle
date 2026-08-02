@@ -325,6 +325,26 @@ before any Monte Carlo trick-play rollout on a sampled deal, since it
 lets the simulator skip the expensive 12-trick playout whenever a sample
 already guarantees a set.
 
+**Where it runs (issue #178).** It is not only a rollout optimisation.
+The same check runs in real play, in both engines, in the concede window
+after meld and before the first lead:
+
+- Python: `Round._concede_phase` (`pinochle_engine.py`), ahead of
+  `decide_fold`, reusing `_score_conceded_round` for the scoring above.
+  Mirrored into `InteractiveRound.run` so the CLI plays the same rules.
+- TypeScript: `isAutoSet` (`web/src/engine/round.ts`), checked in
+  `TrickPlayFlow`'s concede window ahead of `shouldConcede`, and in
+  `ab/headlessGame.ts`. `MAX_TRICK_POINTS` is derived from the counter
+  ranks, the counter value and the last-trick bonus rather than written
+  as a literal 250 — and is *not* `card.ts`'s unrelated `FORCED_BID`,
+  which happens to be 250 as well.
+
+Order matters: the fold model is a fitted probability and this is
+arithmetic, so a contract that cannot be made must never reach the
+evaluator. It applies to every bid winner including the human, who has
+no skill level and no fold model — the round ends, and the app says why
+rather than jumping to the summary (`AutoSetNotice`).
+
 **Design decision made:** on an auto-set hand, the defending team's
 cumulative score reflects meld only, not meld + hypothetical tricks —
 accepted as an intentional approximation.

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Card, Deck, Suit } from '../engine/card'
 import type { Hands } from '../engine/round'
@@ -23,11 +23,23 @@ const SCORES = { 0: 0, 1: 0 }
  * restore of a `SKILL_PARAMS` entry is the same shape `abRun.installPolicies`
  * uses; `DEFAULT_OPTIONS` puts both AI seats on `hard`, so that is the entry
  * that matters here.
+ *
+ * This is *not* enough on its own since #178. Auto-SET is arithmetic, not a
+ * policy, so it fires whatever the dial says — and the minimum bid is 300
+ * against a 250 trick-point ceiling, which makes any contract held on under 50
+ * meld auto-set. The zero meld those fixtures used to pass is therefore now a
+ * dead contract, and every test that wants cards played has to give the bidding
+ * team enough meld to clear the floor. `LIVE_MELD` is that floor with room to
+ * spare; see `MAX_TRICK_POINTS` in `round.ts`.
  */
 const PRISTINE_HARD = SKILL_PARAMS.hard
 function disableAiFold() {
   SKILL_PARAMS.hard = { ...PRISTINE_HARD, foldPolicy: 'never' }
 }
+
+/** Meld that keeps a 300 contract reachable, so auto-SET (#178) stays out of
+ *  tests that are about something else. */
+const LIVE_MELD = 60
 
 afterEach(() => {
   SKILL_PARAMS.hard = PRISTINE_HARD
@@ -84,7 +96,7 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
         trumpSuit={Suit.Spades}
         bidWinner={1}
         bid={300}
-        meldPointsByTeam={{ 0: 0, 1: 0 }}
+        meldPointsByTeam={{ 0: 0, 1: LIVE_MELD }}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
         scoresByTeam={SCORES}
@@ -137,7 +149,7 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
         trumpSuit={Suit.Spades}
         bidWinner={1}
         bid={300}
-        meldPointsByTeam={{ 0: 0, 1: 0 }}
+        meldPointsByTeam={{ 0: 0, 1: LIVE_MELD }}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
         scoresByTeam={SCORES}
@@ -176,7 +188,7 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
         trumpSuit={Suit.Hearts}
         bidWinner={0}
         bid={300}
-        meldPointsByTeam={{ 0: 0, 1: 0 }}
+        meldPointsByTeam={{ 0: LIVE_MELD, 1: 0 }}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
         scoresByTeam={SCORES}
@@ -223,7 +235,7 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
 
   // -- AI concede (#123) ----------------------------------------------------
 
-  it('concedes an arithmetically dead contract for an AI bid winner before any card is played', () => {
+  it('concedes a hopeless contract for an AI bid winner before any card is played', () => {
     vi.useFakeTimers()
 
     const hands = new Deck().deal()
@@ -234,10 +246,12 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
         hands={hands}
         trumpSuit={Suit.Hearts}
         bidWinner={1}
-        bid={500}
-        // 500 needed against 0 meld — more than the 250 trick points that
-        // exist, so the contract cannot be made however the cards fall.
-        meldPointsByTeam={{ 0: 0, 1: 0 }}
+        bid={400}
+        // Reachable on paper — 200 meld plus the 250 trick points that exist
+        // clears 400 — so auto-SET (#178) does not fire and this stays a test
+        // of the *model*'s judgement, which is what #123 built. A fixture the
+        // arithmetic already kills would pass whether the model ran or not.
+        meldPointsByTeam={{ 0: 0, 1: 200 }}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
         scoresByTeam={SCORES}
@@ -254,6 +268,8 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
     const result = onComplete.mock.calls[0][0] as TrickPlayResult
     expect(result.conceded).toBe(true)
     expect(result.trickWinners).toHaveLength(0)
+    // The model decided this, not the arithmetic, so no auto-SET notice.
+    expect(screen.queryByText(/can't be made/i)).toBeNull()
   })
 
   it('plays on when the contract is live, rather than conceding everything', () => {
@@ -300,11 +316,12 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
         hands={hands}
         trumpSuit={Suit.Hearts}
         bidWinner={0}
-        bid={500}
-        // The same hopeless contract as the concede test above. The human owns
-        // this decision — the fold button (#83) is offered, never taken for
-        // them.
-        meldPointsByTeam={{ 0: 0, 1: 0 }}
+        bid={400}
+        // The same contract the model throws in for an AI bid winner above, and
+        // still reachable arithmetically so auto-SET (#178) stays out of it.
+        // The human owns this decision — the fold button (#83) is offered,
+        // never taken for them.
+        meldPointsByTeam={{ 0: 200, 1: 0 }}
         seatNames={SEAT_NAMES}
         humanPlayer={0}
         scoresByTeam={SCORES}
@@ -316,5 +333,100 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
 
     expect(onComplete).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Concede hand' })).not.toBeNull()
+  })
+
+  // -- Auto-SET (#178) ------------------------------------------------------
+
+  it('ends the round for a human bid winner who cannot reach their bid, and says why', () => {
+    vi.useFakeTimers()
+
+    const hands = new Deck().deal()
+    const onComplete = vi.fn()
+
+    render(
+      <TrickPlayFlow
+        hands={hands}
+        trumpSuit={Suit.Hearts}
+        bidWinner={0}
+        bid={400}
+        // 20 meld + every one of the 250 trick points reaches 270, short of
+        // 400. The reported case: a human made to play twelve tricks that
+        // cannot matter.
+        meldPointsByTeam={{ 0: 20, 1: 100 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        onComplete={onComplete}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
+      />,
+    )
+
+    // The round is over, but the player has not been told yet, so the summary
+    // must not be reached.
+    expect(onComplete).not.toHaveBeenCalled()
+    const notice = within(screen.getByRole('dialog'))
+    expect(notice.getByText(/can't be made/i)).not.toBeNull()
+    // The three numbers that make the verdict checkable by hand. Scoped to the
+    // notice because the scoreboard behind it shows the bid and meld too.
+    expect(notice.getByText(/You bid/)).not.toBeNull()
+    expect(notice.getAllByText('400').length).toBeGreaterThan(0)
+    expect(notice.getAllByText('20').length).toBeGreaterThan(0)
+    expect(notice.getByText('270')).not.toBeNull()
+
+    // No card reaches the table while the notice is up, however long passes.
+    act(() => vi.advanceTimersByTime(AI_PLAY_DELAY_MS * 5))
+    expect(screen.queryByText(/led the /)).toBeNull()
+    expect(onComplete).not.toHaveBeenCalled()
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'See the score' }))
+    })
+
+    expect(onComplete).toHaveBeenCalledOnce()
+    const result = onComplete.mock.calls[0][0] as TrickPlayResult
+    // Reuses the existing concession path — gameFlowReducer's TRICK_COMPLETE
+    // does the -bid / forfeited-meld scoring off this one flag.
+    expect(result.conceded).toBe(true)
+    expect(result.trickWinners).toHaveLength(0)
+    expect(result.trickPointsByTeam).toEqual({ 0: 0, 1: 0 })
+  })
+
+  it('ends the round on a dead contract even with the AI fold model switched off', () => {
+    vi.useFakeTimers()
+    // Auto-SET is arithmetic, not a policy: it must fire for a tier that never
+    // folds, which is the whole reason it does not live behind `foldPolicy`.
+    disableAiFold()
+
+    const hands = new Deck().deal()
+    const onComplete = vi.fn()
+
+    render(
+      <TrickPlayFlow
+        hands={hands}
+        trumpSuit={Suit.Hearts}
+        bidWinner={1}
+        bid={400}
+        meldPointsByTeam={{ 0: 100, 1: 20 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        onComplete={onComplete}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
+      />,
+    )
+
+    // Named as the team, not as "you" — the human is defending here, and is
+    // still owed an explanation for a round that ended before it started.
+    const notice = within(screen.getByRole('dialog'))
+    expect(notice.getByText(/Team B bid/)).not.toBeNull()
+    expect(notice.queryByText(/You bid/)).toBeNull()
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'See the score' }))
+    })
+    expect(onComplete).toHaveBeenCalledOnce()
+    expect((onComplete.mock.calls[0][0] as TrickPlayResult).conceded).toBe(true)
   })
 })

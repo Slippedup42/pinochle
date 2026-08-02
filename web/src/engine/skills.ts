@@ -89,11 +89,33 @@ export type FoldPolicy = 'never' | 'model'
  */
 export type PlayPolicy = 'simple' | 'cascade'
 
+/**
+ * Whether the auto-SET rule (#178) forces a fold on a dead contract.
+ *
+ *   `'forced'`  when `isAutoSet` (`round.ts`) says the bid cannot be reached
+ *               even by taking all 250 trick points, the round ends there.
+ *   `'off'`     play the dead contract out, as every level did before #178.
+ *
+ * Read the `FoldPolicy` note above and then read this one the same way, only
+ * more so. Auto-SET is not a difficulty setting and not a judgement call — it
+ * is arithmetic, it applies to the human bid winner who has no skill level at
+ * all, and `TrickPlayFlow` therefore applies it unconditionally rather than
+ * consulting this field. No `SKILL_PARAMS` row selects `'off'`.
+ *
+ * `'off'` exists for exactly one reason: `abRun.ts` mirrors two policies at
+ * one table, so measuring a rule requires two levels that differ in it and in
+ * nothing else. `AUTO_SET_AB_POLICIES` is the only thing that selects it, and
+ * `headlessGame.ts` is the only reader. Deleting the arm would leave the rule
+ * unmeasurable, which is the same trade `FoldPolicy` documents for `'never'`.
+ */
+export type AutoSetPolicy = 'forced' | 'off'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
   readonly foldPolicy: FoldPolicy
   readonly playPolicy: PlayPolicy
+  readonly autoSetPolicy: AutoSetPolicy
 }
 
 /**
@@ -190,13 +212,17 @@ export interface SkillParams {
  *
  * `'simple'` itself survives as an A/B arm and must not be deleted as dead
  * code — see `PlayPolicy` for why.
+ *
+ * `autoSetPolicy` (#178) reads `'forced'` on every row for a stronger reason
+ * than either of those: it is not a policy at all in a real game, it is a rule
+ * of arithmetic that the human bid winner gets too. See `AutoSetPolicy`.
  */
 export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
-  easy: { handValuation: 'meld_only', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade' },
-  medium: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade' },
-  hard: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade' },
-  proficient: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade' },
-  expert: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade' },
+  easy: { handValuation: 'meld_only', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
+  medium: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
+  hard: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
+  proficient: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
+  expert: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
 }
 
 /** Flat trick-point estimate for meld-only bidding (skill 1), matching
