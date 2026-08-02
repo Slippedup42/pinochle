@@ -352,6 +352,95 @@ and again in the expert follow path — this is a faithful port of a reference b
 not a porting error. Fixing it there is its own issue on the Python side, the way
 #164 followed #154.
 
+### The bidder's opening lead, and the trump it does not hold back (#159)
+
+Epic #152's largest proposed change, and the only one that reasons about a
+*future* trick: the bidder should assume it holds the most trump and play to win
+the last one (`LAST_TRICK_BONUS`, `round.ts`). It bundles two independent ideas,
+so both were measured separately — which turned out to matter, because they point
+in opposite directions.
+
+**The opening lead.** The bidder must lead trump on trick 1 (rule #82) and leads
+its Ace if it has one. Without an Ace it led `maxByRank`, which is the **10** —
+ten points handed to whichever opponent holds the Ace, in exchange for drawing
+one round of trump. It now leads the highest *non-counter* trump instead,
+cascading Q → J → 9: the Queen drags out a King and an Ace while donating
+nothing, and can leave the bidder's own 10 as the boss trump. Over 5000 paired
+deals / 10 000 games against shipped `cascade`, differing in nothing else:
+
+| seed | margin per deal | 95% CI | swept | make-rate, Q vs 10 |
+| --- | --- | --- | --- | --- |
+| 1 | **+7.61** | +5.67 to +9.59 | 56–14 | 71.23% vs 70.81% |
+| 2 | **+7.66** | +5.53 to +9.82 | 52–17 | 70.89% vs 70.52% |
+| 3 | **+9.83** | +7.79 to +11.95 | 67–7 | 71.01% vs 70.49% |
+
+Both metrics move the same way, which is the check #126 exists to force — a
+policy that buys margin by missing contracts is not obviously better. Make-rate
+is up on all three seeds by about 0.4 points; that gap sits inside the per-seed
+Wilson intervals (seed 1: 71.23% [70.65, 71.81] against 70.81% [70.23, 71.38]),
+so the claim being made is only that it does not *fall*. Roughly twice #154's
++3.55 and still two orders of magnitude below the dial's own span (#153's +121),
+which is the size a single card-play rule comes in at.
+
+**Holding trump back did not ship.** The other half of the plan — after the
+opening, lead side suits and keep trump back to ruff a counter-heavy trick — is a
+straight loss, on margin and on make-rate together:
+
+| arm, 5000 pairs, seed 1 | margin per deal | 95% CI | swept | make-rate vs cascade |
+| --- | --- | --- | --- | --- |
+| never lead trump after the opening | **−13.63** | −16.85 to −10.60 | 43–103 | 70.28% vs 70.86% |
+| that, plus the Queen opening | −4.88 | −8.56 to −1.31 | 92–109 | 70.72% vs 70.81% |
+
+Roughly additive: the Queen's +7.6 does not cover the hold-back's −13.6.
+
+The reason is that **the AI already holds trump back, and this removes the one
+exception worth keeping.** Instrumenting `offenseTrumpLead` over 300 headless
+games, it is reached 9651 times on a bidding-side lead: 3444 of those are
+all-trump hands with no other legal lead, 421 lead a trump Ace, and the other
+5786 lead a side suit while still holding trump. The Ace is the *only* trump the
+offense ever chooses to lead — a boss card that takes the trick and draws a round
+of trump in the same move — and suppressing it is the whole of the −13.63.
+
+That instrumentation also settled a result that looked like a harness bug. Two
+hold-back arms were run, one suppressing every trump Ace and one suppressing only
+*secured* Aces, and they returned bit-identical numbers over 10 000 games. They
+are the same policy in practice: of those 421 Ace leads, the Ace was still
+unsecured on **zero**. Trick 1 is a mandatory trump lead and the beat-if-possible
+rule flushes the twin out of the round, so by the time the bidding side is on lead
+again its trump Ace is always secured — the `isUnsecuredAce` distinction that
+matters so much elsewhere in the cascade cannot arise here at all.
+
+So the epic's last-trick plan splits. The opening lead is a measured win and
+ships. "Then alternate and hold trump back" is already what the code does, apart
+from an exception worth 13.6 points a deal, and removing that exception loses;
+`LAST_TRICK_BONUS` is still never explicitly played for, and the lever for it is
+not which trump the offense *leads* but which trump `chooseFollowCard` spends —
+follow-side work, and a separate issue.
+
+Both arms ran behind `distilled` bidding and `installPolicies` writes both
+`SkillParams` rows explicitly, so these numbers do not depend on where the
+shipped dial sits — but note that after #156 every level runs `'cascade'`, so
+this opening lead reaches all five, `easy` included.
+
+The table above was measured before #155 and #156 merged, and both of those
+change card play, so it was re-run on the merged tree rather than assumed:
+
+| seed | margin per deal | 95% CI | swept | make-rate, Q vs 10 |
+| --- | --- | --- | --- | --- |
+| 1 | **+7.61** | +5.70 to +9.54 | 56–15 | 71.23% vs 70.81% |
+| 2 | **+7.24** | +5.12 to +9.42 | 52–19 | 70.89% vs 70.55% |
+
+Seed 1 is unchanged to two decimals with one deal moving from split to decisive.
+That is what a change confined to the opening lead should do against a fix
+confined to the follow tiers (#155) and a dial move that does not touch either
+(#156) — but it is cheap to check and expensive to assume.
+
+The four throwaway arms (`open_q`, `hold_all`, `hold_ace`, `last_trick`) on the
+`PlayPolicy` union, the `LEAD_AB_ARMS` map, the `cli.ts lead` / `leaddump` /
+`acetier` commands and the `offenseTrumpLead` counters were added for the
+measurement in the shape the section below describes and deleted before the fix
+was committed — the same call #126, #153 and #154 made.
+
 ### Checking that a dial can see a change
 
 A self-test proves a dial reports nothing when nothing differs. It does not

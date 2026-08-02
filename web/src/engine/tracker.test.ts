@@ -243,6 +243,79 @@ describe('chooseLeadCard', () => {
     const bidderLed = chooseLeadCard(bidderHand, Suit.Spades, new PlayTracker(), true, 'easy')
     expect(bidderLed.suit).toBe(Suit.Spades)
   })
+
+  // -- The bidder's opening lead (#159) --------------------------------------
+
+  it('opens on the highest non-counter trump when the bidder holds no trump Ace', () => {
+    // The measured half of #159. This used to be `maxByRank`, which leads the
+    // 10 — handing the opponents' Ace ten points for the privilege of drawing
+    // one round of trump. The Queen drags out a King and an Ace for nothing and
+    // can leave the bidder's own 10 as the boss trump.
+    const hand = [
+      new Card(Suit.Spades, '10', 1),
+      new Card(Suit.Spades, 'K', 1),
+      new Card(Suit.Spades, 'Q', 1),
+      new Card(Suit.Spades, '9', 1),
+      new Card(Suit.Hearts, 'A', 1),
+      new Card(Suit.Clubs, 'J', 1),
+    ]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), true, 'hard', true)
+    expect(led.suit).toBe(Suit.Spades)
+    expect(led.rank).toBe('Q')
+  })
+
+  it('opens on the trump Ace ahead of the Queen when it holds one', () => {
+    // Rule #82's trump lead and its Ace preference are untouched — the Queen is
+    // the *aceless* fallback, not a replacement for drawing trump with the Ace.
+    const hand = [
+      new Card(Suit.Spades, 'A', 1),
+      new Card(Suit.Spades, 'Q', 1),
+      new Card(Suit.Spades, '10', 1),
+    ]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), true, 'hard', true)
+    expect(led.suit).toBe(Suit.Spades)
+    expect(led.rank).toBe('A')
+  })
+
+  it('opens on the trump Jack when the Queen is not held — highest non-counter, not lowest trump', () => {
+    // "Non-counter" is the property that matters (A/10/K each pay 10), so the
+    // rule cascades Q -> J -> 9 rather than simply leading the cheapest trump.
+    const hand = [
+      new Card(Suit.Spades, '10', 1),
+      new Card(Suit.Spades, 'J', 1),
+      new Card(Suit.Spades, '9', 1),
+    ]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), true, 'hard', true)
+    expect(led.rank).toBe('J')
+  })
+
+  it('falls back to the highest trump when every trump held is a counter', () => {
+    // Nothing to donate zero points with, so the pre-#159 rule stands: lead the
+    // highest one and take the round of trump.
+    const hand = [
+      new Card(Suit.Spades, '10', 1),
+      new Card(Suit.Spades, 'K', 1),
+      new Card(Suit.Hearts, '9', 1),
+    ]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), true, 'hard', true)
+    expect(led.suit).toBe(Suit.Spades)
+    expect(led.rank).toBe('10')
+  })
+
+  it('changes nothing after the opening trick — the bidding side still cashes a trump Ace', () => {
+    // #159's other half, "hold trump back", was measured and did not ship: over
+    // 5000 paired deals, suppressing this tier costs 13.6 points a deal. The
+    // holding-back it describes is already what `offenseTrumpLead` does — the
+    // Ace is the only trump it ever chooses to lead.
+    const hand = [
+      new Card(Suit.Spades, 'A', 1),
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Clubs, 'J', 1),
+    ]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, 'hard', true)
+    expect(led.suit).toBe(Suit.Spades)
+    expect(led.rank).toBe('A')
+  })
 })
 
 describe('chooseFollowCard', () => {
