@@ -11,8 +11,8 @@ describe('options persistence', () => {
   })
 
   it('round-trips a saved options value', () => {
-    saveOptions({ showBaseBidHint: false, opponentSkill: 'easy', teammateSkill: 'expert', showMeldHint: false, hideTrickLog: true })
-    expect(loadOptions()).toEqual({ showBaseBidHint: false, opponentSkill: 'easy', teammateSkill: 'expert', showMeldHint: false, hideTrickLog: true })
+    saveOptions({ showBaseBidHint: false, opponentSkill: 'easy', teammateSkill: 'expert', hideTrickLog: true })
+    expect(loadOptions()).toEqual({ showBaseBidHint: false, opponentSkill: 'easy', teammateSkill: 'expert', hideTrickLog: true })
   })
 
   it('falls back to DEFAULT_OPTIONS on corrupt JSON', () => {
@@ -21,13 +21,12 @@ describe('options persistence', () => {
   })
 
   it('fills in missing/malformed fields from DEFAULT_OPTIONS rather than failing outright', () => {
-    window.localStorage.setItem('pinochle:options:v1', JSON.stringify({ showMeldHint: true }))
+    window.localStorage.setItem('pinochle:options:v1', JSON.stringify({ hideTrickLog: false }))
     const loaded = loadOptions()
-    expect(loaded.showMeldHint).toBe(true)
+    expect(loaded.hideTrickLog).toBe(false)
     expect(loaded.showBaseBidHint).toBe(true)
     expect(loaded.opponentSkill).toBe('hard')
     expect(loaded.teammateSkill).toBe('hard')
-    expect(loaded.hideTrickLog).toBe(true)
 
     window.localStorage.setItem('pinochle:options:v1', JSON.stringify({ opponentSkill: 42 }))
     const loaded2 = loadOptions()
@@ -37,13 +36,21 @@ describe('options persistence', () => {
     expect(loadOptions()).toEqual(DEFAULT_OPTIONS)
   })
 
-  // #142 removed `hideOpponentCards`, but the storage key is deliberately NOT
-  // bumped: a new key would reset everyone's surviving preferences (the skill
-  // levels especially). The leftover key must simply be ignored.
-  it('ignores a leftover hideOpponentCards key without disturbing the other saved preferences', () => {
+  // #142 removed `hideOpponentCards` and #148 removed `showMeldHint`, but the
+  // storage key is deliberately NOT bumped: a new key would reset everyone's
+  // surviving preferences (the skill levels especially). Leftover keys from
+  // both removals must simply be ignored, including in the same payload — a
+  // save written before either removal carries both.
+  it('ignores leftover keys from removed options without disturbing the other saved preferences', () => {
     window.localStorage.setItem(
       'pinochle:options:v1',
-      JSON.stringify({ hideOpponentCards: true, opponentSkill: 'expert', teammateSkill: 'easy', showBaseBidHint: false }),
+      JSON.stringify({
+        hideOpponentCards: true,
+        showMeldHint: true,
+        opponentSkill: 'expert',
+        teammateSkill: 'easy',
+        showBaseBidHint: false,
+      }),
     )
     const loaded = loadOptions()
     expect(loaded).toEqual({
@@ -53,5 +60,6 @@ describe('options persistence', () => {
       showBaseBidHint: false,
     })
     expect('hideOpponentCards' in loaded).toBe(false)
+    expect('showMeldHint' in loaded).toBe(false)
   })
 })

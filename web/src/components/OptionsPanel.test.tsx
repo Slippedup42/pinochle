@@ -9,13 +9,14 @@ describe('OptionsPanel', () => {
   it('reflects the current options in the checkboxes and selects', () => {
     render(
       <OptionsPanel
-        options={{ showBaseBidHint: false, opponentSkill: 'proficient', teammateSkill: 'hard', showMeldHint: true, hideTrickLog: true }}
+        options={{ showBaseBidHint: false, opponentSkill: 'proficient', teammateSkill: 'hard', hideTrickLog: false }}
         onChange={() => {}}
         onClose={() => {}}
       />,
     )
     expect((screen.getByLabelText('Show base-bid hint') as HTMLInputElement).checked).toBe(false)
-    expect((screen.getByLabelText('Show meld breakdown') as HTMLInputElement).checked).toBe(true)
+    // The trick-log checkbox is phrased positively, so it reads the inverse of the field.
+    expect((screen.getByLabelText('Show trick-play log') as HTMLInputElement).checked).toBe(true)
     expect((screen.getByLabelText('Opponents') as HTMLSelectElement).value).toBe('proficient')
     expect((screen.getByLabelText('Teammate') as HTMLSelectElement).value).toBe('hard')
   })
@@ -28,11 +29,21 @@ describe('OptionsPanel', () => {
     expect(screen.queryByText(/hide opponent/i)).toBeNull()
   })
 
-  it('calls onChange with the showMeldHint toggle flipped, leaving the other fields alone', () => {
+  // #148 removed the "Show meld breakdown" toggle. It gated nothing: MeldFlow
+  // renders the per-meld breakdown unconditionally (see MeldFlow.test.tsx), so
+  // honouring the off-by-default option would have *hidden* what players
+  // already see. The panel must not offer the dead control again.
+  it('has no "Show meld breakdown" toggle', () => {
+    render(<OptionsPanel options={DEFAULT_OPTIONS} onChange={() => {}} onClose={() => {}} />)
+    expect(screen.queryByLabelText('Show meld breakdown')).toBeNull()
+    expect(screen.queryByText(/meld/i)).toBeNull()
+  })
+
+  it('calls onChange with the trick-log toggle flipped, leaving the other fields alone', () => {
     const onChange = vi.fn()
     render(<OptionsPanel options={DEFAULT_OPTIONS} onChange={onChange} onClose={() => {}} />)
-    fireEvent.click(screen.getByLabelText('Show meld breakdown'))
-    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_OPTIONS, showMeldHint: true, showBaseBidHint: true })
+    fireEvent.click(screen.getByLabelText('Show trick-play log'))
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_OPTIONS, hideTrickLog: false, showBaseBidHint: true })
   })
 
   it('calls onChange with the showBaseBidHint toggle flipped', () => {

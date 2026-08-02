@@ -60,6 +60,31 @@ describe('MeldFlow', () => {
     expect(within(them).queryByText(/You/)).toBeNull()
   })
 
+  // #148: `showMeldHint` was an Options toggle meant to gate this breakdown,
+  // but it was never wired — the breakdown always rendered. Since the option
+  // defaulted to *off*, honouring it would have hidden from every player what
+  // they can already see, so the option was deleted and the display kept.
+  // MeldFlow takes no `options` prop at all now: there is nothing to gate on.
+  it('shows every seat’s melds by name, points and cards, ungated by any option', () => {
+    renderMeld()
+
+    // Each seat holds K♥/Q♥ with hearts trump — one Royal Marriage, 40 points.
+    for (const name of ['Us meld', 'Them meld']) {
+      const column = screen.getByRole('region', { name })
+      const labels = within(column).getAllByText('Royal Marriage')
+
+      // Both of the column's seats name the meld...
+      expect(labels).toHaveLength(2)
+      // ...and show its point value right alongside the name.
+      for (const label of labels) {
+        expect(label.parentElement?.textContent).toContain('40')
+      }
+      // ...and the actual cards that make the meld up.
+      expect(within(column).getAllByLabelText('K of H')).toHaveLength(2)
+      expect(within(column).getAllByLabelText('Q of H')).toHaveLength(2)
+    }
+  })
+
   it('renders meld cards at the compact size so four seats fit on screen (#94)', () => {
     renderMeld()
     const cards = screen.getAllByRole('img').filter((el) => el.closest('section[aria-label$="meld"]'))
