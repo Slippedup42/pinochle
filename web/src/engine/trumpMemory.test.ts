@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SkillLevel } from '../persistence/options'
-import { Card, RANKS, Suit } from './card'
-import { TRUMP_MEMORY_CAPACITY, TrumpMemory } from './trumpMemory'
+import { type CopyId, Card, RANKS, Suit } from './card'
+import { TRUMP_MEMORY_CAPACITY, TrumpMemory, newTrumpMemories } from './trumpMemory'
 
 const TRUMP = Suit.Spades
 
@@ -181,5 +181,60 @@ describe('TrumpMemory and meld', () => {
     expect(memory.size).toBe(4)
     expect(memory.forgottenCount).toBe(0)
     expect(memory.seenCount('A')).toBe(1) // one Ace copy accounted for, not two
+  })
+})
+
+describe('newTrumpMemories (#158)', () => {
+  /** A hand melding a Royal Marriage in trump (K+Q) plus filler that melds
+   *  nothing, so `extractMeldCards` returns exactly the two trump cards. */
+  function royalMarriageHand(copy: CopyId): Card[] {
+    return [
+      new Card(TRUMP, 'K', copy),
+      new Card(TRUMP, 'Q', copy),
+      new Card(Suit.Hearts, '9', copy),
+    ]
+  }
+
+  const hands = [
+    royalMarriageHand(1), // seat 0 melds K+Q of trump, copy 1
+    royalMarriageHand(2), // seat 1 melds K+Q of trump, copy 2
+    [new Card(Suit.Hearts, 'J', 1)], // seats 2 and 3 meld nothing
+    [new Card(Suit.Clubs, 'J', 1)],
+  ]
+
+  it('seeds each seat with the trump the other three melded', () => {
+    const memories = newTrumpMemories(hands, TRUMP, () => 'expert')
+    // Seat 2 melded nothing and can see all four trump laid out opposite it.
+    expect(memories[2].seenCount('K')).toBe(2)
+    expect(memories[2].seenCount('Q')).toBe(2)
+    expect(memories[2].size).toBe(4)
+  })
+
+  it('does not show a seat its own meld, because its own cards are counted from its hand', () => {
+    // The invariant that keeps the model from ever over-counting. `tracker.ts`
+    // reads "accounted for" as *seen + still held >= 2 copies*, tallying the
+    // hand separately, so a seat fed its own melded King would count one
+    // physical card twice and conclude a Queen was boss when it is not. An
+    // under-count only ever reads as "still beatable", which is safe; an
+    // over-count invents certainty, which is not.
+    const memories = newTrumpMemories(hands, TRUMP, () => 'expert')
+    expect(memories[0].seenCount('K')).toBe(1) // seat 1's copy only, not its own
+    expect(memories[0].remembered().map((s) => s.copyId)).toEqual([2, 2])
+    expect(memories[1].seenCount('K')).toBe(1) // seat 0's copy only
+    expect(memories[1].remembered().map((s) => s.copyId)).toEqual([1, 1])
+  })
+
+  it('gives each seat the capacity its own level buys', () => {
+    const memories = newTrumpMemories(hands, TRUMP, (seat) => (seat === 0 ? 'easy' : 'expert'))
+    expect(memories[0].capacity).toBe(TRUMP_MEMORY_CAPACITY.easy)
+    expect(memories[1].capacity).toBe(TRUMP_MEMORY_CAPACITY.expert)
+  })
+
+  it('spends capacity on the meld, so a weak seat arrives at trick 1 already short', () => {
+    // Seat 2 can see four melded trump and can hold two of them. Meld is not a
+    // free look — it consumes the memory exactly as played cards do (#157).
+    const memories = newTrumpMemories(hands, TRUMP, () => 'easy')
+    expect(memories[2].size).toBe(TRUMP_MEMORY_CAPACITY.easy)
+    expect(memories[2].forgottenCount).toBe(2)
   })
 })

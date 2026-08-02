@@ -22,10 +22,12 @@ import {
   DISTILLED_LEVEL,
   FOLD_AB_POLICIES,
   PLAY_AB_POLICIES,
+  SAFE_COUNTER_CONTROL,
   STATIC_LEVEL,
   analyse,
   installPolicies,
   runAb,
+  safeCounterAbPolicies,
 } from './abRun'
 import { type SideStats, makeRng, newSideStats, playHeadlessGame } from './headlessGame'
 import { binomialTwoSidedP, bootstrapMeanCi, percentile, wilsonInterval } from './stats'
@@ -94,11 +96,53 @@ describe('the policy override', () => {
     // in code: two sides differing in two fields produce a number nothing can be
     // attributed to. Cheap to assert, and it is the assertion that keeps the
     // next map (#154 onward) honest as the union of policies grows.
-    for (const policies of [BID_AB_POLICIES, FOLD_AB_POLICIES, PLAY_AB_POLICIES]) {
+    const safeCounter = safeCounterAbPolicies('expert', SAFE_COUNTER_CONTROL.expert)
+    const maps = [BID_AB_POLICIES, FOLD_AB_POLICIES, AUTO_SET_AB_POLICIES, PLAY_AB_POLICIES, safeCounter]
+    for (const policies of maps) {
       const [a, b] = Object.values(policies)
       const differing = (Object.keys(a) as (keyof typeof a)[]).filter((field) => a[field] !== b[field])
       expect(differing).toHaveLength(1)
     }
+  })
+
+  it('measures the safe-counter rule against a baseline that is the same at every level (#158)', () => {
+    // #158's map is the one where the *levels* are not inert: capacity is
+    // `2 x skill` and is keyed on the level, not on `SkillParams`, so the level
+    // carrying the `'counted'` arm is the capacity under test. That only works
+    // as a comparison if the other arm is unaffected by its own level — and it
+    // is, because `'off'` never constructs or consults a `TrumpMemory`.
+    //
+    // Asserted structurally rather than by running games: whichever level the
+    // baseline sits on, its row is identical. So two runs at different
+    // capacities are measured against the same opponent and can be compared to
+    // each other, which is the whole design of #158's measurement.
+    const easyRun = safeCounterAbPolicies('easy', SAFE_COUNTER_CONTROL.easy)
+    const expertRun = safeCounterAbPolicies('expert', SAFE_COUNTER_CONTROL.expert)
+    expect(easyRun.easy.safeCounterPolicy).toBe('counted')
+    expect(expertRun.expert.safeCounterPolicy).toBe('counted')
+    expect(easyRun[SAFE_COUNTER_CONTROL.easy]).toEqual(expertRun[SAFE_COUNTER_CONTROL.expert])
+    expect(easyRun[SAFE_COUNTER_CONTROL.easy].safeCounterPolicy).toBe('off')
+  })
+
+  it('refuses to run the safe-counter arms on one level, where they would overwrite each other', () => {
+    expect(() => safeCounterAbPolicies('expert', 'expert')).toThrow()
+  })
+
+  it('ships #158 on at every level, and keeps the baseline reachable (#158)', () => {
+    // `'counted'` measured positive at all five capacities (+3.3 at `easy`
+    // through +8.7 at `expert` per deal; `web/README.md`), so it ships enabled
+    // everywhere rather than as a difficulty notch — the rule is identical at
+    // every level and only the recall behind it differs, which is #156's
+    // settlement and #157's model, not an exception to either.
+    //
+    // The `'off'` arm survives for the reason `'simple'` and `'never'` do: it is
+    // the baseline the number above is measured against, and nothing else
+    // selects it.
+    for (const params of Object.values(SKILL_PARAMS)) {
+      expect(params.safeCounterPolicy).toBe('counted')
+    }
+    const map = safeCounterAbPolicies('expert', SAFE_COUNTER_CONTROL.expert)
+    expect(map[SAFE_COUNTER_CONTROL.expert].safeCounterPolicy).toBe('off')
   })
 
   it('puts the two card-play rules at one table (#153)', () => {
@@ -276,6 +320,9 @@ describe('the A/B self-test', () => {
     // the most scope to desynchronise dealer rotation or scoring between the
     // two orientations of a pair — exactly what a zero paired margin rules out.
     ['auto-set', DISTILLED_LEVEL, AUTO_SET_AB_POLICIES],
+    // #158's two arms, both of which now play behind auto-SET.
+    ['counted', 'expert', safeCounterAbPolicies('expert', SAFE_COUNTER_CONTROL.expert)],
+    ['uncounted', SAFE_COUNTER_CONTROL.expert, safeCounterAbPolicies('expert', SAFE_COUNTER_CONTROL.expert)],
   ] as const) {
     it(`finds nothing when ${name} plays itself`, () => {
       const report = runAb({ nPairs: 6, seed: 5, levelA: level, levelB: level, policies })
