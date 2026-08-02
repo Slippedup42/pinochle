@@ -512,6 +512,153 @@ dial. The dial's ability to *see* a change is carried by the 320 rows rather tha
 by a deliberately-bad arm — four intervals that clean is not what a field which
 is written but never read produces.
 
+### "Cannot be beaten", and the first place skill decides a card (#158)
+
+The last child of epic #152, and the one that makes #157's trump memory do
+something. #155 wrote the forced-beat rule as three tiers and could only build
+two of them:
+
+1. beat with a non-counter (Q, J, 9) if one is legal — take the trick for free;
+2. else the lowest counter that **cannot itself be beaten**;
+3. else the lowest counter.
+
+Tier 2 needs to know what is still outstanding, so it was left as a documented
+gap. It is now `isBoss` in `tracker.ts`, and the same predicate answers the
+leading half of the rule that was already there under the name `isSafe`: a
+counter that is provably boss is safe to lead, one that is not is not.
+
+**"Cannot be beaten" can only ever mean cannot be beaten *in suit*.** Whether an
+opponent is void and holds a trump is unknowable — `PlayTracker` records what was
+played, not who is out of what — and no amount of counting fixes it. So the claim
+is never "this wins the trick", it is "nobody takes it with a bigger card of this
+suit", which is the loss the rule exists to avoid: spending a King into a trick an
+opponent's Ace then takes gives away 20 points rather than 10.
+
+Where the information comes from is the whole of the skill dial:
+
+- **Side suits** are exact at every level. #157 scoped its cap to trump, so
+  `PlayTracker` still counts perfectly and an `easy` seat answers a side-suit
+  question exactly as an `expert` does.
+- **Trump** comes from that seat's `TrumpMemory`, capacity `2 × skill level`.
+
+Unknowns resolve conservatively **by construction rather than by a branch**.
+`TrumpMemory.seenCount` can only ever *under*-report — forgetting removes
+sightings and never invents them — and an under-report makes `isBoss` answer
+"beatable". A seat that cannot remember therefore plays as though the card can be
+beaten, which is what #158 asks for, and there is no code path where an unknown
+becomes an assumed best case. `newTrumpMemories` protects the same invariant from
+the other end: a seat is seeded with the *other three* seats' meld and never its
+own, because `isBoss` counts the hand separately and a seat fed its own melded
+King would count one physical card twice and manufacture certainty.
+
+Two positions changed, and two deliberately did not:
+
+- **Forced to beat in a side suit.** With only counters legal, the cheapest one
+  that will still be standing goes in. When nobody is left to play the tier
+  collapses to the cheapest counter, because nothing is outstanding — a property
+  of the position, not of the counting, so the fourth seat cannot be made worse.
+- **Forced to overtrump.** A trump is already winning and `Trick.legalMoves` has
+  restricted the seat to beaters (rule 3 when trump was led, rule 5 over a ruff).
+  The trump branch had no notion of a forced beat at all and answered this with
+  "surrender the lowest point trump". The issue's own worked example — both trump
+  Aces gone makes the 10 boss, then the Kings after the 10s — is a *trump*
+  example, so tier 2 could not be built as specified without one.
+- **A plain ruff is left alone.** Void in the lead suit with no trump yet on the
+  table, every trump in hand "beats" the winner but the rules restricted nothing.
+  That position keeps its existing tiers.
+- **`trumpSecure` still reads the exact count.** "Is every trump accounted for"
+  is a different question from "can this card be beaten", and #157 recorded the
+  exact `PlayTracker` as load-bearing for the parity fixtures. Degrading it is
+  its own issue with its own measurement.
+
+**The measurement.** `cli.ts safe --level L` puts the counted rule at level `L`
+against an `'off'` baseline. The baseline never constructs a `TrumpMemory`, so it
+is the *same opponent at every level* — which is what makes two runs at different
+capacities comparable to each other and not just to zero. Self-tests first: both
+arms found exactly nothing against themselves (200 pairs, every pair split, paired
+margin 0.00), and the two arms were confirmed to return different cards from one
+fixed position before any number was believed (`A♥` against `K♥`, pinned in
+`tracker.test.ts`).
+
+**Measured against auto-SET (#178), which landed while this was in review.**
+That rule ends a mathematically dead contract before the first lead, and it fires
+on **6.8–6.9% of contracts** — roughly one in fourteen — so it changes which
+deals reach trick play at all, and every number below was re-run on top of it
+rather than carried over. #177's bid-floor fix (321 → 330) is in the same
+re-run. Both arms of every row carry `autoSetPolicy: 'forced'`, and the harness
+reports the same auto-SET rate on each side, which is the check that the two
+arms are being dealt the same population.
+
+The ladder was run at all five capacities on the pre-#178 baseline and rises
+monotonically there; the two ends of it were re-run against auto-SET, which is
+where the claim rests. 5000 paired deals / 10 000 games per cell:
+
+| level | trump remembered | seed 1 margin (95% CI) | seed 2 margin (95% CI) |
+| --- | --- | --- | --- |
+| easy | 2 of 12 | **+3.71** (+0.46 to +6.90) | **+4.07** (+0.96 to +7.26) |
+| expert | 10 of 12 | **+8.93** (+5.86 to +11.90) | **+7.93** (+5.06 to +10.83) |
+
+Both intervals exclude zero at both ends of the dial, and the effect is if
+anything slightly *larger* under auto-SET than it was without it (easy +3.29 and
+expert +8.69 on seed 1 of the older baseline). That direction makes sense: the
+contracts auto-SET removes are ones the bidding side could not have made however
+it played, so they were dead weight in the average rather than deals the rule was
+winning.
+
+The full pre-#178 ladder, kept because monotonicity across all five capacities is
+the shape of the claim and re-running ten cells to restate it would say nothing
+new — a historical reading on the older baseline, not a current one:
+
+| level | trump remembered | seed 1 margin (95% CI) | seed 2 margin (95% CI) |
+| --- | --- | --- | --- |
+| easy | 2 of 12 | +3.29 (+0.08 to +6.53) | +3.85 (+0.69 to +7.10) |
+| medium | 4 | +3.43 (+0.27 to +6.71) | +4.44 (+1.31 to +7.74) |
+| hard | 6 | +4.94 (+1.86 to +8.13) | +5.60 (+2.49 to +8.81) |
+| proficient | 8 | +7.76 (+4.77 to +10.80) | +6.76 (+3.78 to +9.83) |
+| expert | 10 | +8.69 (+5.73 to +11.63) | +7.64 (+4.80 to +10.63) |
+
+Make-rate moves with margin rather than against it on every post-rebase cell
+(expert, seed 1: 71.54% against the baseline's 71.26%), which is the check #126
+exists to force.
+
+The ladder is evidence by subtraction against a shared baseline, so it was also
+checked head-to-head, with `cli.ts capacity --high expert --low easy`: both sides
+run the counted rule and differ in **nothing but the level they sit on**, which is
+the only comparison that isolates recall itself. Re-run against auto-SET:
+
+| seed | expert vs easy, margin per deal | 95% CI | swept | p |
+| --- | --- | --- | --- | --- |
+| 1 | **+6.50** | +4.86 to +8.13 | 42–12 | 0.00005 |
+| 2 | **+6.08** | +4.33 to +7.91 | 46–16 | 0.0002 |
+
+(Pre-#178 the same runs read +5.96 and +5.91, so auto-SET did not wash the
+divergence out — it widened it slightly.)
+
+So expert and easy do diverge, by about six points a deal, entirely through what
+they can remember. That is the first time the skill dial has changed a *card*
+rather than a bid, which is what #157 was built for and what epic #152 set out to
+find.
+
+Size in context: roughly the same as #159's opening lead (+7.6 to +9.8), four to
+five times #155's forced-beat fix (+1.8), and still two orders of magnitude under
+the dial's own span (#153's +121). Cost on the bundle is +1.58 kB raw / +0.55 kB
+gzipped (259.05 kB to 260.63 kB, measured against the tree this branch
+rebased onto).
+
+Shipped **enabled on all five levels**, not as a difficulty notch. The rule is
+identical everywhere — #156's settlement that trick play is shared competence
+stands — and only the recall behind it differs, which is exactly #157's model.
+`'off'` survives as the A/B arm, like `'simple'` and `'never'`.
+
+`pinochle_engine.py` has no trump-memory model at all, so this is not a ported
+behaviour that has drifted; porting it is its own issue on the Python side, the
+way #164 followed #154.
+
+Unlike the throwaway arms #153–#159 built and deleted, `safe` and `capacity`
+stay in `cli.ts`: the second one is not a temporary rig but the only way to ask
+whether the skill dial is worth having, and epic #152 closes with that question
+answered rather than retired.
+
 ### Checking that a dial can see a change
 
 A self-test proves a dial reports nothing when nothing differs. It does not

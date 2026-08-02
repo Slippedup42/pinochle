@@ -4,6 +4,7 @@ import { shouldConcede } from '../engine/evaluator'
 import { isAutoSet, partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
 import { SKILL_PARAMS } from '../engine/skills'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
+import { newTrumpMemories } from '../engine/trumpMemory'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
@@ -129,6 +130,19 @@ export function TrickPlayFlow({
   // rather than derived from reducer state, since it's an append-only
   // strategy input the AI reads, not something any render needs back.
   const trackerRef = useRef(new PlayTracker())
+  // Per-seat capacity-limited trump memory (#157), consumed by the safe-counter
+  // rule in `chooseForcedBeat` (#158). Built once, from the hands as dealt into
+  // trick play, so each seat starts holding what it could see of the other three
+  // melds. Same lifetime and same reasoning as `trackerRef`: append-only
+  // strategy input, never rendered.
+  //
+  // On a #54 resume the memories start empty of everything already played, which
+  // makes every seat *more* cautious than it would have been — the safe
+  // direction, since an under-count can only ever read as "this card can still
+  // be beaten" and never the other way round.
+  const trumpMemoriesRef = useRef(
+    newTrumpMemories(hands, trumpSuit, (seat) => skillForPlayer(seat, humanPlayer, options)),
+  )
   const completedRef = useRef(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   // Set when the auto-SET rule (#178) fires, cleared when the player
@@ -137,6 +151,14 @@ export function TrickPlayFlow({
   // (below) waits for this to clear before handing off, so the round summary
   // cannot appear before the explanation of why no cards were played.
   const [autoSetFired, setAutoSetFired] = useState(false)
+
+  // A card hits the table once and everyone sees it — the exact tracker and all
+  // four trump memories, the human's card included. Stable (`[]`), because it
+  // reaches only through refs and is handed to a `useMemo`'d table state.
+  const notePlayed = useCallback((card: Card) => {
+    trackerRef.current.record(card)
+    for (const seat of [0, 1, 2, 3] as PlayerIndex[]) trumpMemoriesRef.current[seat].see(card)
+  }, [])
 
   // Concede/fold for an AI bid winner (#123), in the same window the human's
   // fold button gets: after meld, before the first card of the round.
@@ -211,13 +233,30 @@ export function TrickPlayFlow({
       const isBiddingTeam = teamOf(player) === teamOf(state.bidWinner)
       const card =
         state.currentTrick.length === 0
-          ? chooseLeadCard(hand, state.trumpSuit, trackerRef.current, isBidderFirstLead, skill, isBiddingTeam)
-          : chooseFollowCard(hand, legal, state.currentTrick, state.trumpSuit, teammatesOf(player), trackerRef.current, skill)
-      trackerRef.current.record(card)
+          ? chooseLeadCard(
+              hand,
+              state.trumpSuit,
+              trackerRef.current,
+              isBidderFirstLead,
+              skill,
+              isBiddingTeam,
+              trumpMemoriesRef.current[player],
+            )
+          : chooseFollowCard(
+              hand,
+              legal,
+              state.currentTrick,
+              state.trumpSuit,
+              teammatesOf(player),
+              trackerRef.current,
+              skill,
+              trumpMemoriesRef.current[player],
+            )
+      notePlayed(card)
       dispatch({ type: 'PLAY_CARD', player, card })
     }, AI_PLAY_DELAY_MS)
     return () => clearTimeout(timer)
-  }, [state, humanPlayer])
+  }, [state, humanPlayer, notePlayed])
 
   // Once a trick completes, pause so the human can see all 4 cards and the
   // winner highlight before it's cleared for the next trick.
@@ -286,7 +325,7 @@ export function TrickPlayFlow({
       ? {
           legalCards: legalMovesForHuman,
           onPlay: (card: Card) => {
-            trackerRef.current.record(card)
+            notePlayed(card)
             dispatch({ type: 'PLAY_CARD', player: humanPlayer, card })
           },
         }
@@ -306,7 +345,7 @@ export function TrickPlayFlow({
       meldPoints: meldPointsByTeam[teamOf(state.bidWinner)],
       trickWinner: state.phase === 'trick-complete' ? (state.trickWinners.at(-1) ?? null) : null,
     }
-  }, [state, seatNames, humanPlayer, bid, scoresByTeam, teamNames, meldPointsByTeam, legalMovesForHuman])
+  }, [state, seatNames, humanPlayer, bid, scoresByTeam, teamNames, meldPointsByTeam, legalMovesForHuman, notePlayed])
 
   const handleConcede = useCallback(() => {
     dispatch({ type: 'CONCEDE' })

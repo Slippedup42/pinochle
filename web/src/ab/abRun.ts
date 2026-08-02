@@ -69,6 +69,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     foldPolicy: 'model',
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -76,6 +77,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     foldPolicy: 'model',
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
   },
 }
 
@@ -95,6 +97,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     foldPolicy: 'never',
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -102,6 +105,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     foldPolicy: 'model',
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
   },
 }
 
@@ -129,6 +133,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     foldPolicy: 'model',
     playPolicy: 'cascade',
     autoSetPolicy: 'off',
+    safeCounterPolicy: 'counted',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -136,6 +141,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     foldPolicy: 'model',
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
   },
 }
 
@@ -169,6 +175,7 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     foldPolicy: 'model',
     playPolicy: 'simple',
     autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -176,7 +183,108 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     foldPolicy: 'model',
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
   },
+}
+
+/**
+ * Safe-counter A/B (#158): identical bidders, identical folders, both running
+ * the cascade, differing only in whether a seat forced to take a trick works out
+ * which counter will actually hold.
+ *
+ * **This is the one A/B in the file where the *levels* matter and not just the
+ * rows.** Everywhere else `installPolicies` writes both arms explicitly and the
+ * level names are inert carriers. Here `TRUMP_MEMORY_CAPACITY` is keyed on the
+ * level itself (`2 x skill`, #157) and is not part of `SkillParams`, so the
+ * level chosen for the `'counted'` arm *is* the capacity being measured. That is
+ * the mechanism, not a leak: the same `'counted'` rule at `easy` and at `expert`
+ * is exactly the comparison #158 asks for.
+ *
+ * The `'off'` arm never touches a `TrumpMemory` — `chooseFollowCard` passes
+ * `undefined` down when the policy is off — so its level is inert and its
+ * behaviour is identical whichever level carries it. Which is what makes two
+ * runs at different capacities comparable: both are measured against the *same*
+ * baseline, on the same deals from the same seed, so the difference between the
+ * two margins is attributable to the capacity and to nothing else.
+ *
+ * Both arms run `autoSetPolicy: 'forced'` (#178), because that is what ships and
+ * because auto-SET decides *which deals reach trick play at all* — it ends
+ * roughly one contract in fourteen before the first lead. Measuring a card-play
+ * rule with it off would describe a population of hands the game no longer
+ * deals. #158's original table was taken before #178 merged and was re-run
+ * against it for exactly this reason; see `web/README.md`.
+ *
+ * @param countedLevel - Carries the arm under test; its capacity is what is
+ *   being measured. `easy` = 2 trump remembered, `expert` = 10.
+ * @param offLevel - Carries the baseline. Must differ from `countedLevel`.
+ */
+export function safeCounterAbPolicies(
+  countedLevel: SkillLevel,
+  offLevel: SkillLevel,
+): Record<string, SkillParams> {
+  if (countedLevel === offLevel) throw new Error('safe-counter A/B needs two distinct levels')
+  return {
+    [countedLevel]: {
+      handValuation: 'base_bid',
+      bidPolicy: 'distilled',
+      foldPolicy: 'model',
+      playPolicy: 'cascade',
+      autoSetPolicy: 'forced',
+      safeCounterPolicy: 'counted',
+    },
+    [offLevel]: {
+      handValuation: 'base_bid',
+      bidPolicy: 'distilled',
+      foldPolicy: 'model',
+      playPolicy: 'cascade',
+      autoSetPolicy: 'forced',
+      safeCounterPolicy: 'off',
+    },
+  }
+}
+
+/** The level the `'off'` baseline sits on for a given `'counted'` level. Any
+ *  level would do — the baseline ignores capacity — so these are picked only to
+ *  be distinct from the arm under test. */
+export const SAFE_COUNTER_CONTROL: Record<SkillLevel, SkillLevel> = {
+  easy: 'medium',
+  medium: 'easy',
+  hard: 'medium',
+  proficient: 'medium',
+  expert: 'proficient',
+}
+
+/**
+ * Two `'counted'` seats at one table, differing in **nothing but the level they
+ * sit on** — and therefore in nothing but how much trump each can remember
+ * (#157's `2 x skill`, #158's consumer).
+ *
+ * The only map in this file where zero fields differ between the arms, and that
+ * is the point rather than an oversight. Every other comparison here holds the
+ * level inert and varies a rule; this one holds the rule fixed and varies the
+ * level, which is the only way to ask the question epic #152 raised directly:
+ * does remembering more trump actually win games, or does the skill dial just
+ * describe itself? Running each capacity against the shared `'off'` baseline
+ * answers it by subtraction; this answers it head-to-head, at one table, with
+ * the mirroring cancelling the seat effect exactly as usual.
+ *
+ * Do not add this to the "exactly one field differs" invariant in `ab.test.ts`.
+ * It would fail it, correctly.
+ */
+export function safeCounterCapacityPolicies(
+  highLevel: SkillLevel,
+  lowLevel: SkillLevel,
+): Record<string, SkillParams> {
+  if (highLevel === lowLevel) throw new Error('capacity A/B needs two distinct levels')
+  const counted: SkillParams = {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+  }
+  return { [highLevel]: counted, [lowLevel]: counted }
 }
 
 /** Overwrites the two entries in `policies`, returning a function that restores

@@ -110,12 +110,39 @@ export type PlayPolicy = 'simple' | 'cascade'
  */
 export type AutoSetPolicy = 'forced' | 'off'
 
+/**
+ * Whether a seat forced to take a trick works out which counter is *safe* to
+ * take it with, or just spends the cheapest one (#158).
+ *
+ *   `'off'`      the state after #155: a forced beat goes to a non-counter if
+ *                one is legal, otherwise to the lowest counter, whatever is
+ *                still outstanding. Trump safety, where `chooseLeadCard` asks
+ *                it, is read from `PlayTracker`'s exact count.
+ *   `'counted'`  the lowest counter that **cannot itself be beaten in suit** —
+ *                every higher card of that suit already seen or held — falling
+ *                back to the lowest counter when nothing qualifies. Side-suit
+ *                safety comes from `PlayTracker` and is exact at every level;
+ *                trump safety comes from #157's `TrumpMemory`, whose capacity
+ *                is `2 x skill level`, so it is the one thing in trick play a
+ *                weak seat is genuinely worse at.
+ *
+ * This is the only field whose *effect* varies with the skill level rather than
+ * with the row: `'counted'` is the same rule everywhere, but at `easy` it is
+ * answered from 2 remembered trump and at `expert` from 10. That is deliberate
+ * and it is #157's whole point — same reasoning, worse recall — so it does not
+ * contradict #156's "identical rules at every level". A seat that cannot
+ * remember does not play a different rule, it plays the same rule
+ * conservatively, and conservative here means "assume the card can be beaten".
+ */
+export type SafeCounterPolicy = 'off' | 'counted'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
   readonly foldPolicy: FoldPolicy
   readonly playPolicy: PlayPolicy
   readonly autoSetPolicy: AutoSetPolicy
+  readonly safeCounterPolicy: SafeCounterPolicy
 }
 
 /**
@@ -216,13 +243,57 @@ export interface SkillParams {
  * `autoSetPolicy` (#178) reads `'forced'` on every row for a stronger reason
  * than either of those: it is not a policy at all in a real game, it is a rule
  * of arithmetic that the human bid winner gets too. See `AutoSetPolicy`.
+ *
+ * `safeCounterPolicy` (#158) reads `'counted'` on every row, and is the one
+ * column where a uniform value still produces different play at different
+ * levels — the rule is identical everywhere and only the trump recall behind it
+ * scales (#157's `2 x skill level`). So it does not reopen #156: nobody plays a
+ * worse rule, a weak seat just answers the same question off less information.
+ * It ships enabled because it measured positive at every capacity; the rows
+ * grew a line each here rather than staying on one, because five fields no
+ * longer fit one readable line. See `SafeCounterPolicy` and `web/README.md`.
  */
 export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
-  easy: { handValuation: 'meld_only', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
-  medium: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
-  hard: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
-  proficient: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
-  expert: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade', autoSetPolicy: 'forced' },
+  easy: {
+    handValuation: 'meld_only',
+    bidPolicy: 'static',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+  },
+  medium: {
+    handValuation: 'base_bid',
+    bidPolicy: 'static',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+  },
+  hard: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+  },
+  proficient: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+  },
+  expert: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+  },
 }
 
 /** Flat trick-point estimate for meld-only bidding (skill 1), matching

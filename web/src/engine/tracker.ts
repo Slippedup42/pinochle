@@ -6,11 +6,19 @@
 // lead-card strategy and the follow-card strategy here consume the same
 // tracker instance. Its public shape is kept deliberately small -
 // `record` / `playedCount` are all either strategy currently needs.
+//
+// Since #158 there is a second, weaker source of the same kind of fact:
+// `TrumpMemory` (trumpMemory.ts), one per *seat* rather than one per round,
+// capacity-limited to `2 x skill level` trump. `seenCount` below routes each
+// question to whichever of the two owns it — the exact tracker for side suits,
+// the seat's memory for trump — and that split is the only thing in this file
+// that behaves differently at different skill levels.
 
 import type { SkillLevel } from '../persistence/options'
 import { type Card, RANK_VALUE, RANKS, type Rank, type Suit } from './card'
 import type { PlayerIndex, TrickPlay } from './trick'
 import { SKILL_PARAMS } from './skills'
+import type { TrumpMemory } from './trumpMemory'
 
 const POINT_RANKS = new Set(['A', '10', 'K'])
 /** 6 ranks x 2 copies, matching Python's `TOTAL_TRUMP_COPIES`. `chooseFollowCard`
@@ -44,17 +52,66 @@ function suitLength(hand: readonly Card[], suit: Suit): number {
 }
 
 /**
- * A card is safe to lead once every higher-ranked card in its suit is
- * accounted for - either already played, or still in your own hand (a
- * card you hold yourself can't beat you).
+ * What one seat believes it has seen of a given card (#158) — the input to
+ * every "can this still be beaten" question below.
+ *
+ *   **Side suits** come from `PlayTracker`, which counts perfectly and is not
+ *   capacity-limited (#157 scoped the cap to trump), so side-suit safety is
+ *   exact at every skill level.
+ *
+ *   **Trump** comes from the seat's `TrumpMemory` when it has one: capacity
+ *   `2 x skill level`, most-recent-wins. `undefined` means either the caller
+ *   supplied no memory or `safeCounterPolicy` is `'off'`, and then this falls
+ *   back to the exact count — the pre-#158 reading, and what the `'off'` A/B
+ *   arm has to reproduce byte for byte to be a baseline.
+ *
+ * The direction of the error matters more than its size. `TrumpMemory.seenCount`
+ * can only ever *under*-report, because forgetting removes sightings and never
+ * invents them, and an under-report makes `isBoss` below answer "beatable".
+ * So a seat that cannot remember plays as though the card can be beaten, which
+ * is the conservative resolution #158 asks for, and it is structural rather
+ * than a branch someone has to remember to write.
  */
-function isSafe(card: Card, hand: readonly Card[], tracker: PlayTracker): boolean {
+function seenCount(
+  suit: Suit,
+  rank: Rank,
+  trump: Suit,
+  tracker: PlayTracker | undefined,
+  memory: TrumpMemory | undefined,
+): number {
+  if (suit === trump && memory !== undefined) return memory.seenCount(rank)
+  return tracker?.playedCount(suit, rank) ?? 0
+}
+
+/**
+ * Whether this card **cannot be beaten in its own suit**: every higher-ranked
+ * card of that suit is accounted for, either seen already or sitting in your own
+ * hand (a card you hold yourself cannot beat you).
+ *
+ * "In its own suit" is the whole caveat and it is not a shortcut (#158). A card
+ * that is boss in a side suit can still be ruffed by an opponent who happens to
+ * be void, and no amount of counting tells you whether they are — `PlayTracker`
+ * records what was played, not who is out of what. So this predicate is never
+ * a promise that the trick will be won; it is a promise that nobody takes it
+ * *with a bigger card of this suit*. Callers must not read more into it.
+ *
+ * Formerly `isSafe`, unchanged in arithmetic and renamed because #158 gave it a
+ * second caller with a different question in mind — leading a card safely, and
+ * taking a trick with a counter that will hold.
+ */
+function isBoss(
+  card: Card,
+  hand: readonly Card[],
+  trump: Suit,
+  tracker: PlayTracker | undefined,
+  memory: TrumpMemory | undefined,
+): boolean {
   if (card.rank === 'A') return true
   const idx = RANK_VALUE[card.rank]
   for (const rank of RANKS) {
     const value = RANK_VALUE[rank]
     if (value > idx) {
-      const accounted = tracker.playedCount(card.suit, rank) + handCount(hand, card.suit, rank)
+      const accounted = seenCount(card.suit, rank, trump, tracker, memory) + handCount(hand, card.suit, rank)
       if (accounted < 2) return false
     }
   }
@@ -66,10 +123,16 @@ function isSafe(card: Card, hand: readonly Card[], tracker: PlayTracker): boolea
  * played yet - a live liability that needs to move before someone else's
  * lead traps you into losing it to the tie-break rule.
  */
-function isUnsecuredAce(card: Card, hand: readonly Card[], tracker: PlayTracker): boolean {
+function isUnsecuredAce(
+  card: Card,
+  hand: readonly Card[],
+  trump: Suit,
+  tracker: PlayTracker,
+  memory: TrumpMemory | undefined,
+): boolean {
   if (card.rank !== 'A') return false
   if (handCount(hand, card.suit, 'A') !== 1) return false // 0 copies (n/a) or 2 copies (secure double, no rush)
-  return tracker.playedCount(card.suit, 'A') === 0
+  return seenCount(card.suit, 'A', trump, tracker, memory) === 0
 }
 
 /**
@@ -98,12 +161,17 @@ function isUnsecuredAce(card: Card, hand: readonly Card[], tracker: PlayTracker)
  * branch before it ever gets here, and nobody on the bidding side is on lead
  * before trick 2.
  */
-function offenseTrumpLead(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
+function offenseTrumpLead(
+  hand: readonly Card[],
+  trump: Suit,
+  tracker: PlayTracker,
+  memory: TrumpMemory | undefined,
+): Card {
   const trumpAces = hand.filter((c) => c.suit === trump && c.rank === 'A')
   if (trumpAces.length > 0) return trumpAces[0]
   const nonTrump = hand.filter((c) => c.suit !== trump)
-  if (nonTrump.length > 0) return leadSafeCascade(nonTrump, trump, tracker)
-  return leadSafeCascade(hand, trump, tracker)
+  if (nonTrump.length > 0) return leadSafeCascade(nonTrump, trump, tracker, memory)
+  return leadSafeCascade(hand, trump, tracker, memory)
 }
 
 /**
@@ -123,10 +191,15 @@ function offenseTrumpLead(hand: readonly Card[], trump: Suit, tracker: PlayTrack
  * only mode reachable from the ported Proficient `choose_lead_card`, it
  * restricts to non-trump unconditionally.
  */
-function defenderLead(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
+function defenderLead(
+  hand: readonly Card[],
+  trump: Suit,
+  tracker: PlayTracker,
+  memory: TrumpMemory | undefined,
+): Card {
   const nonTrump = hand.filter((c) => c.suit !== trump)
-  if (nonTrump.length > 0) return leadSafeCascade(nonTrump, trump, tracker)
-  return leadSafeCascade(hand, trump, tracker)
+  if (nonTrump.length > 0) return leadSafeCascade(nonTrump, trump, tracker, memory)
+  return leadSafeCascade(hand, trump, tracker, memory)
 }
 
 /**
@@ -137,20 +210,35 @@ function defenderLead(hand: readonly Card[], trump: Suit, tracker: PlayTracker):
  *   3. Safe cards, cascading top-down by rank (longest suit first within a rank)
  *   4. Junk lead (non-point, non-trump) to surrender — shortest suit first
  *   5. Non-point trump as a last resort before giving up a point card
+ *
+ * Tier 3 is the leading half of #158: *"a counter that is provably boss is safe
+ * to lead; one that is not, is not."* That was already true of side suits, where
+ * `PlayTracker` counts exactly. What #158 adds is that when the card in question
+ * is **trump**, the count comes from this seat's `TrumpMemory` instead — so an
+ * `easy` seat holding the trump 10 with both Aces long gone often does not know
+ * it, and drops to the junk tier rather than cashing it. That is the skill dial
+ * during trick play, and it is reached here only on an all-trump hand:
+ * `offenseTrumpLead` and `defenderLead` both filter trump out first whenever the
+ * hand has anything else.
  */
-function leadSafeCascade(hand: readonly Card[], trump: Suit, tracker: PlayTracker): Card {
-  const trumpAces = hand.filter((c) => c.suit === trump && c.rank === 'A' && isUnsecuredAce(c, hand, tracker))
+function leadSafeCascade(
+  hand: readonly Card[],
+  trump: Suit,
+  tracker: PlayTracker,
+  memory: TrumpMemory | undefined,
+): Card {
+  const trumpAces = hand.filter((c) => c.suit === trump && c.rank === 'A' && isUnsecuredAce(c, hand, trump, tracker, memory))
   if (trumpAces.length > 0) return trumpAces[0]
 
   const otherUnsecuredAces = hand.filter(
-    (c) => c.rank === 'A' && c.suit !== trump && isUnsecuredAce(c, hand, tracker),
+    (c) => c.rank === 'A' && c.suit !== trump && isUnsecuredAce(c, hand, trump, tracker, memory),
   )
   if (otherUnsecuredAces.length > 0) {
     otherUnsecuredAces.sort((a, b) => suitLength(hand, b.suit) - suitLength(hand, a.suit))
     return otherUnsecuredAces[0]
   }
 
-  const safeCards = hand.filter((c) => isSafe(c, hand, tracker))
+  const safeCards = hand.filter((c) => isBoss(c, hand, trump, tracker, memory))
   if (safeCards.length > 0) {
     safeCards.sort((a, b) => {
       const byRank = RANK_VALUE[b.rank] - RANK_VALUE[a.rank]
@@ -195,10 +283,15 @@ function leadSafeCascade(hand: readonly Card[], trump: Suit, tracker: PlayTracke
  *   round), forces a trump lead if the player has any trump cards remaining.
  * @param skill - Skill level, read for `playPolicy` (#153). Since #156 every
  *   shipped row is `'cascade'` — the full Proficient cascade — so this argument
- *   no longer varies the strategy in a real game. `'simple'` (low non-trump
- *   non-counter) survives as an A/B arm, reachable only through an override.
- *   Defaults to 'hard'.
+ *   no longer varies the strategy in a real game — except through
+ *   `safeCounterPolicy`, which does not change the rule but does change how well
+ *   this seat can answer it (#158). `'simple'` (low non-trump non-counter)
+ *   survives as an A/B arm, reachable only through an override. Defaults to
+ *   'hard'.
  * @param isBiddingTeam - Which side this seat is on. Undefined = fallback.
+ * @param trumpMemory - This seat's capacity-limited view of the trump seen so
+ *   far (#157), consulted only when `safeCounterPolicy` is `'counted'`. Omit it
+ *   and trump safety is read from the exact `tracker`, as before #158.
  */
 export function chooseLeadCard(
   hand: readonly Card[],
@@ -207,7 +300,13 @@ export function chooseLeadCard(
   isBidderFirstLead = false,
   skill: SkillLevel = 'hard',
   isBiddingTeam?: boolean,
+  trumpMemory?: TrumpMemory,
 ): Card {
+  // The one gate. `undefined` here means every question below about trump is
+  // answered from `PlayTracker`'s exact count, which is what the pre-#158 code
+  // did and what the `'off'` A/B arm must keep doing.
+  const memory = SKILL_PARAMS[skill].safeCounterPolicy === 'counted' ? trumpMemory : undefined
+
   // Simplified leading — prefer low non-trump non-count cards. No shipped
   // `SKILL_PARAMS` row selects this since #156 moved `easy` onto the cascade
   // with everyone else, so nothing reaches it in a real game; it stays as the
@@ -223,7 +322,7 @@ export function chooseLeadCard(
   if (isBidderFirstLead) {
     const trumps = hand.filter((c) => c.suit === trump)
     if (trumps.length > 0) {
-      const unsecuredAce = trumps.find((c) => c.rank === 'A' && isUnsecuredAce(c, hand, tracker))
+      const unsecuredAce = trumps.find((c) => c.rank === 'A' && isUnsecuredAce(c, hand, trump, tracker, memory))
       if (unsecuredAce) return unsecuredAce
       const ace = trumps.find((c) => c.rank === 'A')
       if (ace) return ace
@@ -241,11 +340,11 @@ export function chooseLeadCard(
   }
 
   // Dispatch by side when known: bidding team draws trump, defending team avoids it
-  if (isBiddingTeam === true) return offenseTrumpLead(hand, trump, tracker)
-  if (isBiddingTeam === false) return defenderLead(hand, trump, tracker)
+  if (isBiddingTeam === true) return offenseTrumpLead(hand, trump, tracker, memory)
+  if (isBiddingTeam === false) return defenderLead(hand, trump, tracker, memory)
 
   // Fallback when side is unknown (old callers): original safe-card cascade
-  return leadSafeCascade(hand, trump, tracker)
+  return leadSafeCascade(hand, trump, tracker, memory)
 }
 
 function minByRank(cards: readonly Card[]): Card {
@@ -291,25 +390,63 @@ function feedPartner(legalMoves: readonly Card[]): Card {
  *
  *   1. A non-counter (Q, J, 9) if any legal beater is one — take the trick
  *      without also donating 10 points into it.
- *   2. Otherwise the lowest counter that cannot itself be beaten. **Not
- *      implemented here.** Knowing a counter is safe means knowing what is still
- *      outstanding, which is #158 on top of #157's trump memory; this gap is the
- *      seam it slots into, left deliberately rather than approximated.
+ *   2. Otherwise the lowest counter that cannot itself be beaten (#158).
  *   3. Otherwise the lowest counter.
  *
- * Tiers 1 and 3 pick the card `minByRank` picked before this function existed,
- * and that is worth stating rather than relying on silently: pinochle's rank
- * order (9 J Q K 10 A) happens to put every non-counter strictly below every
- * counter, so "lowest legal card" already reads as "cheapest free beat, else
- * cheapest counter". Spelling the tiers out costs nothing, makes the preference
- * a tested property instead of a side effect of `RANK_VALUE`, and means #158
- * inserts one branch rather than re-deriving the rule. The behaviour #155
- * measured is all in `chooseFollowCard`'s *detection* of the forced beat below,
- * not in this selection.
+ * Tiers 1 and 3 pick the card `minByRank` picked before this function existed:
+ * pinochle's rank order (9 J Q K 10 A) happens to put every non-counter strictly
+ * below every counter, so "lowest legal card" already read as "cheapest free
+ * beat, else cheapest counter". Tier 2 is the one that changes a card, and it is
+ * #158's whole content.
+ *
+ * ## What tier 2 does, and what it deliberately does not claim
+ *
+ * Every legal move here is a counter, and they are all of one suit — the branch
+ * above only reaches this with a single-suit legal set. So the candidates are
+ * some subset of {K, 10, A} and the question is which of them will still be
+ * standing when the trick closes. `isBoss` answers it *in suit*, and that is the
+ * strongest claim available: an opponent who is void and holds a trump takes the
+ * trick whatever is played here, and nothing in `PlayTracker` says who is void.
+ * Playing the boss card is therefore not "winning the trick", it is "not losing
+ * it to a bigger card of this suit" — which is the loss this rule exists to
+ * avoid, since spending a King into a trick an opponent's Ace then takes hands
+ * over 20 points rather than 10.
+ *
+ * Two consequences of that, both intended:
+ *
+ *   - **The Ace always qualifies**, so whenever an Ace is legal this tier picks
+ *     something, and it degenerates to "the cheapest counter that holds, else
+ *     the Ace". With nothing known that is the Ace — spending the boss to be
+ *     certain, rather than gambling a King on information the seat does not
+ *     have. That is the conservative direction #158 asks for.
+ *   - **Nobody left to play means nothing is outstanding.** Last to the trick,
+ *     no card can be beaten, so the tier collapses to the cheapest counter — the
+ *     King — instead of throwing an Ace at a trick already won. This is a
+ *     property of the position, not of the counting, so it holds at every skill
+ *     level, and it is why turning #158 on cannot make the fourth seat worse.
+ *
+ * @param seatsStillToPlay - How many seats follow this one in the trick, 0-3.
+ * @param counted - `safeCounterPolicy === 'counted'`. When false this is exactly
+ *   the post-#155 function, which is what makes the A/B a one-field comparison.
  */
-function chooseForcedBeat(legalMoves: readonly Card[]): Card {
+function chooseForcedBeat(
+  legalMoves: readonly Card[],
+  hand: readonly Card[],
+  trump: Suit,
+  tracker: PlayTracker | undefined,
+  memory: TrumpMemory | undefined,
+  seatsStillToPlay: number,
+  counted: boolean,
+): Card {
   const nonCounters = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
   if (nonCounters.length > 0) return minByRank(nonCounters)
+
+  if (counted) {
+    if (seatsStillToPlay <= 0) return minByRank(legalMoves)
+    const boss = legalMoves.filter((c) => isBoss(c, hand, trump, tracker, memory))
+    if (boss.length > 0) return minByRank(boss)
+  }
+
   return minByRank(legalMoves)
 }
 
@@ -339,14 +476,20 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *       1. Forced beat (every legal card already beats the current
  *          winner, measured as trick-winning power rather than raw rank
  *          - #155) - take it with a non-counter if one is legal, else
- *          with the cheapest counter. See `chooseForcedBeat`.
+ *          with the cheapest counter that cannot itself be beaten in
+ *          suit (#158). See `chooseForcedBeat`.
  *       2. Partner is currently winning - feed them points: the lowest
  *          King/10 available (#154 - every counter pays 10, so spend the
  *          weakest), or (if none) the lowest card, to avoid donating a
  *          live Ace unless forced.
  *       3. Otherwise - play the lowest non-point card, falling back to
  *          the lowest legal card if only point cards are available.
- *   - Forced to play trump (void in the lead suit):
+ *   - Forced to play trump (void in the lead suit, or trump was led):
+ *       0. Forced to *overtrump* - a trump is already winning the trick
+ *          and every legal move beats it, so the rules have restricted
+ *          this seat to beaters. Same selection as the lead-suit forced
+ *          beat above, and the one place #157's capacity-limited trump
+ *          memory decides a card (#158).
  *       1. Trump is secure (every copy - in hand plus already played -
  *          is accounted for, i.e. no trump left unseen) - play the
  *          lowest trump, conserving high trump for later control.
@@ -357,11 +500,33 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *     suits - work toward voiding the shortest suit, lowest rank within
  *     it.
  *
- * @param skill Skill level, read for `playPolicy` (#153). Since #156 every
- *   shipped row is `'cascade'` — the tiered logic above — so this argument no
- *   longer varies the strategy in a real game. `'simple'` (play the lowest legal
- *   card) survives as an A/B arm, reachable only through an override. Defaults
- *   to 'hard'.
+ * Tier 0 of the trump branch is new in #158 and is worth saying why it is not
+ * scope creep. #155 wrote the forced-beat selection rule but could only reach
+ * the *lead-suit* branch, because that is where the detection lived; the trump
+ * branch had no notion of a forced beat at all and answered an overtrump with
+ * "surrender the lowest point trump", which spends a King into a trick an
+ * opponent's Ace is about to take. The issue's own worked example — both trump
+ * Aces gone makes the 10 boss, then the Kings after the 10s — is a *trump*
+ * example, so tier 2 of `chooseForcedBeat` cannot be implemented as specified
+ * without a forced beat in trump to implement it in. Tier 1 comes along with it
+ * because a rule that prefers a free beat everywhere except trump would be
+ * incoherent, not because it was measured separately.
+ *
+ * Note what is deliberately left alone: `trumpSecure` below still reads
+ * `PlayTracker`'s exact count, not the memory. "Is every trump accounted for"
+ * is a different question from "can this card be beaten", #157 recorded the
+ * exact tracker as load-bearing for the parity fixtures, and degrading that one
+ * is its own issue with its own measurement.
+ *
+ * @param skill Skill level, read for `playPolicy` (#153) and
+ *   `safeCounterPolicy` (#158). Since #156 every shipped row is `'cascade'`, so
+ *   the tiers themselves are the same at every level; what the level changes is
+ *   how much of the trump this seat can still recall when tier 2 of
+ *   `chooseForcedBeat` asks. `'simple'` (play the lowest legal card) survives as
+ *   an A/B arm, reachable only through an override. Defaults to 'hard'.
+ * @param trumpMemory This seat's capacity-limited trump view (#157). Consulted
+ *   only when `safeCounterPolicy` is `'counted'`; omitted, trump questions fall
+ *   back to the exact `tracker`, which is the pre-#158 reading.
  */
 export function chooseFollowCard(
   hand: readonly Card[],
@@ -371,6 +536,7 @@ export function chooseFollowCard(
   myTeamPlayers: readonly PlayerIndex[],
   tracker?: PlayTracker,
   skill: SkillLevel = 'hard',
+  trumpMemory?: TrumpMemory,
 ): Card {
   if (legalMoves.length === 1) return legalMoves[0]
 
@@ -380,6 +546,11 @@ export function chooseFollowCard(
   if (SKILL_PARAMS[skill].playPolicy === 'simple') {
     return legalMoves.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
   }
+
+  const counted = SKILL_PARAMS[skill].safeCounterPolicy === 'counted'
+  const memory = counted ? trumpMemory : undefined
+  /** Seats still to follow this one, 0-3. Zero means nothing is outstanding. */
+  const seatsStillToPlay = 3 - trickPlays.length
 
   const leadSuit = trickPlays.length > 0 ? trickPlays[0].card.suit : undefined
   const winner = trickPlays.length > 0 ? currentWinner(trickPlays, trump) : undefined
@@ -400,7 +571,9 @@ export function chooseFollowCard(
     // returns false against any trump — correctly, since no card of the lead
     // suit can take a trick a trump is winning.
     const forcedBeat = winner !== undefined && legalMoves.every((c) => c.beats(winner.card, trump))
-    if (forcedBeat) return chooseForcedBeat(legalMoves)
+    if (forcedBeat) {
+      return chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
+    }
 
     if (partnerWinning) return feedPartner(legalMoves)
 
@@ -410,6 +583,27 @@ export function chooseFollowCard(
   }
 
   if (allTrump) {
+    // Tier 0 (#158): forced to overtrump. A trump is already winning and every
+    // legal move beats it, which `Trick.legalMoves` only produces by restricting
+    // this seat to beaters — rule 3 when trump was led, rule 5 when a ruff has
+    // to be over-ruffed. Both are the same decision as the lead-suit forced beat
+    // above, so they take the same selection.
+    //
+    // The `winner.card.suit === trump` test is what keeps a plain ruff out of
+    // here: with no trump yet on the table every trump in hand "beats" the
+    // side-suit winner, but the rules restricted nothing and the seat is free to
+    // choose. That position keeps its existing tiers, where "surrender the
+    // lowest point trump" is a deliberate get-the-liability-out heuristic rather
+    // than a way of taking a trick.
+    const forcedOvertrump =
+      counted &&
+      winner !== undefined &&
+      winner.card.suit === trump &&
+      legalMoves.every((c) => c.beats(winner.card, trump))
+    if (forcedOvertrump) {
+      return chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
+    }
+
     let trumpSecure = true
     if (tracker !== undefined) {
       const playedTrump = RANKS.reduce((sum, r) => sum + tracker.playedCount(trump, r), 0)

@@ -22,14 +22,17 @@
 // a bug to be fixed in passing — if side-suit memory should degrade too, that is
 // its own issue with its own measurement.
 //
-// INERT ON ARRIVAL. Nothing constructs a `TrumpMemory` yet; the consumer is
-// #158, which uses it to answer "is my 10 the boss card now" instead of
-// guessing. Landing it unwired keeps the eventual behaviour change measurable on
-// its own, the way #114 landed the bid evaluator switched on for nobody so #115
-// could measure it, and the way #153 landed the play-policy dial.
+// WIRED BY #158, which is what this was built for. `tracker.ts` now asks a
+// seat's memory "is this counter still beatable in its own suit?" before
+// spending it, and `newTrumpMemories` at the bottom of this file is what builds
+// one memory per seat at the top of a round. Until #158 the module was reachable
+// only from its own test, on purpose — #114 and #153's pattern of landing the
+// machinery inert so the behaviour change can be measured on its own.
 
 import type { SkillLevel } from '../persistence/options'
 import type { Card, CopyId, Rank, Suit } from './card'
+import { extractMeldCards } from './melds'
+import type { PlayerIndex } from './trick'
 
 /**
  * How many of the 12 trump a seat can hold in mind at once: **2 x skill level**,
@@ -144,4 +147,49 @@ export class TrumpMemory {
   remembered(): readonly TrumpSighting[] {
     return [...this.recent]
   }
+}
+
+/**
+ * One memory per seat for a round about to be played, pre-loaded with the trump
+ * each seat can see in **the other three seats' meld** (#158).
+ *
+ * Two things about the seeding are load-bearing rather than incidental:
+ *
+ *   **A seat is not shown its own meld.** #157 says meld consumes capacity like
+ *   anything else, and it does — but only for cards the seat does not already
+ *   hold. `tracker.ts` answers "is this card still beatable" as *seen +
+ *   held >= 2 copies*, counting the hand separately, so feeding a seat its own
+ *   melded trump would count that one physical card twice and manufacture
+ *   certainty out of nothing. Over-counting is the one failure mode this model
+ *   must not have: an unknown has to resolve to "beatable", never to "boss".
+ *   Under-counting is fine, and is exactly what forgetting already does.
+ *
+ *   **Nothing else here is in a seat's own hand either**, so the same
+ *   invariant holds for the rest of the round: every later sighting is a card
+ *   played to a trick, which by then has left whoever's hand it came from.
+ *
+ * The caller drives it from there — feed every card played to a trick through
+ * `see` on all four memories, after it is chosen. A card melded by one seat and
+ * played later is deduplicated by rank + copy id, so it still costs one slot.
+ *
+ * @param hands - Hands as of the start of trick play, i.e. after the 3-card
+ *   pass and the meld reveal. Melds are derived from these.
+ * @param skillOf - The level each seat plays at, which fixes its capacity.
+ */
+export function newTrumpMemories(
+  hands: readonly (readonly Card[])[],
+  trump: Suit,
+  skillOf: (seat: PlayerIndex) => SkillLevel,
+): Record<PlayerIndex, TrumpMemory> {
+  const seats: readonly PlayerIndex[] = [0, 1, 2, 3]
+  const meldBySeat = seats.map((seat) => extractMeldCards(hands[seat] ?? [], trump).meldCards)
+  const memories = {} as Record<PlayerIndex, TrumpMemory>
+  for (const seat of seats) {
+    const memory = new TrumpMemory(trump, skillOf(seat))
+    for (const other of seats) {
+      if (other !== seat) memory.seeAll(meldBySeat[other])
+    }
+    memories[seat] = memory
+  }
+  return memories
 }

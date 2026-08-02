@@ -38,6 +38,7 @@ import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import { type Hands, isAutoSet, playTrickTakingPhase, scoreRound, teamOf, type TeamId } from '../engine/round'
 import { SKILL_PARAMS } from '../engine/skills'
 import { PlayTracker, chooseFollowCard, chooseLeadCard } from '../engine/tracker'
+import { newTrumpMemories } from '../engine/trumpMemory'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
 
@@ -292,6 +293,12 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
 
     // -- Trick play, round score --------------------------------------------
     const tracker = new PlayTracker()
+    // One capacity-limited trump view per seat (#157/#158), seeded from the
+    // meld the other three seats have just laid face up. Built here rather than
+    // inside `playTrickTakingPhase` because it is strategy input, like
+    // `tracker`, not a rule — and built from `state.hands` because that is the
+    // post-pass, post-meld hand the melds were scored from.
+    const trumpMemories = newTrumpMemories(state.hands, trumpSuit, (seat) => seatSkills[seat])
     let cardsPlayed = 0
     const { trickPointsByTeam } = playTrickTakingPhase(
       state.hands,
@@ -305,9 +312,30 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
         const isBidderFirstLead = cardsPlayed === 0 && player === bidWinner
         const card =
           trick.plays.length === 0
-            ? chooseLeadCard(hand, trumpSuit, tracker, isBidderFirstLead, skill, teamOf(player) === teamOf(bidWinner))
-            : chooseFollowCard(hand, legal, trick.plays, trumpSuit, teammatesOf(player), tracker, skill)
+            ? chooseLeadCard(
+                hand,
+                trumpSuit,
+                tracker,
+                isBidderFirstLead,
+                skill,
+                teamOf(player) === teamOf(bidWinner),
+                trumpMemories[player],
+              )
+            : chooseFollowCard(
+                hand,
+                legal,
+                trick.plays,
+                trumpSuit,
+                teammatesOf(player),
+                tracker,
+                skill,
+                trumpMemories[player],
+              )
         tracker.record(card)
+        // Everyone at the table sees the card, including whoever played it —
+        // it has left their hand by then, so this cannot double-count against
+        // the hand tally `isBoss` keeps separately.
+        for (const seat of SEATS) trumpMemories[seat].see(card)
         cardsPlayed++
         return card
       },

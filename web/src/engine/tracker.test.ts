@@ -4,6 +4,7 @@ import { Card, Suit } from './card'
 import { SKILL_PARAMS } from './skills'
 import { Trick, type TrickPlay } from './trick'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from './tracker'
+import { TrumpMemory } from './trumpMemory'
 
 /**
  * Runs `play` with one level temporarily moved onto `'simple'` card play,
@@ -30,6 +31,39 @@ function withSimplePlay<T>(play: (skill: SkillLevel) => T): T {
   } finally {
     SKILL_PARAMS[level] = saved
   }
+}
+
+/**
+ * Runs `play` with one level temporarily switched **back** onto
+ * `safeCounterPolicy: 'off'` — the state #155 left the forced-beat tier in,
+ * before #158 taught it which counter would actually hold.
+ *
+ * The inverse of `withSimplePlay`, and for the inverse reason: `'counted'` ships
+ * on every row (#158 measured positive at all five capacities), so it is
+ * `'off'` that is now reachable only through an override. It stays live as
+ * `SAFE_COUNTER_AB_POLICIES`' baseline arm, and the tests using this pin what
+ * that baseline still does, so the A/B has a ruler that the suite vouches for.
+ *
+ * Note that the level is fixed at `hard` here while `withSafeCounter`'s
+ * replacement below takes it as an argument — the `'off'` arm ignores the
+ * capacity entirely, so one level is as good as another for it.
+ */
+function withSafeCounterOff<T>(play: (skill: SkillLevel) => T): T {
+  const level: SkillLevel = 'hard'
+  const saved = SKILL_PARAMS[level]
+  SKILL_PARAMS[level] = { ...saved, safeCounterPolicy: 'off' }
+  try {
+    return play(level)
+  } finally {
+    SKILL_PARAMS[level] = saved
+  }
+}
+
+/** A trump memory that has watched `seen` go by, in that order. */
+function memoryOf(level: SkillLevel, trump: Suit, seen: readonly Card[]): TrumpMemory {
+  const memory = new TrumpMemory(trump, level)
+  memory.seeAll(seen)
+  return memory
 }
 
 describe('PlayTracker', () => {
@@ -302,6 +336,46 @@ describe('chooseLeadCard', () => {
     expect(led.rank).toBe('10')
   })
 
+  // -- Leading a counter that is provably boss (#158) -------------------------
+
+  it('counted: an expert cashes a trump 10 it knows is boss, on an all-trump hand', () => {
+    // The leading half of #158 — "a counter that is provably boss is safe to
+    // lead; one that is not, is not." Both trump Aces have gone past this seat,
+    // so the 10 is the highest trump left and tier 3 of the cascade leads it.
+    //
+    // Trump reaches the cascade only on an all-trump hand: `offenseTrumpLead`
+    // and `defenderLead` both strip trump out first whenever the hand holds
+    // anything else, which is why this position looks contrived. It is the one
+    // that exists.
+    const trump = Suit.Spades
+    const hand = [new Card(trump, '10', 1), new Card(trump, 'K', 1), new Card(trump, '9', 1)]
+    const seen = [
+      new Card(trump, 'A', 1),
+      new Card(trump, 'A', 2),
+      new Card(trump, '9', 2), // two later sightings, to crowd an `easy` memory
+      new Card(trump, 'J', 1),
+    ]
+    const led = chooseLeadCard(hand, trump, new PlayTracker(), false, 'expert', true, memoryOf('expert', trump, seen))
+    expect(led.rank).toBe('10')
+  })
+
+  it('counted: an easy seat cannot recall the Aces and leads junk instead', () => {
+    // Same hand, same cards gone by, capacity 2. It does not know the 10 is
+    // boss, so no card qualifies as safe, and the cascade drops through to the
+    // junk tier and surrenders the 9. Ten points left in hand that an expert
+    // would have banked — the cost of not counting, made visible.
+    const trump = Suit.Spades
+    const hand = [new Card(trump, '10', 1), new Card(trump, 'K', 1), new Card(trump, '9', 1)]
+    const seen = [
+      new Card(trump, 'A', 1),
+      new Card(trump, 'A', 2),
+      new Card(trump, '9', 2),
+      new Card(trump, 'J', 1),
+    ]
+    const led = chooseLeadCard(hand, trump, new PlayTracker(), false, 'easy', true, memoryOf('easy', trump, seen))
+    expect(led.rank).toBe('9')
+  })
+
   it('changes nothing after the opening trick — the bidding side still cashes a trump Ace', () => {
     // #159's other half, "hold trump back", was measured and did not ship: over
     // 5000 paired deals, suppressing this tier costs 13.6 points a deal. The
@@ -325,15 +399,28 @@ describe('chooseFollowCard', () => {
     expect(played).toBe(onlyCard)
   })
 
-  it('forced beat: every legal card already beats the winner - plays the lowest one that still wins', () => {
-    // Opponent (player 1) is winning with a weak 9 of the lead suit; both
-    // legal cards outrank it, so this is a forced beat regardless of who's
-    // winning - the cheapest winner is played to save bigger cards.
+  it('forced beat: takes with the cheapest card that will still be standing at the end of the trick', () => {
+    // Opponent (player 1) is winning with a weak 9 of the lead suit; both legal
+    // cards outrank it, so this is a forced beat regardless of who is winning.
+    //
+    // This asserted the 10 until #158. "The lowest one that still wins" is only
+    // the right reading if nothing behind can take it back, and here the second
+    // Ace of Hearts is unaccounted for with two seats still to play — so the 10
+    // does not win, it loses 20 points to whoever holds that Ace. The Ace is the
+    // cheapest card in this legal set that cannot be beaten in suit, and the
+    // rule is now stated in those terms.
     const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
     const legalMoves = [new Card(Suit.Hearts, '10', 1), new Card(Suit.Hearts, 'A', 1)]
     const hand = legalMoves
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
-    expect(played.rank).toBe('10')
+    expect(played.rank).toBe('A')
+
+    // ...and with the other Ace gone, the 10 *is* the boss card and the Ace
+    // stays in hand. Same rule, different information — which is the whole
+    // difference between this and the assertion it replaces.
+    const tracker = new PlayTracker()
+    tracker.record(new Card(Suit.Hearts, 'A', 2))
+    expect(chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2], tracker).rank).toBe('10')
   })
 
   // -- Forced-beat selection (#155) -----------------------------------------
@@ -352,17 +439,21 @@ describe('chooseFollowCard', () => {
     expect(played.rank).toBe('Q')
   })
 
-  it('forced beat with only counters legal: spends the cheapest one (King before 10 before Ace)', () => {
-    // Step 3. There is no free beat available, so a counter has to go in; the
-    // King is the one to spend, for #154's reason — every counter pays the same
-    // 10, and the 10 it keeps loses to nothing but an Ace.
+  it("the 'off' arm still spends the cheapest counter, whatever is outstanding", () => {
+    // #155's step 3, pinned on the baseline arm rather than on the shipped dial.
+    // No free beat is available, so a counter has to go in, and this arm spends
+    // the King without asking whether it will hold — which is exactly the
+    // behaviour #158 measured against and beat, so it has to stay reachable and
+    // has to stay asserted.
     const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'Q', 1) }]
     const legalMoves = [
       new Card(Suit.Hearts, '10', 1),
       new Card(Suit.Hearts, 'A', 1),
       new Card(Suit.Hearts, 'K', 1),
     ]
-    const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    const played = withSafeCounterOff((skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], new PlayTracker(), skill),
+    )
     expect(played.rank).toBe('K')
   })
 
@@ -552,6 +643,161 @@ describe('chooseFollowCard', () => {
       chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
     )
     expect(played.rank).toBe('9')
+  })
+
+  // -- "Cannot be beaten" (#158) --------------------------------------------
+
+  it('the two arms answer one position differently, which is what makes the A/B a comparison', () => {
+    // The dial-is-read check, before any A/B number is believed. One position,
+    // forced to beat, only counters legal, the King beatable by an unseen 10 or
+    // Ace with two seats still to come. The shipped `'counted'` rule takes with
+    // the Ace because it is the only card here that cannot be beaten in suit;
+    // the `'off'` baseline spends the King and hopes.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const hand = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, '10', 1), new Card(Suit.Hearts, 'A', 1)]
+    const counted = chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], new PlayTracker())
+    const off = withSafeCounterOff((skill) =>
+      chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], new PlayTracker(), skill),
+    )
+    expect(counted.rank).toBe('A')
+    expect(off.rank).toBe('K')
+  })
+
+  it('counted: takes with the cheapest counter that cannot be beaten in suit', () => {
+    // #158's rule, in a side suit, where `PlayTracker` is exact at every level.
+    // The King is boss here: this hand holds one copy of the 10 and one of the
+    // Ace, and the other copy of each has been played, so nothing outstanding in
+    // Hearts can take the trick off it. Spend the King and keep the Ace.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const hand = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, '10', 1), new Card(Suit.Hearts, 'A', 1)]
+    const tracker = new PlayTracker()
+    tracker.record(new Card(Suit.Hearts, '10', 2))
+    tracker.record(new Card(Suit.Hearts, 'A', 2))
+    const played = chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], tracker, 'hard')
+    expect(played.rank).toBe('K')
+  })
+
+  it('counted: an unknown resolves to "beatable", so the boss card goes in instead', () => {
+    // The same position with nothing played. The King *might* hold and the 10
+    // *might* hold, and #158 is explicit that a seat must not play the best case
+    // — spending a King into a trick an opponent's Ace then takes gives away 20
+    // points rather than 10. The Ace is the only card here that cannot lose in
+    // suit, so it is the one that takes the trick.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const hand = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, '10', 1), new Card(Suit.Hearts, 'A', 1)]
+    const played = chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], new PlayTracker(), 'hard')
+    expect(played.rank).toBe('A')
+  })
+
+  it('counted: last to the trick, nothing is outstanding, so the cheapest counter wins it', () => {
+    // Three cards already down means no seat is left to beat anything, and
+    // "cannot be beaten by anything still outstanding" is trivially true of
+    // every card. The King takes it and the Ace stays in hand — the same card
+    // the `'off'` arm plays, which is why switching #158 on cannot cost the
+    // fourth seat anything.
+    const trickPlays: TrickPlay[] = [
+      { player: 1, card: new Card(Suit.Hearts, 'Q', 1) },
+      { player: 2, card: new Card(Suit.Hearts, '9', 1) },
+      { player: 3, card: new Card(Suit.Hearts, 'J', 1) },
+    ]
+    const hand = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, '10', 1), new Card(Suit.Hearts, 'A', 1)]
+    const played = chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], new PlayTracker(), 'hard')
+    expect(played.rank).toBe('K')
+  })
+
+  it('counted: a free beat still outranks the whole question', () => {
+    // Tier 1 is untouched — if a non-counter takes the trick, no counter needs
+    // to be evaluated at all. #158 only ever fires where #155 left a gap.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'J', 1) }]
+    const hand = [new Card(Suit.Hearts, 'Q', 1), new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, 'A', 1)]
+    const played = chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], new PlayTracker(), 'hard')
+    expect(played.rank).toBe('Q')
+  })
+
+  it('counted: with no boss counter and no Ace, it falls back to the cheapest', () => {
+    // Tier 3. The King and the 10 can both be beaten by an unaccounted Ace, and
+    // there is no Ace in hand to take with, so there is nothing safe to pick and
+    // the rule degrades to #155's answer rather than inventing a preference.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const hand = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, '10', 1)]
+    const played = chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], new PlayTracker(), 'hard')
+    expect(played.rank).toBe('K')
+  })
+
+  it('counted: forced to overtrump, expert remembers both Aces are gone and the King is boss', () => {
+    // The issue's own worked example, and the only place the skill dial decides
+    // a card. Trump was led with the Queen, so `Trick.legalMoves` restricts this
+    // seat to beaters and every one of them is a counter. Both trump 10s and
+    // both trump Aces are accounted for — one of each in hand, the other of each
+    // seen — so the King cannot be beaten in trump and is what takes the trick.
+    const trump = Suit.Spades
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(trump, 'Q', 1) }]
+    const hand = [new Card(trump, 'K', 1), new Card(trump, '10', 1), new Card(trump, 'A', 1)]
+    const seen = [
+      new Card(trump, '10', 2),
+      new Card(trump, 'A', 2),
+      new Card(trump, '9', 1), // two later sightings, to crowd an `easy` memory
+      new Card(trump, 'J', 1),
+    ]
+    const played = chooseFollowCard(hand, hand, trickPlays, trump, [0, 2], new PlayTracker(), 'expert', memoryOf('expert', trump, seen))
+    expect(played.rank).toBe('K')
+  })
+
+  it('counted: the same position at easy, which has forgotten, plays the Ace instead', () => {
+    // Identical cards, identical rule, capacity 2 instead of 10. The two Aces
+    // and the second 10 went past four sightings ago and are gone, so as far as
+    // this seat knows the King and the 10 can both still be beaten — and #158
+    // says an unknown is played as beatable. It takes the trick with the card it
+    // is sure of and gives up the Ace to do it.
+    //
+    // This assertion is the skill dial during trick play. If it ever stops
+    // differing from the expert case above, the capacity model has stopped
+    // reaching a decision and #157 is inert again.
+    const trump = Suit.Spades
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(trump, 'Q', 1) }]
+    const hand = [new Card(trump, 'K', 1), new Card(trump, '10', 1), new Card(trump, 'A', 1)]
+    const seen = [
+      new Card(trump, '10', 2),
+      new Card(trump, 'A', 2),
+      new Card(trump, '9', 1),
+      new Card(trump, 'J', 1),
+    ]
+    const played = chooseFollowCard(hand, hand, trickPlays, trump, [0, 2], new PlayTracker(), 'easy', memoryOf('easy', trump, seen))
+    expect(played.rank).toBe('A')
+  })
+
+  it('counted: an exact tracker does not stand in for a forgotten trump', () => {
+    // The trap this would have fallen into. `PlayTracker` is handed the same
+    // four cards the memory saw and still counts them all, because #157 left it
+    // counting perfectly on purpose. If trump safety read the tracker rather
+    // than the memory, `easy` would answer this exactly like `expert` and the
+    // capacity model would be decorative. It plays the Ace, so it does not.
+    const trump = Suit.Spades
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(trump, 'Q', 1) }]
+    const hand = [new Card(trump, 'K', 1), new Card(trump, '10', 1), new Card(trump, 'A', 1)]
+    const seen = [
+      new Card(trump, '10', 2),
+      new Card(trump, 'A', 2),
+      new Card(trump, '9', 1),
+      new Card(trump, 'J', 1),
+    ]
+    const tracker = new PlayTracker()
+    for (const card of seen) tracker.record(card)
+    const played = chooseFollowCard(hand, hand, trickPlays, trump, [0, 2], tracker, 'easy', memoryOf('easy', trump, seen))
+    expect(played.rank).toBe('A')
+  })
+
+  it('counted: a plain ruff is not a forced overtrump and keeps its own tier', () => {
+    // Void in Hearts with no trump yet on the table. Every trump in hand beats
+    // the Heart winner, but the rules restricted nothing — the seat chose to
+    // ruff — so this is not the position #158 is about, and the existing
+    // "surrender the lowest point trump" tier still answers it. Pinned because
+    // the `Card.beats` test alone would have swallowed this case.
+    const trump = Suit.Spades
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
+    const hand = [new Card(trump, 'J', 1), new Card(trump, 'K', 1)]
+    const played = chooseFollowCard(hand, hand, trickPlays, trump, [0, 2], new PlayTracker(), 'expert', new TrumpMemory(trump, 'expert'))
+    expect(played.rank).toBe('K')
   })
 
   it('every level follows with the cascade, easy included (#156)', () => {
