@@ -449,7 +449,8 @@ encode "strictly above `OPENER_THRESHOLD`" by someone thinking in ceiling points
 rather than in bids. `OPENER_THRESHOLD` and `DEFENSIVE_PUSH_FLOOR` really are
 points — thresholds a hand's valuation is compared against, where 321 is a
 perfectly ordinary number — and the floor sits one line away from them but is an
-actual bid placed on the table. It is now `PARTNER_PASSED_FLOOR = 330`.
+actual bid placed on the table. It became `PARTNER_PASSED_FLOOR = 330`, and
+#180 then took it to **320** — see "Reach, not clear" below.
 
 What it cost while it was wrong, over 20 000 headless auctions: **11 553 of
 40 200 bids placed — 28.7% — were not multiples of 10**, and 18.3% of deals
@@ -460,14 +461,15 @@ it reseeds `currentBid`: from 321 the ladder runs 331, 341, 351, and
 the human "Minimum: 331" — a number the +/− buttons, which step in tens, cannot
 produce. Typing 340 by hand works. Nothing says so.
 
-**Why 330 and not 320**, since both are legal and the code and its comment
-disagreed about which was meant. The rule (#93/#95) is that a seat whose partner
-has passed is buying the contract alone and must *clear* the opener threshold,
-not merely equal it — and `chooseBid` already says exactly that one tier up, in
-the other direction: it wants `ceiling > OPENER_THRESHOLD` when the partner has
-passed against `ceiling >= OPENER_THRESHOLD` when they have not. 320 would make
-the floor "at least 320" and leave that strict `>` arbitrary. So 330, on the
-rule, not on the arithmetic.
+**Why 330 and not 320** was #179's reading, since both are legal and the code
+and its comment disagreed about which was meant. The rule (#93/#95) is that a
+seat whose partner has passed is buying the contract alone and must *clear* the
+opener threshold, not merely equal it — and `chooseBid` said exactly that one
+tier up, in the other direction: it wanted `ceiling > OPENER_THRESHOLD` when the
+partner had passed against `ceiling >= OPENER_THRESHOLD` when they had not. 320
+would make the floor "at least 320" and leave that strict `>` arbitrary. So 330,
+on the rule, not on the arithmetic. #180 overturned that reading; the paragraphs
+below are the state at the time, kept because the numbers are still the record.
 
 Measured with a throwaway `partnerPassedFloor` field on `SkillParams` plus a
 temporary `cli.ts floor --baseline N` command, added in the shape the section
@@ -498,12 +500,13 @@ per deal is the price of the ladder being legal.
 
 That one is not small and it is not ambiguous: four seeds, four intervals
 excluding zero, ~10 points per deal — larger than #159's +7.61 and #154's +3.55,
-both of which shipped on their numbers. **320 plays better than 330.** It is
+both of which shipped on their numbers. **320 plays better than 330.** It was
 left unshipped deliberately, because it is a different question: #177 is a
 legality fix, both candidates are legal, and lowering the floor changes what
 #93/#95's rule *means* rather than correcting how it is spelled. Deciding that
 on a strength number alone would settle a design rule in passing under cover of
-a bug fix. It wants its own issue, and this table is the evidence for it.
+a bug fix. It wanted its own issue, and this table is the evidence that opened
+it (#180).
 
 Controls, run first as the section below requires: `selftest --policy distilled`
 split all 200 pairs with a paired margin of exactly 0, and so did the floor arm
@@ -511,6 +514,88 @@ against itself (`floor --baseline 330`), which is the same check for the new
 dial. The dial's ability to *see* a change is carried by the 320 rows rather than
 by a deliberately-bad arm — four intervals that clean is not what a field which
 is written but never read produces.
+
+### Reach, not clear (#180)
+
+Paul's call, 2026-08-02: **a seat whose partner has passed must reach the opener
+threshold, not clear it.** So `PARTNER_PASSED_FLOOR` is 320, and the `>` / `>=`
+asymmetry one tier up is gone — `chooseBid`'s static verdict now asks
+`ceiling >= OPENER_THRESHOLD` in both branches, because the only thing that
+asymmetry ever encoded was the "clear" intent that has now been retired.
+
+That second half is a **behaviour change the ~10-per-deal table above did not
+measure.** It lets a hand whose ceiling is exactly 320 open where it previously
+declined, and ceilings move in tens, so it is a whole rung of hands rather than a
+rounding edge. And `main` had moved: #178's auto-SET ends ~7% of contracts before
+the first lead and #158 shipped, both of which change which deals reach trick
+play. Everything below is a re-baseline, not a comparison against the older rows.
+
+**The two halves live on opposite sides of the `bidPolicy` gate**, which is the
+first thing this measurement found and the thing a reviewer should check by eye:
+
+- The **floor** is read unconditionally, so it moves every level whose bidding
+  reaches `chooseBid`'s Base Bid path — `medium` through `expert`. (`easy` short-
+  circuits into `meldOnlyBid` and never sees it.)
+- The **ceiling comparison** is only ever passed to `worthContract` as its
+  `staticVerdict`, and a `'distilled'` level discards that argument. So the
+  collapse is *inert* on `hard`, `proficient` and `expert`, and only `medium`
+  ("Apprentice") plays differently for it.
+
+So the three arms were run under both policies. Side A is current `main`
+(330 + `>`); 5000 paired deals / 10 000 games per row.
+
+**`'distilled'` — `hard`, `proficient`, `expert`, and the default seats:**
+
+| seed | (a) vs constant-only 320 | (b) vs the full change | (c) constant-only vs full |
+| --- | --- | --- | --- |
+| 1 | **−9.95** (−14.91 to −5.13) | **−9.95** (−14.91 to −5.13) | 0.00 (0.00 to 0.00) |
+| 2 | **−8.08** (−12.63 to −3.30) | **−8.08** (−12.63 to −3.30) | 0.00 (0.00 to 0.00) |
+| 3 | **−11.05** (−15.90 to −6.17) | **−11.05** (−15.90 to −6.17) | 0.00 (0.00 to 0.00) |
+
+(a) and (b) are not merely close, they are bit-identical, and (c) is exactly zero
+with every pair split and identical contract counts on both sides. That is the
+prediction from reading `worthContract` — confirmed as a number rather than
+asserted. All three (a)/(b) intervals exclude zero and land on the ~10 the old
+four-seed table gave, so the constant survived re-baselining onto #178/#158.
+
+**`'static'` — `medium`, the only level the collapse can reach:**
+
+| seed | (a) vs constant-only 320 | (b) vs the full change | (c) constant-only vs full |
+| --- | --- | --- | --- |
+| 1 | **−25.90** (−31.22 to −20.77) | **−30.63** (−36.70 to −24.94) | **−3.57** (−6.14 to −0.97) |
+| 2 | **−26.63** (−31.82 to −21.49) | **−32.22** (−37.89 to −26.49) | **−5.21** (−7.93 to −2.60) |
+| 3 | **−28.39** (−33.55 to −23.28) | **−31.99** (−37.62 to −26.39) | **−3.93** (−6.39 to −1.53) |
+
+**The collapse does not fight the constant; it adds to it.** (b) is larger than
+(a) on every seed, and (c) — the two changes head to head, which is the only row
+that isolates the comparison — excludes zero on all three, worth another 3.6 to
+5.2 points a deal in the same direction. Column (c) is reported rather than
+averaged into (b) precisely because the reverse result would have been the
+interesting one.
+
+Why `'static'` moves three times as far as `'distilled'`: the threshold rule is
+a blunter instrument, so it is more exposed to where the threshold sits.
+Make-rate moves with margin on every row (68.4% → 70.7% on static seed 1,
+70.5% → 71.4% on distilled seed 1), which is the check #126 exists to force —
+the cheaper floor is buying contracts it makes, not contracts it is set on.
+
+Controls, run first: the arm against itself split every pair at a paired margin
+of exactly **0.00** under both policies, with identical contract counts. That
+control is also what caught the one real trap in this rig. A bidding A/B has to
+carry its two arms on two skill levels, and #157 keys `TRUMP_MEMORY_CAPACITY` on
+the *level* rather than on `SkillParams` — `hard` remembers 6 trump, `expert` 10
+— so the first self-test came back one decisive pair and −1 per deal instead of
+0.00. #158 measured that same gap at ~6 points a deal. The rig pins both arms to
+one capacity for the run; without that, every number above would have had a
+trick-play difference folded into it.
+
+The throwaway rig was a `PartnerPassedRule` field on `SkillParams` naming the
+*whole* rule (`clear` / `floor-only` / `reach`) rather than #179's floor number,
+a `bidFloorAbPolicies` factory, a capacity equaliser and a `cli.ts floor --a X
+--b Y --policy P` command — all deleted before committing, the same call #126,
+#153, #154 and #159 made. Naming the rule rather than the number is what makes
+column (c) exist at all: an arm carrying only the constant cannot measure the
+comparison, and would have shipped the collapse unmeasured.
 
 ### "Cannot be beaten", and the first place skill decides a card (#158)
 
