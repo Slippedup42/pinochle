@@ -3,7 +3,6 @@ import { type Suit, sortHandForDisplay } from '../engine/card'
 import { extractMeldCards, type MeldCardsResult } from '../engine/melds'
 import { teamOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
-import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { PlayingCard } from './PlayingCard'
 import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
@@ -20,7 +19,6 @@ export interface MeldFlowProps {
   teamNames?: Record<TeamId, string>
   dealer: PlayerIndex
   onOpenMenu?: () => void
-  options?: GameOptions
   onComplete: (meldPointsByTeam: Record<TeamId, number>) => void
   onConcede?: () => void
 }
@@ -102,7 +100,6 @@ export function MeldFlow({
   teamNames = DEFAULT_TEAM_NAMES,
   dealer,
   onOpenMenu,
-  options = DEFAULT_OPTIONS,
   onComplete,
   onConcede,
 }: MeldFlowProps) {
@@ -206,7 +203,6 @@ export function MeldFlow({
       state={tableState}
       overlay={overlay}
       onOpenMenu={onOpenMenu}
-      hideOpponentCards={options.hideOpponentCards}
       exposeCards
     />
   )

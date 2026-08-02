@@ -26,14 +26,6 @@ export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) 
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={options.hideOpponentCards}
-              onChange={(e) => onChange({ ...options, hideOpponentCards: e.target.checked })}
-            />
-            Hide opponent cards
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
               checked={options.showBaseBidHint}
               onChange={(e) => onChange({ ...options, showBaseBidHint: e.target.checked })}
             />

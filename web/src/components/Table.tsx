@@ -19,17 +19,12 @@ export interface TableProps {
    * started. Rendered as a small corner button; omitted entirely (no
    * button) when not provided. */
   onOpenMenu?: () => void
-  /** Options toggle (#54): when true, don't render the West/Partner/East
-   * face-down card fans at all — just the seat label and board, to save
-   * screen space. UI-only preference, not game state, so it lives here
-   * rather than on TableState. */
-  hideOpponentCards?: boolean
   /** 1-based trick number for display (e.g. "Trick 3 of 12"). Omitted outside
    * trick-play so TrickArea doesn't show a counter during the auction/meld
    * phases. */
   trickNumber?: number
   /** Meld phase: when true, non-human seats render their cards face-up (meld
-   * cards on the table) instead of face-down or hidden. */
+   * cards on the table) instead of just their name and card count. */
   exposeCards?: boolean
 }
 
@@ -46,7 +41,7 @@ const POSITION_GRID_CLASS: Record<SeatPosition, string> = {
  * and trick-play controls (separate issues) will mount into this shell,
  * most likely inside/near the human seat and the TrickArea respectively.
  */
-export function Table({ state, overlay, logPanel, onOpenMenu, hideOpponentCards, trickNumber, exposeCards }: TableProps) {
+export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, exposeCards }: TableProps) {
   const { onMouseDown, onMouseMove, onMouseUp } = useDraggable()
 
   useEffect(() => {
@@ -109,7 +104,6 @@ export function Table({ state, overlay, logPanel, onOpenMenu, hideOpponentCards,
               isBidWinner={seat.player === bidWinner}
               isDealer={seat.player === state.dealer}
               playable={seat.player === humanPlayer ? humanPlayable : undefined}
-              hideOpponentHand={hideOpponentCards}
               exposeCards={seat.player !== humanPlayer ? exposeCards : undefined}
             />
           </div>

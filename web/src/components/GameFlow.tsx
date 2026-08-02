@@ -175,7 +175,6 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
         teamNames={state.teamNames}
         dealer={state.dealer}
         onOpenMenu={onOpenMenu}
-        options={options}
         onComplete={handleMeldComplete}
         onConcede={handleMeldConcede}
       />
@@ -267,7 +266,6 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
       state={tableState}
       overlay={overlay}
       onOpenMenu={onOpenMenu}
-      hideOpponentCards={options.hideOpponentCards}
     />
   )
 }
