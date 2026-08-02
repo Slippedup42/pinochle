@@ -16,6 +16,7 @@ function runAuction(dealer: PlayerIndex) {
   deck.shuffle()
   let state: AuctionState = initAuctionState(deck.deal(), dealer, SEAT_NAMES, SCORES)
   const askedAfterPassing: PlayerIndex[] = []
+  const bidsPlaced: number[] = []
   const passed = new Set<PlayerIndex>()
 
   let guard = 0
@@ -35,10 +36,11 @@ function runAuction(dealer: PlayerIndex) {
       passed.add(turn)
       state = auctionReducer(state, { type: 'PASS_BID', player: turn })
     } else {
+      bidsPlaced.push(decision)
       state = auctionReducer(state, { type: 'BID', player: turn, amount: decision })
     }
   }
-  return { phase: state.phase, bid: state.bid, winner: state.bidWinner, askedAfterPassing }
+  return { phase: state.phase, bid: state.bid, winner: state.bidWinner, askedAfterPassing, bidsPlaced }
 }
 
 describe('AI-vs-AI auction simulation', () => {
@@ -50,5 +52,20 @@ describe('AI-vs-AI auction simulation', () => {
       expect(winner).not.toBeNull()
       expect(bid).toBeGreaterThanOrEqual(FORCED_BID)
     }
+  })
+
+  it('never takes the ladder off multiples of 10 (#177)', () => {
+    // The end-to-end half of the invariant `bidding.test.ts` states over
+    // `chooseBid` in isolation. It matters separately because #177's damage was
+    // cumulative: one off-grid bid does not just misprice that one call, it
+    // reseeds `currentBid` so every later rung is off the grid too, including
+    // the "Minimum: 331" the human is then shown and cannot bid.
+    const offGrid: number[] = []
+    for (let i = 0; i < 400; i++) {
+      const { bid, bidsPlaced } = runAuction((i % 4) as PlayerIndex)
+      offGrid.push(...bidsPlaced.filter((amount) => amount % 10 !== 0))
+      if (bid !== null && bid % 10 !== 0) offGrid.push(bid)
+    }
+    expect(offGrid.slice(0, 10)).toEqual([])
   })
 })
