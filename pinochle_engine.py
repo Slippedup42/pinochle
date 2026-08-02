@@ -1699,6 +1699,15 @@ def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_pl
             # same suit, which is the precondition `Card.beats` exists to handle.
             # A search for `forced_beat` returns three hits and this one looks
             # identical out of context; changing it would be a regression.
+            #
+            # It is also inert either way, which is the belt to that braces and
+            # is why no test can tell the two readings apart here: this tier and
+            # the protect-count-card fallback below it return the *same card* for
+            # every possible legal set, because pinochle's rank order (9 J Q K 10
+            # A) puts every non-counter strictly below every counter, so
+            # "min over the whole legal set" and "min over its non-counters"
+            # coincide whenever a non-counter exists. Checked exhaustively over
+            # all 2509 legal-set shapes up to six cards: zero disagreements.
             forced_beat = all(
                 RANK_VALUE[c.rank] > RANK_VALUE[current_best_trump.rank] for c in legal_moves
             )

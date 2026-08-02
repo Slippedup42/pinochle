@@ -569,8 +569,15 @@ def test_forced_beat_over_trump_still_fires_on_an_all_trump_legal_set():
     `_expert_follow_card_honest`'s `all_trump` branch - is *correct* on raw
     `RANK_VALUE` and was deliberately left alone by #173: there every legal card
     is trump and so is the card being compared against, which is the same-suit
-    precondition `Card.beats` exists to enforce. Pinned so a later pass at the
-    two sites above does not sweep this one up with them."""
+    precondition `Card.beats` exists to enforce.
+
+    This asserts the branch's behaviour, not the predicate's value, and cannot
+    assert the latter: that tier and the protect-count-card fallback under it
+    return the same card for every possible legal set, because the rank order
+    (9 J Q K 10 A) puts every non-counter below every counter, so "lowest legal
+    card" and "lowest non-counter" coincide whenever a non-counter exists. So
+    the third site is inert as well as correct - a second, independent reason
+    not to touch it."""
     trump = Suit.SPADES
     trick = Trick(trump)
     trick.play("opener", C(Suit.HEARTS, "9"))
