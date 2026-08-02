@@ -303,7 +303,6 @@ export function TrickPlayFlow({
           </div>
         }
         onOpenMenu={onOpenMenu}
-        hideOpponentCards={options.hideOpponentCards}
         trickNumber={state.trickNumber + 1}
       />
     </div>

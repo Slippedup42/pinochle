@@ -6,32 +6,40 @@ import { OptionsPanel } from './OptionsPanel'
 afterEach(cleanup)
 
 describe('OptionsPanel', () => {
-  it('reflects the current options in the two checkboxes', () => {
+  it('reflects the current options in the checkboxes and selects', () => {
     render(
       <OptionsPanel
-        options={{ hideOpponentCards: true, showBaseBidHint: false, opponentSkill: 'proficient', teammateSkill: 'hard', showMeldHint: false, hideTrickLog: true }}
+        options={{ showBaseBidHint: false, opponentSkill: 'proficient', teammateSkill: 'hard', showMeldHint: true, hideTrickLog: true }}
         onChange={() => {}}
         onClose={() => {}}
       />,
     )
-    expect((screen.getByLabelText('Hide opponent cards') as HTMLInputElement).checked).toBe(true)
     expect((screen.getByLabelText('Show base-bid hint') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByLabelText('Show meld breakdown') as HTMLInputElement).checked).toBe(true)
     expect((screen.getByLabelText('Opponents') as HTMLSelectElement).value).toBe('proficient')
     expect((screen.getByLabelText('Teammate') as HTMLSelectElement).value).toBe('hard')
   })
 
-  it('calls onChange with the hideOpponentCards toggle flipped, leaving the other field alone', () => {
+  // #142 removed the "Hide opponent cards" toggle — opponents' fans are now
+  // hidden unconditionally, so the panel must not offer a way back.
+  it('has no "Hide opponent cards" toggle', () => {
+    render(<OptionsPanel options={DEFAULT_OPTIONS} onChange={() => {}} onClose={() => {}} />)
+    expect(screen.queryByLabelText('Hide opponent cards')).toBeNull()
+    expect(screen.queryByText(/hide opponent/i)).toBeNull()
+  })
+
+  it('calls onChange with the showMeldHint toggle flipped, leaving the other fields alone', () => {
     const onChange = vi.fn()
     render(<OptionsPanel options={DEFAULT_OPTIONS} onChange={onChange} onClose={() => {}} />)
-    fireEvent.click(screen.getByLabelText('Hide opponent cards'))
-    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_OPTIONS, hideOpponentCards: true, showBaseBidHint: true })
+    fireEvent.click(screen.getByLabelText('Show meld breakdown'))
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_OPTIONS, showMeldHint: true, showBaseBidHint: true })
   })
 
   it('calls onChange with the showBaseBidHint toggle flipped', () => {
     const onChange = vi.fn()
     render(<OptionsPanel options={DEFAULT_OPTIONS} onChange={onChange} onClose={() => {}} />)
     fireEvent.click(screen.getByLabelText('Show base-bid hint'))
-    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_OPTIONS, hideOpponentCards: false, showBaseBidHint: false })
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_OPTIONS, showBaseBidHint: false })
   })
 
   it('calls onClose from the Done button', () => {

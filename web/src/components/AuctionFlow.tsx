@@ -246,7 +246,6 @@ export function AuctionFlow({
       overlay={overlay}
       logPanel={logPanel}
       onOpenMenu={onOpenMenu}
-      hideOpponentCards={options.hideOpponentCards}
     />
   )
 }

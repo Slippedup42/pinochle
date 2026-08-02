@@ -128,11 +128,13 @@ describe('GameShell', () => {
     expect(Deck.prototype.deal).toHaveBeenCalledTimes(2)
   })
 
-  it('toggling "Hide opponent cards" in Options affects the next game rendered', async () => {
+  // #142: opponents' fans used to be an Options toggle. They are now
+  // unconditionally hidden, so there is no setting and no way back to them.
+  it('never renders opponents’ card fans, and offers no option to show them', async () => {
     mockDeal()
     render(<GameShell />)
     fireEvent.click(screen.getByRole('button', { name: 'Options' }))
-    fireEvent.click(screen.getByLabelText('Hide opponent cards'))
+    expect(screen.queryByLabelText('Hide opponent cards')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'New Game' }))

@@ -11,10 +11,6 @@ const OPTIONS_KEY = 'pinochle:options:v1'
 export type SkillLevel = 'easy' | 'medium' | 'hard' | 'proficient' | 'expert'
 
 export interface GameOptions {
-  /** Hide the West/Partner/East face-down card fans (Seat.tsx) entirely —
-   * just player + board, to save screen space. Off (fans shown) by
-   * default, matching current behavior before this option existed. */
-  readonly hideOpponentCards: boolean
   /** Show BiddingControls' "Your hand suggests up to N" hint during the
    * human's bidding turn. On by default, matching current behavior. */
   readonly showBaseBidHint: boolean
@@ -33,7 +29,6 @@ export interface GameOptions {
 }
 
 export const DEFAULT_OPTIONS: GameOptions = {
-  hideOpponentCards: false,
   showBaseBidHint: true,
   opponentSkill: 'hard',
   teammateSkill: 'hard',
@@ -56,10 +51,13 @@ export function loadOptions(): GameOptions {
     if (!raw) return DEFAULT_OPTIONS
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_OPTIONS
-    const { hideOpponentCards, showBaseBidHint, opponentSkill, teammateSkill, showMeldHint, hideTrickLog } = parsed as Partial<GameOptions>
+    // Destructures only the fields it knows about, so keys left behind by
+    // removed options (`hideOpponentCards`, dropped in #142) are ignored
+    // rather than migrated. That is why OPTIONS_KEY is *not* bumped when an
+    // option goes away: a new key would silently reset every player's
+    // surviving preferences — the skill levels especially.
+    const { showBaseBidHint, opponentSkill, teammateSkill, showMeldHint, hideTrickLog } = parsed as Partial<GameOptions>
     return {
-      hideOpponentCards:
-        typeof hideOpponentCards === 'boolean' ? hideOpponentCards : DEFAULT_OPTIONS.hideOpponentCards,
       showBaseBidHint: typeof showBaseBidHint === 'boolean' ? showBaseBidHint : DEFAULT_OPTIONS.showBaseBidHint,
       opponentSkill: parseSkill(opponentSkill, DEFAULT_OPTIONS.opponentSkill),
       teammateSkill: parseSkill(teammateSkill, DEFAULT_OPTIONS.teammateSkill),

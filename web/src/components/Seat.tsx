@@ -1,5 +1,5 @@
 import type { Card } from '../engine/card'
-import { type Rank, sortHandForDisplay, Suit } from '../engine/card'
+import { sortHandForDisplay } from '../engine/card'
 import { PlayingCard } from './PlayingCard'
 import type { SeatPosition, SeatState } from './tableTypes'
 
@@ -15,20 +15,12 @@ export interface SeatProps {
    * Omit entirely to render the hand as plain, non-interactive cards (the
    * auction phases, or any AI seat). */
   playable?: { legalCards: readonly Card[]; onPlay: (card: Card) => void }
-  /** Options toggle (#54): when true, an AI seat renders only its name/card
-   * count — the face-down fan is skipped entirely to save screen space.
-   * No-op for the human seat, which always renders its real hand. */
-  hideOpponentHand?: boolean
   /** Meld phase (#??): when true, a non-human seat renders its cards face-up
-   * (meld cards laid on the table) instead of face-down or hidden. */
+   * (meld cards laid on the table) instead of just its name/card count. Meld
+   * is public information in Pinochle — it is laid down for everyone to see —
+   * so this is a rules requirement, not a display preference. */
   exposeCards?: boolean
 }
-
-// Placeholder face used for AI seats' face-down fan. The suit/rank props
-// are required by PlayingCard but are never rendered when faceDown is
-// set, so these values are arbitrary — no hidden information leaks here.
-const FACE_DOWN_SUIT: Suit = Suit.Spades
-const FACE_DOWN_RANK: Rank = '9'
 
 const POSITION_LAYOUT: Record<SeatPosition, string> = {
   bottom: 'flex-col items-center',
@@ -38,12 +30,14 @@ const POSITION_LAYOUT: Record<SeatPosition, string> = {
 }
 
 /**
- * One seat at the table. The human seat renders its full hand face-up
- * with the real `PlayingCard` component; AI seats render a face-down fan
- * sized to their card count — never the actual cards, since an AI's hand
- * is hidden information from the human player's point of view.
+ * One seat at the table. The human seat renders its full hand face-up with
+ * the real `PlayingCard` component. AI seats render no fan at all (#142) —
+ * just the name and card count in the header, which is the public
+ * information a player needs to track how many tricks are left. The one
+ * exception is `exposeCards` during the meld phase, where an AI's cards are
+ * laid face-up because meld is public.
  */
-export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable, hideOpponentHand, exposeCards }: SeatProps) {
+export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable, exposeCards }: SeatProps) {
   return (
     <div className={`flex gap-1 ${POSITION_LAYOUT[position]}`}>
       <div className="flex items-center gap-2 text-sm font-medium">
@@ -109,19 +103,7 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
             </div>
           ))}
         </div>
-      ) : hideOpponentHand ? null : (
-        <div className="flex overflow-x-auto px-2">
-          {seat.hand.map((_, i) => (
-            <PlayingCard
-              key={i}
-              suit={FACE_DOWN_SUIT}
-              rank={FACE_DOWN_RANK}
-              faceDown
-              className={`-ml-14 first:ml-0 ${i % 2 === 0 ? '-rotate-6' : 'rotate-6'}`}
-            />
-          ))}
-        </div>
-      )}
+      ) : null}
     </div>
   )
 }
