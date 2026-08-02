@@ -90,8 +90,9 @@ describe('MeldFlow', () => {
     const cards = screen.getAllByRole('img').filter((el) => el.closest('section[aria-label$="meld"]'))
     expect(cards.length).toBeGreaterThan(0)
     for (const card of cards) {
-      expect(card.className).toContain('w-9')
-      expect(card.className).not.toContain('w-20')
+      // `sm`, per PlayingCard's CARD_SIZES — 28px since #161's sizing pass.
+      expect(card.className).toContain('w-7')
+      expect(card.className).not.toContain('w-16')
     }
   })
 

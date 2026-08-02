@@ -23,7 +23,11 @@ export function Scoreboard({ scoresByTeam, teamNames, currentBid, bidWinnerName,
   const trumpColor = trumpSuit && RED_SUITS.includes(trumpSuit) ? 'text-red-400' : 'text-white'
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 bg-green-950 px-4 py-2 text-sm text-white shadow-md">
+    // The strip owns the top safe-area inset (#161) rather than the Table root,
+    // so its own background fills the space behind the status bar instead of
+    // leaving a bare band of table felt above it. Gutters are tightened from
+    // gap-x-6/px-4 so the five items pack into fewer wrapped lines on a phone.
+    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 bg-green-950 pt-[calc(0.375rem_+_var(--safe-top))] pr-[calc(0.5rem_+_var(--safe-right))] pb-1.5 pl-[calc(0.5rem_+_var(--safe-left))] text-sm text-white shadow-md">
       <span>
         Trump:{' '}
         <span className={`text-lg font-semibold ${trumpColor}`}>

@@ -33,7 +33,16 @@ export function TrickArea({ trick, humanPlayer, winningPlayer, trickNumber }: Tr
       {trickNumber !== undefined && (
         <span className="text-xs font-semibold text-white/70">Trick {trickNumber} of 12</span>
       )}
-      <div className="grid aspect-square w-72 max-w-full min-h-[12rem] grid-cols-3 grid-rows-3 items-center justify-items-center rounded-full bg-green-950/40">
+      {/* 13rem (208px) rather than the old 18rem (288px), which was 74% of a
+          390px phone viewport on its own and left ~100px for the two side
+          seats put together (#161). 208 is three 64px cards across, which is
+          all the 3x3 placement grid inside ever needs. The old
+          `min-h-[12rem]` is gone with it: it existed to stop `max-w-full`
+          collapsing the circle on a narrow screen, but it did that by letting
+          the box go taller than it is wide — at 208 the aspect ratio holds the
+          height on its own, and a floor above the width would only re-introduce
+          a non-circular circle. */}
+      <div className="grid aspect-square w-52 max-w-full grid-cols-3 grid-rows-3 items-center justify-items-center rounded-full bg-green-950/40">
       {trick.map((play) => (
         <div
           key={play.player}

@@ -274,6 +274,39 @@ exactly 0 is one a null result from can be believed.
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
 input to `vite build`, so it cannot reach a player or the PWA precache.
 
+## Portrait fit (#161)
+
+The game has to fit a phone in portrait with no scrolling, and that is a
+measurement rather than a look. `layout/index.html` + `src/layout/layoutProbe.tsx`
+is the harness, served by `npm run dev` at `/layout/` on the same dev-only terms
+as `bench/` above — not a `vite build` input, so it cannot reach a player.
+
+`/layout/` loads every phase (auction, pass, meld, trick play, round summary,
+game over) at every target viewport in an exactly-sized iframe and prints
+`scrollHeight - innerHeight` and `scrollWidth - innerWidth` for each.
+Non-positive is a pass. `/layout/?frame=1&phase=meld` renders one phase alone,
+which is also the quickest way to look at a phase without playing to it.
+
+Three things about it are load-bearing:
+
+- **An iframe, not a resized window.** A desktop browser cannot produce a 390px
+  viewport by resizing — that is what a phone's device pixel ratio hides. The
+  iframe gives its document exactly the width it is handed. Frame mode also
+  hides scrollbars, since desktop scrollbars take ~15px of layout width and a
+  phone's overlay scrollbars take none.
+- **`?insets=1`.** `env(safe-area-inset-*)` is always 0 in a browser tab, so the
+  under-the-notch case an installed instance actually gets is invisible by
+  default. That flag overrides the `--safe-*` variables in `index.css` with an
+  iPhone-14-Pro-class portrait inset set, which is the real height budget.
+- **The panel columns.** Overlays are `position: fixed` and so contribute
+  nothing to document overflow — a modal taller than the screen would be
+  clipped and unreachable while still measuring 0. The probe reports the
+  overlay panel's own rect against the viewport for that reason.
+
+Targets: 390x844 (the reported device), 360x640 (small Android), 430x932 (Pro
+Max), each with and without insets. Landscape is not a target — the manifest is
+`orientation: portrait` — but it stays usable, scrolling ~20-95px at 844x390.
+
 ## Notes
 
 - TypeScript is configured with `erasableSyntaxOnly`, so no `enum` or

@@ -40,7 +40,11 @@ const POSITION_LAYOUT: Record<SeatPosition, string> = {
 export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable, exposeCards }: SeatProps) {
   return (
     <div className={`flex gap-1 ${POSITION_LAYOUT[position]}`}>
-      <div className="flex items-center gap-2 text-sm font-medium">
+      {/* Wraps and breaks (#161): the left/right seats live in columns that are
+          allowed to fall to zero width, and a nowrap header of "Beauregard" +
+          badges + "12 cards" would otherwise set a min-content floor under the
+          column and widen the whole board on a phone. */}
+      <div className="flex flex-wrap items-center justify-center gap-x-2 text-center text-sm font-medium [overflow-wrap:anywhere]">
         <span>{seat.name}</span>
         {isDealer && (
           <span className="rounded bg-neutral-700/80 px-1.5 py-0.5 text-xs font-bold text-amber-300">
@@ -66,12 +70,19 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
         // second row's leading card still carried the big negative margin and
         // rendered shifted/misaligned relative to the row above it. One row
         // that scrolls horizontally instead keeps every row's cards flush.
-        <div className="flex justify-center gap-1 overflow-x-auto">
+        // -ml-11 against a 64px card leaves 24px of every card showing, which
+        // is enough for the corner index and puts all 12 in 328px — inside a
+        // 360px phone (#161). The overlap is paired with the card width, so
+        // changing one without the other either re-overflows or hides the
+        // indices. `w-full` is what makes `overflow-x-auto` mean anything: it
+        // resolves against the seat's stretched width (Table.tsx), so the row
+        // is as wide as the column and scrolls, instead of sizing to the fan.
+        <div className="flex w-full justify-center gap-1 overflow-x-auto">
           {sortHandForDisplay(seat.hand).map((card) => {
             const cardFace = <PlayingCard suit={card.suit} rank={card.rank} />
             if (!playable) {
               return (
-                <div key={card.toString()} className="-ml-10 first:ml-0">
+                <div key={card.toString()} className="-ml-11 first:ml-0">
                   {cardFace}
                 </div>
               )
@@ -84,7 +95,7 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
                 disabled={!isLegal}
                 onClick={() => playable.onPlay(card)}
                 aria-label={`Play ${card.rank} of ${card.suit}`}
-                className={`-ml-10 first:ml-0 rounded-lg transition-transform ${
+                className={`-ml-11 first:ml-0 rounded-lg transition-transform ${
                   isLegal
                     ? 'cursor-pointer ring-2 ring-amber-400 hover:-translate-y-2'
                     : 'cursor-not-allowed opacity-40'
@@ -96,9 +107,10 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
           })}
         </div>
       ) : exposeCards ? (
-        <div className="flex justify-center gap-1 overflow-x-auto">
+        <div className="flex w-full justify-center gap-1 overflow-x-auto">
+          {/* Same 24px reveal as the human fan above, against a 48px `md` card. */}
           {sortHandForDisplay(seat.hand).map((card, i) => (
-            <div key={i} className="-ml-10 first:ml-0">
+            <div key={i} className="-ml-7 first:ml-0">
               <PlayingCard suit={card.suit} rank={card.rank} size="md" />
             </div>
           ))}

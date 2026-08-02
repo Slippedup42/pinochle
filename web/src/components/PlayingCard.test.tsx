@@ -26,9 +26,15 @@ describe('PlayingCard', () => {
   })
 
   // #94: width used to be passed via className, where Tailwind resolved the
-  // conflict with the base `w-20` by stylesheet order — so `w-6` lost and meld
+  // conflict with the base width by stylesheet order — so `w-6` lost and meld
   // cards silently rendered full size. Width now comes from `size` alone, so
   // exactly one width utility is ever emitted.
+  //
+  // The values are #161's ~20% reduction (lg 80 -> 64, md 60 -> 48, sm 36 ->
+  // 28), which is what makes a 12-card hand fit a phone. They are pinned here
+  // rather than left to inspection because the fan overlaps in Seat.tsx are
+  // tuned against these exact widths — changing one without the other either
+  // overflows the viewport again or buries the corner indices.
   it('emits exactly one width utility, chosen by size', () => {
     const widthsFor = (el: Element) => (el.className.match(/(^|\s)w-\S+/g) ?? []).map((s) => s.trim())
 
@@ -36,17 +42,29 @@ describe('PlayingCard', () => {
     const { container: md } = render(<PlayingCard suit={Suit.Spades} rank="A" size="md" />)
     const { container: lg } = render(<PlayingCard suit={Suit.Spades} rank="A" />)
 
-    expect(widthsFor(sm.firstElementChild!)).toEqual(['w-9'])
-    expect(widthsFor(md.firstElementChild!)).toEqual(['w-[60px]'])
-    expect(widthsFor(lg.firstElementChild!)).toEqual(['w-20'])
+    expect(widthsFor(sm.firstElementChild!)).toEqual(['w-7'])
+    expect(widthsFor(md.firstElementChild!)).toEqual(['w-12'])
+    expect(widthsFor(lg.firstElementChild!)).toEqual(['w-16'])
+  })
+
+  // A card is a width plus a ratio — nothing sets a height — so `aspect-5/7`
+  // is what makes it card-shaped at all. #161 changed every width; this is the
+  // guard that a future size pass doesn't quietly drop the ratio with them.
+  it('keeps the 5/7 aspect ratio at every size', () => {
+    for (const size of ['sm', 'md', 'lg'] as const) {
+      const { container } = render(<PlayingCard suit={Suit.Spades} rank="A" size={size} />)
+      expect(container.firstElementChild!.className).toContain('aspect-5/7')
+    }
+    const { container: back } = render(<PlayingCard suit={Suit.Spades} rank="A" faceDown />)
+    expect(back.firstElementChild!.className).toContain('aspect-5/7')
   })
 
   it('keeps a caller className from introducing a competing width', () => {
     const { container } = render(<PlayingCard suit={Suit.Spades} rank="A" size="sm" className="-ml-2" />)
     const cls = container.firstElementChild!.className
-    expect(cls).toContain('w-9')
+    expect(cls).toContain('w-7')
     expect(cls).toContain('-ml-2')
-    expect(cls.match(/(^|\s)w-\S+/g)!.map((s) => s.trim())).toEqual(['w-9'])
+    expect(cls.match(/(^|\s)w-\S+/g)!.map((s) => s.trim())).toEqual(['w-7'])
   })
 
   it('renders every suit and rank without throwing', () => {
