@@ -163,8 +163,9 @@ function leadSafeCascade(hand: readonly Card[], trump: Suit, tracker: PlayTracke
  *
  * @param isBidderFirstLead - When true (bidder opening the first trick of the
  *   round), forces a trump lead if the player has any trump cards remaining.
- * @param skill - Skill level. Skill 1 (easy) uses simplified logic: prefers
- *   low non-trump non-count cards. Defaults to 'hard' (full Proficient cascade).
+ * @param skill - Skill level, read for `playPolicy` (#153). `'simple'` uses
+ *   simplified logic: prefers low non-trump non-count cards. Defaults to 'hard'
+ *   (`'cascade'`, the full Proficient cascade).
  * @param isBiddingTeam - Which side this seat is on. Undefined = fallback.
  */
 export function chooseLeadCard(
@@ -175,8 +176,11 @@ export function chooseLeadCard(
   skill: SkillLevel = 'hard',
   isBiddingTeam?: boolean,
 ): Card {
-  // Skill 1 (easy): simplified leading — prefer low non-trump non-count cards
-  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
+  // Simplified leading — prefer low non-trump non-count cards. Reached by
+  // `easy` and nothing else, which is the mapping the `meld_only` test this
+  // replaces produced (#153); `playPolicy` is the field to change, not the
+  // valuation one, because that one also decides how the seat bids.
+  if (SKILL_PARAMS[skill].playPolicy === 'simple') {
     const safeLeads = hand.filter((c) => c.suit !== trump && c.rank !== 'A' && c.rank !== '10' && c.rank !== 'K')
     const pool = safeLeads.length > 0 ? safeLeads : hand
     return pool.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
@@ -252,8 +256,8 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *     suits - work toward voiding the shortest suit, lowest rank within
  *     it.
  *
- * @param skill Skill level. Skill 1 (easy) plays the lowest legal card.
- *   Defaults to 'hard' (full Proficient tiered logic).
+ * @param skill Skill level, read for `playPolicy` (#153). `'simple'` plays the
+ *   lowest legal card. Defaults to 'hard' (`'cascade'`, the tiered logic above).
  */
 export function chooseFollowCard(
   hand: readonly Card[],
@@ -266,8 +270,8 @@ export function chooseFollowCard(
 ): Card {
   if (legalMoves.length === 1) return legalMoves[0]
 
-  // Skill 1 (easy): always play the lowest legal card
-  if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
+  // Simplified following: always play the lowest legal card (#153)
+  if (SKILL_PARAMS[skill].playPolicy === 'simple') {
     return legalMoves.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
   }
 

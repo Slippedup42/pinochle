@@ -17,8 +17,10 @@ import { SKILL_PARAMS } from '../engine/skills'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
 import {
+  BID_AB_POLICIES,
   DISTILLED_LEVEL,
   FOLD_AB_POLICIES,
+  PLAY_AB_POLICIES,
   STATIC_LEVEL,
   analyse,
   installPolicies,
@@ -84,6 +86,42 @@ describe('the policy override', () => {
     expect(SKILL_PARAMS[DISTILLED_LEVEL].handValuation).toBe('base_bid')
     restore()
     expect(SKILL_PARAMS).toEqual(before)
+  })
+
+  it('varies exactly one field per policy map, so a result has one cause', () => {
+    // The property every one of these maps is built on and none of them states
+    // in code: two sides differing in two fields produce a number nothing can be
+    // attributed to. Cheap to assert, and it is the assertion that keeps the
+    // next map (#154 onward) honest as the union of policies grows.
+    for (const policies of [BID_AB_POLICIES, FOLD_AB_POLICIES, PLAY_AB_POLICIES]) {
+      const [a, b] = Object.values(policies)
+      const differing = (Object.keys(a) as (keyof typeof a)[]).filter((field) => a[field] !== b[field])
+      expect(differing).toHaveLength(1)
+    }
+  })
+
+  it('puts the two card-play rules at one table (#153)', () => {
+    // What epic #152 is blocked on. Both arms already ship — `simple` is what
+    // `easy` plays — so this map enables nothing; it only makes the comparison
+    // reachable, which is a thing `SKILL_PARAMS` alone cannot do because
+    // `chooseFollowCard` reads the level it is handed.
+    const before = { ...SKILL_PARAMS }
+    const restore = installPolicies(PLAY_AB_POLICIES)
+    expect(SKILL_PARAMS[STATIC_LEVEL].playPolicy).toBe('simple')
+    expect(SKILL_PARAMS[DISTILLED_LEVEL].playPolicy).toBe('cascade')
+    restore()
+    expect(SKILL_PARAMS).toEqual(before)
+  })
+
+  it('leaves the shipped dial playing cards exactly as it did before #153', () => {
+    // `playPolicy` is an extraction of the `handValuation === 'meld_only'` test
+    // that used to gate card play inside `tracker.ts`, not a new setting. If
+    // these two ever disagree it is because a level's card play was changed —
+    // which is legitimate from #156 on, but is a behaviour change and has to be
+    // measured as one rather than arriving as a side effect of a refactor.
+    for (const params of Object.values(SKILL_PARAMS)) {
+      expect(params.playPolicy).toBe(params.handValuation === 'meld_only' ? 'simple' : 'cascade')
+    }
   })
 })
 
@@ -166,12 +204,21 @@ describe('the A/B self-test', () => {
   // swing (the numbers below run to four figures) that averaging the pair
   // cancels. That is precisely the positional edge the mirroring exists to
   // remove, and seeing it cancel to zero here is the evidence that it does.
-  for (const [name, level] of [
-    ['static', STATIC_LEVEL],
-    ['distilled', DISTILLED_LEVEL],
+  //
+  // Every arm of every dial is listed, not one representative: the check is
+  // that *this policy* is deterministic and seat-symmetric, and a policy the
+  // self-test never runs is a policy it cannot vouch for. Card play (#153) is
+  // the one with the most room to fail it — a bid policy is asked once per
+  // auction, `chooseFollowCard` tens of times per round, and it reads a
+  // `PlayTracker` that accumulates state across the whole round.
+  for (const [name, level, policies] of [
+    ['static', STATIC_LEVEL, BID_AB_POLICIES],
+    ['distilled', DISTILLED_LEVEL, BID_AB_POLICIES],
+    ['simple', STATIC_LEVEL, PLAY_AB_POLICIES],
+    ['cascade', DISTILLED_LEVEL, PLAY_AB_POLICIES],
   ] as const) {
     it(`finds nothing when ${name} plays itself`, () => {
-      const report = runAb({ nPairs: 6, seed: 5, levelA: level, levelB: level })
+      const report = runAb({ nPairs: 6, seed: 5, levelA: level, levelB: level, policies })
       const analysis = analyse(report)
       expect(analysis.decisivePairs).toBe(0)
       expect(analysis.pairsSplit).toBe(6)

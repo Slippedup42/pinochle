@@ -48,10 +48,41 @@ export type BidPolicy = 'static' | 'distilled'
  */
 export type FoldPolicy = 'never' | 'model'
 
+/**
+ * Which rule picks a card during trick play (#153).
+ *
+ *   `'simple'`   the skill-1 shortcut: lead the lowest non-trump non-counter
+ *                held, and when following play the lowest legal card, always.
+ *   `'cascade'`  the ported Proficient strategy in `tracker.ts` —
+ *                `chooseLeadCard`'s safe-card cascade behind the offense/
+ *                defender split, and `chooseFollowCard`'s tiered forced-beat /
+ *                feed-partner / dump-low logic.
+ *
+ * Both arms already shipped before this field existed. It is a straight
+ * extraction of the `handValuation === 'meld_only'` test that gated card play
+ * inside `tracker.ts`, and `SKILL_PARAMS` reproduces that mapping exactly, so
+ * naming it changed no behaviour. What it changed is that the choice is now
+ * *addressable*: `abRun.ts` can put two card-play rules at one table, which is
+ * what makes trick play measurable at all.
+ *
+ * That mattered enough to be its own issue because trick play is the one phase
+ * of this AI never A/B'd — #105, #115, #123 and #126 all measured bidding or
+ * folding — and epic #152 is a queue of changes to it that cannot be judged
+ * without a dial.
+ *
+ * Splitting it off `handValuation` also unblocks the epic rather than merely
+ * tidying. `meld_only` gates *bidding* valuation too (`bidding.ts`,
+ * `passing.ts`), so while one flag carried both, "give easy the same card play
+ * as everyone else" (#156) was not expressible without also changing how easy
+ * bids — two effects in one measurement, and no way to attribute the result.
+ */
+export type PlayPolicy = 'simple' | 'cascade'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
   readonly foldPolicy: FoldPolicy
+  readonly playPolicy: PlayPolicy
 }
 
 /**
@@ -122,13 +153,21 @@ export interface SkillParams {
  * than a difficulty setting. The dial this table exists to express is
  * `bidPolicy`; a level's strength is meant to come from what it is willing to
  * bid, not from whether it is allowed to notice a dead contract.
+ *
+ * `playPolicy` (#153) is written out per row rather than derived, but it is
+ * only the `handValuation === 'meld_only'` card-play gate that used to live in
+ * `tracker.ts`, spelled where it can be read: `easy` alone was the `meld_only`
+ * row, so `easy` alone is `'simple'`. Nothing about the game changed when this
+ * column appeared, by design — #114 landed the bid evaluator the same way,
+ * wired but switched on for nobody, and #115 measured it separately. Epic #152
+ * is where the column starts moving, one measured change at a time.
  */
 export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
-  easy: { handValuation: 'meld_only', bidPolicy: 'static', foldPolicy: 'model' },
-  medium: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model' },
-  hard: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
-  proficient: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
-  expert: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
+  easy: { handValuation: 'meld_only', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'simple' },
+  medium: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model', playPolicy: 'cascade' },
+  hard: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade' },
+  proficient: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade' },
+  expert: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model', playPolicy: 'cascade' },
 }
 
 /** Flat trick-point estimate for meld-only bidding (skill 1), matching

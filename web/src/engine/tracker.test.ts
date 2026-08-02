@@ -163,6 +163,33 @@ describe('chooseLeadCard', () => {
     const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, 'hard', false)
     expect(led.suit).toBe(Suit.Spades)
   })
+
+  // -- The play-policy branch (#153) ----------------------------------------
+
+  it("'simple' leads its lowest non-trump non-counter and ignores everything else", () => {
+    // Same hand as the defender test above, where `cascade` picks the Ace of
+    // Hearts. `simple` takes the Clubs 9: no cascade, no side dispatch, no
+    // tracker. The two arms are visibly different rules, which is what makes
+    // `PLAY_AB_POLICIES` a comparison rather than a formality.
+    const hand = [
+      new Card(Suit.Spades, 'A', 1),
+      new Card(Suit.Hearts, 'A', 1),
+      new Card(Suit.Clubs, '9', 1),
+    ]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, 'easy', false)
+    expect(led.suit).toBe(Suit.Clubs)
+    expect(led.rank).toBe('9')
+  })
+
+  it("'simple' ignores the bidder's forced trump lead, as it did before #153", () => {
+    // The `meld_only` test this branch replaces sat above the `isBidderFirstLead`
+    // rule, so `easy` never honoured it. Preserved deliberately: #153 is a
+    // rename, and changing which cards a level plays belongs to #156 where it
+    // can be measured.
+    const hand = [new Card(Suit.Spades, 'A', 1), new Card(Suit.Clubs, '9', 1)]
+    const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), true, 'easy')
+    expect(led.suit).toBe(Suit.Clubs)
+  })
 })
 
 describe('chooseFollowCard', () => {
@@ -287,5 +314,36 @@ describe('chooseFollowCard', () => {
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
     expect(played.suit).toBe(Suit.Clubs)
     expect(played.rank).toBe('9')
+  })
+
+  // -- The play-policy branch (#153) ----------------------------------------
+
+  it("'simple' plays the lowest legal card, skipping every tier above", () => {
+    // Partner is winning, so `cascade` feeds them the 10 (the tier asserted
+    // above). `simple` plays the 9 — it never asks who is winning, which is
+    // exactly the weakness epic #152 exists to fix and #153 exists to measure.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const legalMoves = [
+      new Card(Suit.Hearts, '9', 1),
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Hearts, '10', 1),
+    ]
+    const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, 'easy')
+    expect(played.rank).toBe('9')
+  })
+
+  it('every other level follows with the cascade, unchanged by #153', () => {
+    // The mapping `playPolicy` extracted from `handValuation === 'meld_only'`:
+    // `easy` alone took the shortcut, and it alone still does.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const legalMoves = [
+      new Card(Suit.Hearts, '9', 1),
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Hearts, '10', 1),
+    ]
+    for (const skill of ['medium', 'hard', 'proficient', 'expert'] as const) {
+      const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill)
+      expect(played.rank).toBe('10')
+    }
   })
 })
