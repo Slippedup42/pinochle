@@ -196,6 +196,50 @@ p < 1e-4, **+121 score margin per deal, 95% CI +103 to +138** — cascade makes
 bids. That is a reading of the gap the dial spans, not a decision: acting on it
 is #156's job.
 
+### Feeding partner the lowest counter (#154)
+
+The first change measured through that dial, and the smallest in epic #152.
+`chooseFollowCard`'s partner-is-winning tier called `maxByRank` on the King/10 it
+was about to donate, so it threw the **10** and kept the King. A, 10 and K are
+each worth exactly 10 points (`pinochle_rules.md:140`), so both cards bank the
+same score and the only difference is which one is left in hand — and the 10
+loses to nothing but an Ace. It is now `minByRank`, in `feedPartner`.
+
+The open question was the Ace. The tier deliberately skips it (`avoid donating a
+live Ace unless forced`), but "play your lowest legal point" read literally
+orders K → 10 → A, which puts the Ace in when it is the only counter held. So
+three arms were run rather than two — identical bidders, identical folders,
+differing only in this tier:
+
+| over 5000 pairs / 10 000 games | margin per deal | 95% CI | swept | p |
+| --- | --- | --- | --- | --- |
+| lowest **excl. A** vs old `maxByRank` | **+3.55** | +2.05 to +5.16 | 28–11 | 0.010 |
+| lowest **incl. A** vs old `maxByRank` | +0.41 | −1.73 to +2.54 | 44–38 | 0.58 |
+| lowest **excl. A** vs lowest **incl. A** | **+3.55** | +2.02 to +5.09 | 30–16 | 0.054 |
+
+Repeated on a second seed: +3.31 (+1.75 to +4.97), +0.43 (−1.73 to +2.60) and
++3.06 (+1.43 to +4.71). **The exclusion shipped.** The including-A variant is a
+null against the *old* behaviour and loses to the exclusion by very nearly the
+whole size of the fix — donating the Ace gives back everything spending the King
+wins, which is the thing reasoning could not settle. #101 is the precedent for
+recording that as a result rather than re-running until it moves.
+
+Two things worth carrying forward. The effect is real but two orders of magnitude
+below the dial's own span (#153's +121, #115's +227), because the tier only fires
+when partner is winning, the trick is not a forced beat, and two counters are
+legal — so at 1000 pairs the same comparison reads +2.67 with a CI of +0.51 to
++4.92 and a sign test of p = 1.0 on two decisive deals. 1000 pairs is the wrong
+size for the rest of #152's children; 5000 is. And games-won is useless at this
+scale: 4961 of 5000 pairs split even where the margin interval is clean, which is
+exactly the null this project has been burned by before and the reason margin is
+the headline number.
+
+The three-arm comparison needed a throwaway `'feed-high'` / `'feed-low-ace'` pair
+on the `PlayPolicy` union plus a temporary `cli.ts feed` command, added in the
+shape the section below describes and deleted before the fix was committed — the
+same call #126 and #153 made, since a permanent "feed the wrong card" switch is
+not a difficulty setting.
+
 ### Checking that a dial can see a change
 
 A self-test proves a dial reports nothing when nothing differs. It does not

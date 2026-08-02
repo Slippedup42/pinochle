@@ -210,7 +210,7 @@ describe('chooseFollowCard', () => {
     expect(played.rank).toBe('10')
   })
 
-  it('feeds partner the highest King/10 when partner is winning and not every card is a forced beat', () => {
+  it('feeds partner the lowest King/10 when partner is winning and not every card is a forced beat', () => {
     // Partner (player 0) is winning with a Queen; the 9 doesn't beat it, so
     // this isn't a forced beat - falls through to the feed-partner tier.
     const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
@@ -221,12 +221,28 @@ describe('chooseFollowCard', () => {
     ]
     const hand = legalMoves
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
-    expect(played.rank).toBe('10') // 10 outranks King, so it's the bigger feed
+    // #154: King and 10 bank the same 10 points, so spend the King and keep the
+    // 10 - it loses only to an Ace and often takes a later trick outright. This
+    // asserted the 10 until #154 swapped it.
+    expect(played.rank).toBe('K')
   })
 
   it('feeding partner with no King/10 available plays the lowest card instead (avoid donating a live Ace)', () => {
     const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
     const legalMoves = [new Card(Suit.Hearts, '9', 1), new Card(Suit.Hearts, 'J', 1)]
+    const hand = legalMoves
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.rank).toBe('9')
+  })
+
+  it('feeding partner holds the Ace back when it is the only counter, donating junk instead', () => {
+    // The measured half of #154. "Play your lowest legal point" read literally
+    // orders K -> 10 -> A, which puts the Ace in here for 10 points. That variant
+    // ran as its own arm over 5000 paired deals: a null against the pre-#154
+    // behaviour and 3.6 points a deal behind this one, so the Ace stays home.
+    // The trick pays the same 10 either way; the boss of a suit does not.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
+    const legalMoves = [new Card(Suit.Hearts, '9', 1), new Card(Suit.Hearts, 'A', 1)]
     const hand = legalMoves
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
     expect(played.rank).toBe('9')
@@ -319,7 +335,7 @@ describe('chooseFollowCard', () => {
   // -- The play-policy branch (#153) ----------------------------------------
 
   it("'simple' plays the lowest legal card, skipping every tier above", () => {
-    // Partner is winning, so `cascade` feeds them the 10 (the tier asserted
+    // Partner is winning, so `cascade` feeds them the King (the tier asserted
     // above). `simple` plays the 9 — it never asks who is winning, which is
     // exactly the weakness epic #152 exists to fix and #153 exists to measure.
     const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
@@ -343,7 +359,7 @@ describe('chooseFollowCard', () => {
     ]
     for (const skill of ['medium', 'hard', 'proficient', 'expert'] as const) {
       const played = chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill)
-      expect(played.rank).toBe('10')
+      expect(played.rank).toBe('K')
     }
   })
 })
