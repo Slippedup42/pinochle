@@ -40,7 +40,10 @@ function renderMeld() {
 
 afterEach(cleanup)
 
-describe('MeldFlow', () => {
+// #170: raised from the 5 s default — the first test to call `render()` also
+// absorbs jsdom/React/RTL first-render warmup inside its own wall-clock
+// budget, which balloons under parallel load. See TrickPlayFlow.test.tsx.
+describe('MeldFlow', { timeout: 20_000 }, () => {
   // #94: the panel used to stack all four seats in one column, growing to
   // roughly twice the viewport height and pushing Continue off-screen.
   it('lays meld out in one column per team, each holding that team‘s two seats', () => {

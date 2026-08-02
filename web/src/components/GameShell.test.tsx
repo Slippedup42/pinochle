@@ -28,7 +28,10 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
-describe('GameShell', () => {
+// #170: raised from the 5 s default — the first test to call `render()` also
+// absorbs jsdom/React/RTL first-render warmup inside its own wall-clock
+// budget, which balloons under parallel load. See TrickPlayFlow.test.tsx.
+describe('GameShell', { timeout: 20_000 }, () => {
   it('shows the start menu on load with Continue disabled when there is no save', () => {
     render(<GameShell />)
     expect(screen.getByText('Pinochle')).not.toBeNull()

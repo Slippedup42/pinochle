@@ -43,7 +43,10 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('GameFlow (component)', () => {
+// #170: raised from the 5 s default — the first test to call `render()` also
+// absorbs jsdom/React/RTL first-render warmup inside its own wall-clock
+// budget, which balloons under parallel load. See TrickPlayFlow.test.tsx.
+describe('GameFlow (component)', { timeout: 20_000 }, () => {
   it('deals straight into the auction when no seat is misdeal-eligible', async () => {
     mockDeals([weakHand(), weakHand(), weakHand(), weakHand()])
 

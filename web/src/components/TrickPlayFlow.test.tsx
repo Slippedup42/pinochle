@@ -35,7 +35,36 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('TrickPlayFlow (component)', () => {
+/**
+ * #170: vitest's 5 s default `testTimeout` is a *wall-clock* budget, but what
+ * these tests spend is *CPU*. That difference is the whole bug.
+ *
+ * The AI delays are already driven by fake timers (see the
+ * `advanceTimersByTime` calls below), so nothing here ever waits on a real
+ * clock — the original "it sits on real timers" theory does not apply. What
+ * costs time is genuine computation: the full-round test alone drives 48 card
+ * plays, which is 48 React commits over a 4-seat table plus 36 real
+ * `chooseLeadCard`/`chooseFollowCard` decisions. That measures ~1.3 s on an
+ * idle machine — only ~3.8x under the default budget — and a 3-4x slowdown is
+ * routine when several agents are building and running sweeps in parallel,
+ * which is the normal mode on this project. Measured at 5.4 s median and 11.0 s
+ * worst case under that contention, i.e. over budget.
+ *
+ * A wall-clock budget on CPU-bound work cannot be made load-proof by rewriting
+ * the test; it can only be given enough room. So the budget is raised here,
+ * per suite, rather than globally: the ~300 pure-logic engine tests stay at the
+ * strict 5 s default so a genuine hang there still surfaces fast, and the cost
+ * of the jsdom integration tier stays an explicit, reviewed number instead of a
+ * suite-wide default nobody looks at again.
+ *
+ * The same reasoning covers the *first* test of every component file, which
+ * additionally absorbs jsdom/React/RTL first-render warmup (~150 ms idle, but
+ * 2.5-4.5 s under load) inside its own budget — hence the identical raise in
+ * AuctionFlow/GameFlow/GameShell/MeldFlow/PlayingCard.
+ */
+const COMPONENT_SUITE_TIMEOUT_MS = 20_000
+
+describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, () => {
   it('highlights only legal cards for the human, forcing a follow of the lead suit', () => {
     vi.useFakeTimers()
     disableAiFold()
@@ -160,9 +189,17 @@ describe('TrickPlayFlow (component)', () => {
     let guard = 0
     while (onComplete.mock.calls.length === 0 && guard < 500) {
       guard++
-      const playable = screen
-        .queryAllByRole('button', { name: /^Play / })
-        .find((button) => !button.hasAttribute('disabled'))
+      // Deliberately a plain attribute selector rather than
+      // `queryAllByRole('button', { name: /^Play / })`. This runs ~60 times per
+      // round, and the role query computes an accessible name for every
+      // candidate and a `getComputedStyle` visibility check for every node in
+      // the tree on each call — measured at ~30% of this test's total runtime
+      // (#170). Nothing is lost by dropping it: this loop is a *driver*, not an
+      // assertion, and the role/accessible-name contract on these buttons is
+      // what the two tests above actually assert.
+      const playable = document.querySelector<HTMLButtonElement>(
+        'button[aria-label^="Play "]:not([disabled])',
+      )
       if (playable) {
         fireEvent.click(playable)
       } else {

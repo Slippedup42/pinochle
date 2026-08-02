@@ -222,7 +222,13 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('AuctionFlow (component)', () => {
+// #170: raised from the 5 s default because the first test to call `render()`
+// in a file also absorbs jsdom/React/RTL first-render warmup inside its own
+// wall-clock budget — negligible on an idle machine, 2.5-4.5 s when several
+// agents are building in parallel. Full rationale in TrickPlayFlow.test.tsx.
+// Only the component suite needs it; the `auctionReducer` suite above is pure
+// logic and stays at the strict default.
+describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
   it('walks the human through bidding, naming trump, and passing cards, then reports the result', () => {
     vi.useFakeTimers()
     const hands = buildTestHands()
