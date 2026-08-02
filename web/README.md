@@ -109,13 +109,17 @@ a bootstrap interval on score margin because games-won alone is too coarse.
 ```
 node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
 node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts ab --pairs 1000
+node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts fold --pairs 1000
+node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts play --pairs 1000
 node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts latency --positions 4000
 ```
 
-Run `selftest` before believing `ab`: one policy against itself must find
+Run `selftest` before believing any of them: one policy against itself must find
 nothing, and here it must find *exactly* nothing — with the same policy in all
 four seats the mirrored orientations are the same game relabelled, so every pair
-splits and every paired margin is zero. `ab.test.ts` asserts that in the suite.
+splits and every paired margin is zero. `ab.test.ts` asserts that in the suite,
+for every arm of every dial. `--policy` picks which arm doubles up:
+`static`/`distilled` are the bidding pair, `simple`/`cascade` the trick-play one.
 
 What it found, over 1000 pairs / 2000 games: distilled swept 211 deals to
 static's 50 (739 split), 95% CI 75.6%–85.2% of decisive deals, p < 1e-4, and
@@ -165,6 +169,62 @@ temporary fourth field on `SkillParams` plus a `PARITY_AB_POLICIES` pair, added
 for the measurement in the shape `FOLD_AB_POLICIES` already uses and removed
 before the fix was committed, since a permanent switch for "play the port bug"
 is not a difficulty setting.
+
+### The trick-play dial (`playPolicy`, #153)
+
+Card play was the one phase never measured — #105, #115, #123 and #126 are all
+bidding or folding — so every heuristic in `tracker.ts` was there on reasoning
+alone. `SkillParams.playPolicy` is the field that fixed that, and epic #152's
+remaining children are each a change to it that has to be measured before it
+ships.
+
+It has two arms and both already shipped: `'cascade'` is the ported Proficient
+strategy (`chooseLeadCard`'s safe-card cascade, `chooseFollowCard`'s tiers) and
+`'simple'` is `easy`'s shortcut — lead the lowest non-trump non-counter, follow
+with the lowest legal card. The field is an extraction of the
+`handValuation === 'meld_only'` test that used to gate card play inside
+`tracker.ts`, and `SKILL_PARAMS` reproduces that mapping exactly, so introducing
+it changed no behaviour. Splitting it off `handValuation` is what makes #156
+("one card-play strategy at every level") expressible at all: that flag also
+governs *bidding* valuation, so while the two shared it, changing easy's card
+play meant changing how easy bids in the same breath.
+
+`PLAY_AB_POLICIES` is the pair `cli.ts play` installs. Over 1000 pairs / 2000
+games, cascade swept 158 deals to simple's 37 (805 split), 95% CI 74.9%–85.9%,
+p < 1e-4, **+121 score margin per deal, 95% CI +103 to +138** — cascade makes
+68.5% of its contracts against simple's 64.5% on the same deals and the same
+bids. That is a reading of the gap the dial spans, not a decision: acting on it
+is #156's job.
+
+### Checking that a dial can see a change
+
+A self-test proves a dial reports nothing when nothing differs. It does not
+prove the dial can see anything, and those fail differently: a policy field that
+is written but never read passes `selftest` perfectly and then returns a null
+result for every change ever made through it. So before trusting a new dial,
+point it at a policy that is known to be bad and confirm the harness says so.
+
+The procedure, which is deliberately not in the tree — #126 established it with
+the temporary `parity` dial it removed before committing, on the grounds that a
+permanent "play badly" switch is not a difficulty setting:
+
+1. Add a throwaway arm to the policy union in `skills.ts` — for trick play,
+   `'highest'`.
+2. Give it a one-line implementation at the top of the branch it is testing. For
+   #153 that was `return maxByRank(hand)` in `chooseLeadCard` and
+   `return maxByRank(legalMoves)` in `chooseFollowCard`: always play the highest
+   card available, which dumps counters into opponents' tricks and strips your
+   own trump control.
+3. Copy the real policy map, change that one field on side B, and add a
+   temporary `cli.ts` command that runs it.
+4. Run it at the size a real measurement uses, then delete all four edits.
+
+What #153 got, 1000 pairs / 2000 games: cascade swept 224 deals to highest's 11
+(765 split), 95% CI 91.8%–97.4% of the 235 decisive deals, p < 1e-4, **+202
+score margin per deal, 95% CI +184 to +220**. Highest is set on 32.4% of its
+contracts against cascade's 24.9% from the same bids on the same deals. A dial
+that can separate those by 202 points and separate a policy from itself by
+exactly 0 is one a null result from can be believed.
 
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an

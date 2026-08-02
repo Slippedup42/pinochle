@@ -37,11 +37,16 @@
 // This is not a shortcut around the gate in `skills.ts`; it is what makes the
 // measurement independent of it. Both entries are written explicitly, so the
 // harness reports the same numbers whether the shipped dial is gated off or
-// switched on. Every other consumer of `SKILL_PARAMS` (`passing.ts`,
-// `tracker.ts`, `chooseTrump`) branches only on `handValuation`, which both
-// entries set to `'base_bid'` — so the two sides play identical cards, pass
-// identical cards and pick trump identically, and the only thing that differs
-// between them is which rule answers "is this hand worth a contract here".
+// switched on.
+//
+// Which is also why each map below writes out every field of `SkillParams`
+// rather than spreading a shipped row: the discipline is that exactly one field
+// differs across a map and the reader can check that by eye. `passing.ts` and
+// `chooseTrump` branch on `handValuation` and `tracker.ts` on `playPolicy`, so
+// in `BID_AB_POLICIES` — same `base_bid`, same `cascade` — the two sides play
+// identical cards, pass identical cards and pick trump identically, and the
+// only thing differing between them is which rule answers "is this hand worth a
+// contract here".
 
 import { SKILL_PARAMS, type SkillParams } from '../engine/skills'
 import type { TeamId } from '../engine/round'
@@ -55,10 +60,21 @@ import { binomialTwoSidedP, bootstrapMeanCi, wilsonInterval } from './stats'
 export const STATIC_LEVEL: SkillLevel = 'hard'
 export const DISTILLED_LEVEL: SkillLevel = 'expert'
 
-/** Bidding A/B (#115): distilled vs static, both folding as the product does. */
+/** Bidding A/B (#115): distilled vs static, both folding as the product does
+ *  and both playing cards the same way. */
 export const BID_AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'static', foldPolicy: 'model' },
-  [DISTILLED_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
+  [STATIC_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'static',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+  },
+  [DISTILLED_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+  },
 }
 
 /**
@@ -71,8 +87,53 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
  * actually ship on `hard` and above.
  */
 export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'never' },
-  [DISTILLED_LEVEL]: { handValuation: 'base_bid', bidPolicy: 'distilled', foldPolicy: 'model' },
+  [STATIC_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'never',
+    playPolicy: 'cascade',
+  },
+  [DISTILLED_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+  },
+}
+
+/**
+ * Trick-play A/B (#153): identical bidders and identical folders, differing
+ * only in which rule picks a card.
+ *
+ * This is the dial epic #152 is blocked on. Card play is the one phase of this
+ * AI that has never been measured — #105, #115, #123 and #126 are all bidding
+ * or folding — so every heuristic in `tracker.ts` is there on reasoning alone,
+ * and #154-#159 each propose replacing one of them. None of that can be judged
+ * without a way to sit two card-play rules at one table.
+ *
+ * The two arms are the two that already ship: `'simple'` is what `easy` plays
+ * and `'cascade'` is what every other level plays. Nothing here enables
+ * anything — the comparison is available to the harness while `SKILL_PARAMS`
+ * keeps the mapping it has always had. Acting on the number is #156's job.
+ *
+ * Both sides bid `'distilled'` rather than `'static'` for the same reason
+ * `FOLD_AB_POLICIES` does: it describes card play as it will actually ship on
+ * `hard` and above. Note that side A is `DISTILLED_LEVEL` and therefore
+ * `'cascade'`, matching the other two maps, where A is the arm under test.
+ */
+export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
+  [STATIC_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'simple',
+  },
+  [DISTILLED_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+  },
 }
 
 /** Overwrites the two entries in `policies`, returning a function that restores
