@@ -37,6 +37,12 @@ const POSITION_LAYOUT: Record<SeatPosition, string> = {
  * information a player needs to track how many tricks are left. The one
  * exception is `exposeCards` during the meld phase, where an AI's cards are
  * laid face-up because meld is public.
+ *
+ * A seat does **not** render its own auction call (#191). It used to, as one
+ * `text-xs text-white/60` line under the name, and that is the line Paul's dad
+ * could not read. `SeatState.call` is rendered by `TrickArea` instead, at the
+ * seat's own side of the circle — same information, at the size the rest of the
+ * board uses, and in the place the eye is already on during trick play.
  */
 export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable, exposeCards }: SeatProps) {
   return (
@@ -61,9 +67,6 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
           <span className="text-xs text-white/70">{seat.hand.length} cards</span>
         )}
       </div>
-      {seat.statusText && (
-        <div className="text-xs text-white/60">{seat.statusText}</div>
-      )}
       {isHuman ? (
         // Explicit rows, never `flex-wrap` (#187, and the #161 note it replaces).
         // The fanned-overlap look relies on `first:ml-0` to zero the leading

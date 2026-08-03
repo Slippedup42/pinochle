@@ -8,6 +8,28 @@ import type { Card, Suit } from '../engine/card'
 import type { TeamId } from '../engine/round'
 import type { PlayerIndex, TrickPlay } from '../engine/trick'
 
+/**
+ * What a seat has said in the auction, as data rather than as a formatted
+ * string (#191).
+ *
+ * It used to be `statusText?: string` — "Pass", "(300)", "(Waiting)" — rendered
+ * as one dim line under the player's name. Paul's dad asked for the auction to
+ * read like trick play does: the call shown big, at the seat's own place on the
+ * board. A pre-formatted string cannot do that, because the three cases want
+ * genuinely different type: a bid is a number and should dominate, a pass is a
+ * word, and waiting is the absence of news and should recede. Keeping the kind
+ * lets `TrickArea` make that call at the point of rendering.
+ *
+ * `'turn'` is the seat currently being asked, which the old string had no case
+ * for at all — it rendered nothing, so the one seat you most want to watch was
+ * the one the board said least about.
+ */
+export type SeatCall =
+  | { readonly kind: 'bid'; readonly amount: number }
+  | { readonly kind: 'pass' }
+  | { readonly kind: 'waiting' }
+  | { readonly kind: 'turn' }
+
 /** One seat at the table. `hand` is the real per-player Card list; seats
  * other than `TableState['humanPlayer']` only ever render `hand.length`
  * (face-down fan / count), never the cards themselves, since a real
@@ -16,9 +38,9 @@ export interface SeatState {
   readonly player: PlayerIndex
   readonly name: string
   readonly hand: readonly Card[]
-  /** Auction-phase status shown under the player name:
-   * "Pass", "(300)", "(Waiting)" etc. */
-  readonly statusText?: string
+  /** Auction-phase call, rendered big in the trick circle by `TrickArea`.
+   * Omitted outside the auction. */
+  readonly call?: SeatCall
 }
 
 export interface TableState {

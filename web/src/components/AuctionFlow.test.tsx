@@ -352,6 +352,10 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
 
     // Left of dealer (1) is seat 2 (Partner), and this hand is worth a contract.
     act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
-    expect(screen.getByText('300')).not.toBeNull()
+    // Asserted on the seat's call on the board, not on the bare text "300":
+    // the Scoreboard shows the same number as the standing contract, so a plain
+    // text query matches both and cannot tell "seat 2 opened" from "the high bid
+    // is 300" — which is the whole point of the assertion (#191).
+    expect(screen.getByLabelText('Partner: bid 300')).not.toBeNull()
   })
 })
