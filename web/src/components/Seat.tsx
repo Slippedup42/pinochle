@@ -73,14 +73,25 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
         // left of the row above it. Giving each row its own flex container is
         // what makes `first:` mean "first of this row" and the two line up.
         //
-        // Pitch is `card + gap + margin = 64 + 4 - 24 = 44px`, so six cards span
-        // `5 * 44 + 64 = 284px` — inside the ~304px a 320px viewport leaves after
-        // the board's padding, and comfortably inside a 390px phone. The reveal
-        // goes from 24px (a corner index) to 44px (most of the card).
+        // Pitch is `card + gap + margin = 80 + 4 - 32 = 52px`, so six cards span
+        // `5 * 52 + 80 = 340px`. The reveal is 52px, most of an 80px card, and
+        // comfortably more than the 30px the jumbo index actually occupies.
         //
-        // The overlap is paired with the card width: change `w-16` on
-        // `PlayingCard` without changing `-ml-6` here and this either re-overflows
-        // or buries the indices again.
+        // This is the 80px arm of Paul's size call, taken against a rendered
+        // comparison: 64px spans 284 and clears a 320px phone too, 92px only fits
+        // at three rows of four. At 80 a 320px viewport (~304px usable) **does**
+        // overflow and the row scrolls — that is the accepted cost, and it is why
+        // `overflow-x-auto` below is now load-bearing rather than a backstop.
+        //
+        // -32 rather than the -28 that keeps the reveal proportional to #161's
+        // ratio: at -28 the row measured 360px against the 359px a 375px iPhone
+        // leaves, i.e. it scrolled by one pixel. -32 buys 19px of headroom for a
+        // reveal nobody can tell apart.
+        //
+        // The overlap is paired with the card width: change `w-20` on
+        // `PlayingCard` without changing `-ml-8` here and this either re-overflows
+        // or buries the index again. `PlayingCard`'s own suit-size ceiling is
+        // derived from this pitch — see the note there.
         //
         // `w-full` is what makes `overflow-x-auto` mean anything — it resolves
         // against the seat's stretched width (Table.tsx) so a row is as wide as
@@ -93,7 +104,7 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
                 const cardFace = <PlayingCard suit={card.suit} rank={card.rank} />
                 if (!playable) {
                   return (
-                    <div key={card.toString()} className="-ml-6 first:ml-0">
+                    <div key={card.toString()} className="-ml-8 first:ml-0">
                       {cardFace}
                     </div>
                   )
@@ -106,7 +117,7 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
                     disabled={!isLegal}
                     onClick={() => playable.onPlay(card)}
                     aria-label={`Play ${card.rank} of ${card.suit}`}
-                    className={`-ml-6 first:ml-0 rounded-lg transition-transform ${
+                    className={`-ml-8 first:ml-0 rounded-lg transition-transform ${
                       isLegal
                         ? 'cursor-pointer ring-2 ring-amber-400 hover:-translate-y-2'
                         : 'cursor-not-allowed opacity-40'
@@ -123,7 +134,7 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
         <div className="flex w-full justify-center gap-1 overflow-x-auto">
           {/* Same 24px reveal as the human fan above, against a 48px `md` card. */}
           {sortHandForDisplay(seat.hand).map((card, i) => (
-            <div key={i} className="-ml-7 first:ml-0">
+            <div key={i} className="-ml-8 first:ml-0">
               <PlayingCard suit={card.suit} rank={card.rank} size="md" />
             </div>
           ))}

@@ -34,11 +34,15 @@ describe('PlayingCard', { timeout: 20_000 }, () => {
   // cards silently rendered full size. Width now comes from `size` alone, so
   // exactly one width utility is ever emitted.
   //
-  // The values are #161's ~20% reduction (lg 80 -> 64, md 60 -> 48, sm 36 ->
-  // 28), which is what makes a 12-card hand fit a phone. They are pinned here
-  // rather than left to inspection because the fan overlaps in Seat.tsx are
-  // tuned against these exact widths — changing one without the other either
-  // overflows the viewport again or buries the corner indices.
+  // `lg` is back at 80 after #161 took it to 64: that reduction existed to fit
+  // twelve cards in one row, and #187's two rows only have to fit six. They are
+  // pinned here rather than left to inspection because the fan overlaps in
+  // Seat.tsx are tuned against these exact widths — changing one without the
+  // other either overflows the viewport or buries the index.
+  //
+  // Matched against the root only. The face now has inner elements that carry
+  // their own width (the edge stripe), and #94's rule is about the *card's*
+  // width having no competitor, not about the string `w-` appearing once.
   it('emits exactly one width utility, chosen by size', () => {
     const widthsFor = (el: Element) => (el.className.match(/(^|\s)w-\S+/g) ?? []).map((s) => s.trim())
 
@@ -48,7 +52,24 @@ describe('PlayingCard', { timeout: 20_000 }, () => {
 
     expect(widthsFor(sm.firstElementChild!)).toEqual(['w-7'])
     expect(widthsFor(md.firstElementChild!)).toEqual(['w-12'])
-    expect(widthsFor(lg.firstElementChild!)).toEqual(['w-16'])
+    expect(widthsFor(lg.firstElementChild!)).toEqual(['w-20'])
+  })
+
+  // The fan in Seat.tsx covers all but a 0.6875w strip of every card except the
+  // last, so a face whose index outgrows that strip is a face you cannot read in
+  // a hand — which is the whole complaint this design answers. Guarding the
+  // ratio rather than the pixel value keeps it true if the widths move again.
+  it('keeps the index inside the strip the fan leaves visible', () => {
+    const px = (cls: string, re: RegExp) => Number(cls.match(re)![1])
+    const WIDTH_PX = { sm: 28, md: 48, lg: 80 } as const
+
+    for (const size of ['sm', 'md', 'lg'] as const) {
+      const { container } = render(<PlayingCard suit={Suit.Spades} rank="A" size={size} />)
+      const index = container.querySelector('.font-extrabold')!
+      const suitSpan = index.lastElementChild!
+      const suitPx = px(suitSpan.className, /text-\[(\d+)px\]/)
+      expect(suitPx / WIDTH_PX[size]).toBeLessThan(0.6875)
+    }
   })
 
   // A card is a width plus a ratio — nothing sets a height — so `aspect-5/7`
