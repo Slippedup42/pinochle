@@ -190,7 +190,6 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
         bidWinner={bidWinner}
         bid={bid}
         meldPointsByTeam={state.meldPointsByTeam ?? meldPointsByTeam(hands, trumpSuit)}
-        auctionLog={state.auctionResult?.log}
         seatNames={state.seatNames}
         humanPlayer={HUMAN_PLAYER}
         scoresByTeam={state.scoresByTeam}

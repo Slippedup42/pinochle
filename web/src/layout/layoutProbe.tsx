@@ -41,8 +41,6 @@ import '../index.css'
 import { Deck, Suit, type Card } from '../engine/card'
 import type { Hands, TeamId } from '../engine/round'
 import { Trick, type PlayerIndex } from '../engine/trick'
-import { AuctionLog } from '../components/AuctionLog'
-import type { AuctionLogEntry } from '../components/auctionTypes'
 import { BiddingControls } from '../components/BiddingControls'
 import { GameOverScreen } from '../components/GameOverScreen'
 import { MeldFlow } from '../components/MeldFlow'
@@ -94,18 +92,6 @@ function seededHands(seed: number): Hands {
 }
 
 const HANDS = seededHands(161)
-
-const AUCTION_LOG: readonly AuctionLogEntry[] = [
-  { kind: 'pass-bid', player: 3, name: SEAT_NAMES[3] },
-  { kind: 'bid', player: 0, name: SEAT_NAMES[0], amount: 300 },
-  { kind: 'bid', player: 1, name: SEAT_NAMES[1], amount: 310 },
-  { kind: 'bid', player: 2, name: SEAT_NAMES[2], amount: 320 },
-  { kind: 'bid', player: 1, name: SEAT_NAMES[1], amount: 340 },
-  { kind: 'pass-bid', player: 0, name: SEAT_NAMES[0] },
-  { kind: 'pass-bid', player: 2, name: SEAT_NAMES[2] },
-  { kind: 'trump', player: 1, name: SEAT_NAMES[1], suit: TRUMP },
-  { kind: 'card-pass', fromPlayer: 3, fromName: SEAT_NAMES[3], toPlayer: 1, toName: SEAT_NAMES[1], count: 3 },
-]
 
 function baseSeats(hands: Hands, call?: (p: PlayerIndex) => SeatCall | undefined): TableState['seats'] {
   const seat = (p: PlayerIndex) => ({
@@ -238,12 +224,7 @@ function trickPhase() {
   return (
     <Table
       state={state}
-      logPanel={
-        <div className="flex flex-col gap-2">
-          <AuctionLog entries={AUCTION_LOG} />
-          <TrickLog entries={log} />
-        </div>
-      }
+      logPanel={<TrickLog entries={log} />}
       onOpenMenu={noop}
       trickNumber={1}
     />
