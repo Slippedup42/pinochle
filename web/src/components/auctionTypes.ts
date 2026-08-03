@@ -41,9 +41,22 @@ export const SUIT_NAME: Record<Suit, string> = {
   C: 'Clubs',
 }
 
-/** Renders one log entry as a single line of human-readable text. Pure and
- * exported on its own so AuctionLog's formatting logic is unit-testable
- * without mounting a component. */
+/**
+ * Renders one log entry as a single line of human-readable text. Pure and
+ * exported on its own so the formatting is unit-testable without mounting a
+ * component.
+ *
+ * **Nothing renders this today** (#193). `AuctionLog` was the only caller and is
+ * deleted: the auction now reads on the circle (#191), and the bid history is
+ * not wanted once the contract is settled.
+ *
+ * It is kept, with the log itself, because the *data* is still built by
+ * `auctionReducer` and still handed to `onComplete` as `AuctionResult.log` —
+ * that is the reducer's own record of the auction, not display state. Deleting
+ * the formatter would not delete the log; it would only mean that bringing any
+ * view of it back is a rewrite rather than a render. This is the same trade
+ * `skills.ts` documents for the retained A/B policy arms.
+ */
 export function formatAuctionLogEntry(entry: AuctionLogEntry): string {
   switch (entry.kind) {
     case 'bid':

@@ -11,7 +11,6 @@ import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
-import { AuctionLog } from './AuctionLog'
 import { AutoSetNotice } from './AutoSetNotice'
 import { ConfirmDialog } from './ConfirmDialog'
 import { TrickLog } from './TrickLog'
@@ -23,7 +22,6 @@ import {
   type TrickPlayState,
 } from './trickPlayReducer'
 import type { TrickPlayResult } from './trickPlayTypes'
-import type { AuctionLogEntry } from './auctionTypes'
 
 export interface TrickPlayFlowProps {
   hands: Hands
@@ -39,9 +37,6 @@ export interface TrickPlayFlowProps {
    * scoreboard, `shouldConcede`'s fold model, and the auto-SET check (#178)
    * that detects a mathematically impossible contract before the first lead. */
   meldPointsByTeam: Record<TeamId, number>
-  /** Full auction/pass event log (#77), kept visible during trick-play so
-   * the human can review every bid, who bid, and the amounts. */
-  auctionLog?: readonly AuctionLogEntry[]
   /** Randomized per-game team display names (#73), threaded straight into
    * the TableState this component builds for Table/Scoreboard. Defaults to
    * scoreTypes.ts's DEFAULT_TEAM_NAMES ("Team A"/"Team B") when omitted —
@@ -108,7 +103,6 @@ export function TrickPlayFlow({
   bidWinner,
   bid,
   meldPointsByTeam,
-  auctionLog,
   seatNames,
   humanPlayer,
   scoresByTeam,
@@ -391,12 +385,12 @@ export function TrickPlayFlow({
       )}
       <Table
         state={tableState}
-        logPanel={
-          <div className="flex flex-col gap-2">
-            {auctionLog && auctionLog.length > 0 && <AuctionLog entries={auctionLog} />}
-            {!options.hideTrickLog && <TrickLog entries={state.log} />}
-          </div>
-        }
+        // No auction log (#193). It survived #191 as the last view of the bid
+        // history, on the reasoning that the circle can no longer show it once
+        // it is holding cards. Paul's call: the history is not wanted after the
+        // contract is settled, and the contract itself is already in the
+        // Scoreboard. So trick play's corner is the trick log or nothing.
+        logPanel={!options.hideTrickLog ? <TrickLog entries={state.log} /> : undefined}
         onOpenMenu={onOpenMenu}
         trickNumber={state.trickNumber + 1}
       />
