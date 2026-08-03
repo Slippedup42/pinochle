@@ -162,7 +162,19 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
           </div>
         ))}
         <div className="col-start-2 row-start-2">
-          <TrickArea trick={trick} humanPlayer={humanPlayer} winningPlayer={trickWinner} trickNumber={trickNumber} />
+          {/* Calls are derived here rather than passed in, so a caller only has
+              to populate `SeatState.call` and the circle placement follows from
+              the seat it is already describing. Seats without a call (every
+              phase after the auction) contribute nothing. */}
+          <TrickArea
+            trick={trick}
+            humanPlayer={humanPlayer}
+            winningPlayer={trickWinner}
+            trickNumber={trickNumber}
+            calls={seats.flatMap((seat) =>
+              seat.call ? [{ player: seat.player, name: seat.name, call: seat.call }] : [],
+            )}
+          />
         </div>
       </div>
       {/* Fixed to the viewport, so the root's safe-area padding doesn't reach

@@ -49,7 +49,7 @@ import { MeldFlow } from '../components/MeldFlow'
 import { PassSelector } from '../components/PassSelector'
 import { RoundSummary } from '../components/RoundSummary'
 import { Table } from '../components/Table'
-import type { TableState } from '../components/tableTypes'
+import type { SeatCall, TableState } from '../components/tableTypes'
 import { TrickLog } from '../components/TrickLog'
 import type { TrickPlayLogEntry } from '../components/trickPlayTypes'
 
@@ -107,12 +107,12 @@ const AUCTION_LOG: readonly AuctionLogEntry[] = [
   { kind: 'card-pass', fromPlayer: 3, fromName: SEAT_NAMES[3], toPlayer: 1, toName: SEAT_NAMES[1], count: 3 },
 ]
 
-function baseSeats(hands: Hands, statusText?: (p: PlayerIndex) => string | undefined): TableState['seats'] {
+function baseSeats(hands: Hands, call?: (p: PlayerIndex) => SeatCall | undefined): TableState['seats'] {
   const seat = (p: PlayerIndex) => ({
     player: p,
     name: SEAT_NAMES[p],
     hand: hands[p] as readonly Card[],
-    statusText: statusText?.(p),
+    call: call?.(p),
   })
   return [seat(0), seat(1), seat(2), seat(3)]
 }
@@ -128,9 +128,16 @@ export const PHASES = ['auction', 'pass', 'meld', 'trick', 'summary', 'gameover'
 export type PhaseId = (typeof PHASES)[number]
 
 function auctionPhase() {
-  // AuctionFlow's bidding composition: table + BiddingControls overlay + log.
+  // AuctionFlow's bidding composition: table + BiddingControls overlay. No log
+  // panel since #191 — the calls are on the circle now, and the probe has to
+  // compose what the flow composes or it measures a board nobody sees.
   const state: TableState = {
-    seats: baseSeats(HANDS, (p) => (p === 3 ? 'Pass' : p === 1 ? '(310)' : p === 2 ? '(Waiting)' : undefined)),
+    seats: baseSeats(HANDS, (p) =>
+      p === 3 ? { kind: 'pass' }
+      : p === 1 ? { kind: 'bid', amount: 310 }
+      : p === 2 ? { kind: 'waiting' }
+      : { kind: 'turn' },
+    ),
     humanPlayer: HUMAN,
     trick: [],
     trumpSuit: null,
@@ -146,21 +153,15 @@ function auctionPhase() {
       overlay={
         <BiddingControls minBid={320} currentBid={310} suggestedCeiling={330} onBid={noop} onPass={noop} />
       }
-      logPanel={
-        <AuctionLog
-          entries={AUCTION_LOG.slice(0, 5)}
-          currentBid={310}
-          bidWinnerName={SEAT_NAMES[1]}
-          dealerName={SEAT_NAMES[3]}
-        />
-      }
       onOpenMenu={noop}
     />
   )
 }
 
 function passPhase() {
-  // AuctionFlow's passing composition: table + PassSelector overlay + log.
+  // AuctionFlow's passing composition: table + PassSelector overlay. Passing is
+  // past the auction, so no seat carries a call and the circle is empty — same
+  // as the flow.
   const state: TableState = {
     seats: baseSeats(HANDS),
     humanPlayer: HUMAN,
@@ -176,7 +177,6 @@ function passPhase() {
     <Table
       state={state}
       overlay={<PassSelector hand={HANDS[HUMAN]} count={3} trumpSuit={TRUMP} onConfirm={noop} />}
-      logPanel={<AuctionLog entries={AUCTION_LOG} currentBid={BID} bidWinnerName={SEAT_NAMES[1]} dealerName={SEAT_NAMES[3]} />}
       onOpenMenu={noop}
     />
   )

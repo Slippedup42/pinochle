@@ -8,13 +8,12 @@ import type { SkillLevel } from '../persistence/options'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { auctionReducer, initAuctionState, passedPlayersOf } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
-import { AuctionLog } from './AuctionLog'
 import { BiddingControls } from './BiddingControls'
 import { PassRevealDialog } from './PassRevealDialog'
 import { PassSelector } from './PassSelector'
 import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
-import type { SeatState, TableState } from './tableTypes'
+import type { SeatCall, SeatState, TableState } from './tableTypes'
 import { TrumpSelector } from './TrumpSelector'
 
 export const AI_BID_DELAY_MS = 600
@@ -131,20 +130,25 @@ export function AuctionFlow({
   }, [state, onComplete])
 
   const tableState: TableState = useMemo(() => {
+    // The order matters and is not arbitrary: a seat that has passed is out for
+    // the rest of the hand (#93), so 'pass' outranks everything, including still
+    // holding the high bid from before it passed. Below that, the standing high
+    // bid outranks whose turn it is, so the number stays on the board while the
+    // next seat is being asked rather than blinking out and back.
     const seatFor = (p: PlayerIndex): SeatState => {
       const active = state.bidding.active[p]
       const isBidWinner = p === state.bidding.bidWinner && state.bidding.currentBid > 0
-      let statusText: string | undefined
+      let call: SeatCall
       if (!active) {
-        statusText = 'Pass'
+        call = { kind: 'pass' }
       } else if (isBidWinner) {
-        statusText = `(${state.bidding.currentBid})`
+        call = { kind: 'bid', amount: state.bidding.currentBid }
       } else if (state.phase === 'bidding' && p === state.bidding.turn) {
-        // current turn — no status overlay needed
+        call = { kind: 'turn' }
       } else {
-        statusText = '(Waiting)'
+        call = { kind: 'waiting' }
       }
-      return { player: p, name: seatNames[p], hand: state.hands[p], statusText }
+      return { player: p, name: seatNames[p], hand: state.hands[p], call }
     }
     const seats: TableState['seats'] = [seatFor(0), seatFor(1), seatFor(2), seatFor(3)]
     return {
@@ -228,24 +232,17 @@ export function AuctionFlow({
     return null
   }, [state, humanPlayer, options.showBaseBidHint])
 
-  const logPanel = useMemo(() => {
-    const bidWinner = state.bidding.bidWinner
-    return (
-      <AuctionLog
-        entries={state.log}
-        currentBid={state.bid || state.bidding.currentBid}
-        bidWinnerName={bidWinner !== null ? state.seatNames[bidWinner] : undefined}
-        dealerName={state.seatNames[state.dealer]}
-      />
-    )
-  }, [state.log, state.bid, state.bidding.currentBid, state.bidding.bidWinner, state.seatNames, state.dealer])
-
-  return (
-    <Table
-      state={tableState}
-      overlay={overlay}
-      logPanel={logPanel}
-      onOpenMenu={onOpenMenu}
-    />
-  )
+  // No `logPanel` (#191). The auction used to run a corner feed — "Molly bid
+  // 320", "Amanda passed" — naming seats the board was already drawing, in a
+  // box that covered part of it. Every event it reported is now on the circle at
+  // the seat that caused it, so the feed was restating the board in words.
+  //
+  // What the panel's header carried and the circle does not: the dealer, and the
+  // high bid attributed by name. Both are still on screen — the dealer as the
+  // `D` badge in `Seat`, the contract as "Bid: 340 (Nerida)" in `Scoreboard`.
+  // What is genuinely gone is the *history*: who bid what earlier in the
+  // auction, as opposed to where it now stands. `state.log` is still built and
+  // still handed to `onComplete`, so restoring a view of it is a render, not a
+  // rebuild.
+  return <Table state={tableState} overlay={overlay} onOpenMenu={onOpenMenu} />
 }
