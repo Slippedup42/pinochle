@@ -1,4 +1,4 @@
-import type { GameOptions, SkillLevel } from '../persistence/options'
+import { SELECTABLE_SKILLS, type GameOptions, type SelectableSkill } from '../persistence/options'
 
 export interface OptionsPanelProps {
   options: GameOptions
@@ -6,15 +6,23 @@ export interface OptionsPanelProps {
   onClose: () => void
 }
 
-const SKILL_LABELS: Record<SkillLevel, string> = {
-  easy: 'Novice',
-  medium: 'Apprentice',
-  hard: 'Journeyman',
-  proficient: 'Expert',
-  expert: 'Master',
+/**
+ * Plain Easy/Medium/Hard (#194), replacing the five-rung Novice ... Master
+ * ladder. Paul's dad tried the old settings and could not tell what they meant,
+ * which is fair: "Journeyman" against "Expert" is not a difficulty, it is a
+ * guild rank, and two of the five rungs are gone now anyway.
+ *
+ * The keys are engine tier names and the values are what a player reads. That
+ * split is not new — this panel already showed `proficient` as "Expert" and
+ * `expert` as "Master". `SELECTABLE_SKILLS` is the single source of truth for
+ * which tiers are offered and in what order; see `options.ts` for why the engine
+ * still defines five while only three are reachable.
+ */
+const SKILL_LABELS: Record<SelectableSkill, string> = {
+  hard: 'Easy',
+  proficient: 'Medium',
+  expert: 'Hard',
 }
-
-const DISPLAYED_SKILLS: SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
 
 export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) {
   return (
@@ -48,9 +56,9 @@ export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) 
             <select
               className="rounded border border-neutral-300 px-2 py-1 text-sm"
               value={options.opponentSkill}
-              onChange={(e) => onChange({ ...options, opponentSkill: e.target.value as SkillLevel })}
+              onChange={(e) => onChange({ ...options, opponentSkill: e.target.value as SelectableSkill })}
             >
-              {DISPLAYED_SKILLS.map((s) => (
+              {SELECTABLE_SKILLS.map((s) => (
                 <option key={s} value={s}>{SKILL_LABELS[s]}</option>
               ))}
             </select>
@@ -60,9 +68,9 @@ export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) 
             <select
               className="rounded border border-neutral-300 px-2 py-1 text-sm"
               value={options.teammateSkill}
-              onChange={(e) => onChange({ ...options, teammateSkill: e.target.value as SkillLevel })}
+              onChange={(e) => onChange({ ...options, teammateSkill: e.target.value as SelectableSkill })}
             >
-              {DISPLAYED_SKILLS.map((s) => (
+              {SELECTABLE_SKILLS.map((s) => (
                 <option key={s} value={s}>{SKILL_LABELS[s]}</option>
               ))}
             </select>
