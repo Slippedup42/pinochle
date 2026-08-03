@@ -120,6 +120,11 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
           exceed the viewport down to ~240px. Gutters halved from 4 to 2
           (16px -> 8px): 32px of the 390 was board margin.
 
+          13rem stayed put when the cards went 64 -> 80px, so it is no longer
+          "three cards across" the way #161 sized it. That is measured, not an
+          oversight — see `TrickArea` for why the circle deliberately did not
+          grow with the cards, and for the 5px overhang it buys.
+
           Rows are `1fr auto 1fr`, not `auto 1fr auto` (#187). Sizing the outer
           rows to their content and giving the slack to the middle centred the
           circle *within the middle row*, and that row is only centred on the
@@ -130,7 +135,15 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
           gap further. Giving the middle row to the circle and splitting the
           remainder equally makes the circle's centre the board's centre by
           construction. `1fr` (min-content floor), not `minmax(0,1fr)`: the
-          outer rows must never shrink below the hand they hold. */}
+          outer rows must never shrink below the hand they hold.
+
+          The cost of that mirroring scales with the hand, and the 80px card
+          spends what was left: the bottom seat is 252px, so the top row is 252px
+          too even though it holds a name, and the board measures **exactly 844**
+          on a 390x844 phone. It fits, with nothing to spare. A shorter phone
+          scrolls — 375x812 is 14px over — and anything that grows the bottom
+          seat or the circle costs twice its own height here. Re-measure this
+          number before changing either. */}
       <div className="grid flex-1 grid-cols-[minmax(0,1fr)_minmax(0,13rem)_minmax(0,1fr)] grid-rows-[1fr_auto_1fr] items-center justify-items-center gap-2 p-2">
         {seats.map((seat) => (
           <div
