@@ -1,11 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Card, FORCED_BID, Suit } from '../engine/card'
+import { Card, Deck, FORCED_BID, Suit } from '../engine/card'
+import { partnerOf } from '../engine/round'
+import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import type { PlayerIndex } from '../engine/trick'
 import { AI_BID_DELAY_MS, AuctionFlow } from './AuctionFlow'
 import type { AuctionState } from './auctionReducer'
 import { auctionReducer, initAuctionState, passedPlayersOf } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
+import { DEFAULT_OPTIONS, type GameOptions, type SkillLevel } from '../persistence/options'
 
 const SEAT_NAMES: Record<PlayerIndex, string> = { 0: 'You', 1: 'West', 2: 'Partner', 3: 'East' }
 const SCORES = { 0: 0, 1: 0 }
@@ -357,5 +360,118 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
     // text query matches both and cannot tell "seat 2 opened" from "the high bid
     // is 300" — which is the whole point of the assertion (#191).
     expect(screen.getByLabelText('Partner: bid 300')).not.toBeNull()
+  })
+
+  /**
+   * The pass is three cards at every skill level, end to end (#196).
+   *
+   * Paul's dad reported that changing the AI skill let him pass **4** cards.
+   * `passing.test.ts` fixes the count in the engine; this fixes it where he
+   * actually saw it — the wiring from `GameOptions` through `AuctionFlow` into
+   * the selector's `count` prop, and the selector's own refusal of a fourth.
+   *
+   * `PassSelector.test.tsx` already proves the component honours whatever
+   * `count` it is handed, and that is exactly the gap: a component that
+   * faithfully enforces the wrong number passes its own suite. The number has to
+   * be checked where it is chosen.
+   */
+  it.each(['easy', 'medium', 'hard', 'proficient', 'expert'] as const)(
+    'asks the human for exactly 3 cards, and refuses a 4th, at skill %s',
+    (skill) => {
+      vi.useFakeTimers()
+      const hands = buildTestHands()
+
+      render(
+        <AuctionFlow
+          initialHands={hands}
+          seatNames={SEAT_NAMES}
+          humanPlayer={0}
+          dealer={3}
+          scoresByTeam={SCORES}
+          options={{ ...DEFAULT_OPTIONS, opponentSkill: skill, teammateSkill: skill } as GameOptions}
+          onComplete={vi.fn()}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Bid' }))
+      act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+      act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+      act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+      fireEvent.click(screen.getByText('Hearts'))
+      act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
+
+      const heading = screen.getByRole('heading', { name: /Choose \d+ cards to pass/ })
+      expect(heading.textContent).toContain('Choose 3 cards to pass')
+
+      const panel = within(heading.closest('div') as HTMLElement)
+      const selectable = panel.getAllByRole('button').filter((b) => b.hasAttribute('aria-pressed'))
+      expect(selectable.length).toBeGreaterThan(3)
+
+      // Three land; the fourth is refused and Confirm only ever opens on three.
+      for (const card of selectable.slice(0, 3)) fireEvent.click(card)
+      expect(panel.getByRole('button', { name: 'Confirm pass' })).not.toHaveProperty('disabled', true)
+      fireEvent.click(selectable[3])
+      expect(selectable.filter((b) => b.getAttribute('aria-pressed') === 'true')).toHaveLength(3)
+      expect(heading.textContent).toContain('(3/3 selected)')
+    },
+  )
+})
+
+/**
+ * The exchange conserves cards (#196).
+ *
+ * The count invariants in `passing.test.ts` say each side *hands over* three;
+ * they say nothing about what the reducer does with them. A pass that removed a
+ * card by value rather than by identity, or appended before removing, would
+ * leave a seat holding 11 or 13 and satisfy every test above — and "my hand has
+ * the wrong number of cards" is precisely the shape of the original report.
+ *
+ * So this runs the real exchange over real deals at every skill and asserts the
+ * two properties that make it a *pass* rather than a rewrite: every seat still
+ * holds twelve, and the 48 distinct cards of the deck are all still somewhere.
+ */
+describe('the pass exchange conserves the deck (#196)', () => {
+  const SKILLS: readonly SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
+  const TRUMPS = [Suit.Spades, Suit.Diamonds, Suit.Clubs, Suit.Hearts] as const
+
+  it('leaves every seat on 12 cards and all 48 cards in play', () => {
+    const bad: string[] = []
+
+    for (let deal = 0; deal < 40; deal++) {
+      const deck = new Deck()
+      deck.shuffle()
+      const hands = deck.deal()
+      const bidder = (deal % 4) as PlayerIndex
+      const partner = partnerOf(bidder)
+      const trump = TRUMPS[deal % 4]
+      const skill = SKILLS[deal % SKILLS.length]
+
+      let state: AuctionState = {
+        ...initAuctionState(hands, 0, SEAT_NAMES, SCORES),
+        bidWinner: bidder,
+        bid: 300,
+        trumpSuit: trump,
+        phase: 'passing',
+      }
+
+      state = auctionReducer(state, {
+        type: 'PASS_CARDS',
+        from: bidder,
+        cards: choosePassCards(hands[bidder], PASS_COUNT, trump, true, skill),
+      })
+      state = auctionReducer(state, {
+        type: 'PASS_CARDS',
+        from: partner,
+        cards: choosePassCards(hands[partner], PASS_COUNT, trump, false, skill),
+      })
+
+      const where = `${skill}/${trump}/bidder ${bidder}`
+      const sizes = state.hands.map((h) => h.length)
+      if (sizes.some((n) => n !== 12)) bad.push(`${where}: hand sizes ${sizes.join(',')}`)
+      const everyCard = new Set(state.hands.flat().map((c) => c.toString()))
+      if (everyCard.size !== 48) bad.push(`${where}: ${everyCard.size} of 48 cards survived`)
+    }
+
+    expect(bad.slice(0, 10)).toEqual([])
   })
 })
