@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { Card, Suit } from './card'
-import { bidderPassSelection, choosePassCards, partnerPassSelection } from './passing'
+import type { SkillLevel } from '../persistence/options'
+import { Card, Deck, Suit } from './card'
+import { PASS_COUNT, bidderPassSelection, choosePassCards, partnerPassSelection } from './passing'
 
 describe('partnerPassSelection', () => {
   it('D/S category: sends QS and JD to the bidder first', () => {
@@ -145,5 +146,72 @@ describe('choosePassCards', () => {
 
     expect(choosePassCards(hand, 3, Suit.Hearts, true)).toEqual([onlyCard])
     expect(choosePassCards(hand, 3, Suit.Hearts, false)).toEqual([onlyCard])
+  })
+})
+
+/**
+ * The 3-card pass, pinned against the skill dial (#196).
+ *
+ * Paul's dad reported that changing the AI skill level let him pass **4** cards
+ * instead of 3. It was not reproducible — he was on a stale deployed build whose
+ * one-row hand overflowed and clipped, which is the likelier thing he saw — but
+ * "not reproducible" is a weaker guarantee than the rules deserve, and the
+ * report named a dial that nothing should connect to the pass at all.
+ *
+ * So this fixes the count as a property rather than trusting that no future
+ * skill row grows a `passCount` field. Every combination that a real game can
+ * produce — five levels x both roles x four trumps, over real dealt hands —
+ * must return exactly three distinct cards that the hand actually held.
+ *
+ * `pinochle_rules.md` is the authority: the pass is three cards, always. The
+ * existing "returns exactly `count`" tests above take `count` as a parameter and
+ * so cannot catch a caller passing the wrong one; these fix the number itself.
+ */
+describe('the 3-card pass is invariant across skill levels (#196)', () => {
+  const SKILLS: readonly SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
+  const TRUMPS = [Suit.Spades, Suit.Diamonds, Suit.Clubs, Suit.Hearts] as const
+
+  it('is three cards, and no skill level is wired to change it', () => {
+    expect(PASS_COUNT).toBe(3)
+  })
+
+  it('gives exactly 3 distinct cards from the hand, at every skill, role and trump', () => {
+    // Reported as a list rather than asserted per-iteration: a single failing
+    // combination is far more useful than the first one, since the whole
+    // question is *which* dial position misbehaves.
+    const bad: string[] = []
+
+    for (let deal = 0; deal < 60; deal++) {
+      const deck = new Deck()
+      deck.shuffle()
+      const hands = deck.deal()
+
+      for (const skill of SKILLS) {
+        for (const isBidder of [true, false]) {
+          for (const trump of TRUMPS) {
+            for (const hand of hands) {
+              const chosen = choosePassCards(hand, PASS_COUNT, trump, isBidder, skill)
+              const where = `${skill}/${isBidder ? 'bidder' : 'partner'}/${trump}`
+              if (chosen.length !== 3) bad.push(`${where}: passed ${chosen.length} cards`)
+              if (new Set(chosen).size !== chosen.length) bad.push(`${where}: duplicated a card`)
+              if (chosen.some((c) => !hand.includes(c))) bad.push(`${where}: passed a card not in hand`)
+            }
+          }
+        }
+      }
+    }
+
+    expect(bad.slice(0, 10)).toEqual([])
+  })
+
+  it('agrees on the count across every skill level for one identical hand', () => {
+    const deck = new Deck()
+    deck.shuffle()
+    const [hand] = deck.deal()
+
+    for (const isBidder of [true, false]) {
+      const counts = SKILLS.map((skill) => choosePassCards(hand, PASS_COUNT, Suit.Spades, isBidder, skill).length)
+      expect(new Set(counts)).toEqual(new Set([3]))
+    }
   })
 })
