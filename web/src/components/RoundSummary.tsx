@@ -1,8 +1,14 @@
 import type { TeamId } from '../engine/round'
-import type { RoundSummaryData } from './scoreTypes'
+import { HandLedger } from './HandLedger'
+import type { HandLedgerEntry, RoundSummaryData } from './scoreTypes'
 
 export interface RoundSummaryProps {
   data: RoundSummaryData
+  /** Every hand played this game so far, including the one this screen is
+   * summarizing (#198) — rendered as a scrolling ledger under the round's
+   * own numbers. A separate prop rather than part of `RoundSummaryData`
+   * (see scoreTypes.ts's HandLedgerEntry); omit to render without one. */
+  ledger?: readonly HandLedgerEntry[]
   /** Called when the player dismisses the summary to continue. Optional
    * since this screen doesn't own round-advance logic (that's the
    * trick-play/bid UI, separate issues) — omit to render without a
@@ -20,7 +26,7 @@ const TEAM_IDS: readonly TeamId[] = [0, 1]
  * round-loop/game-orchestrator issue) decides when to show it and what
  * `onContinue` does.
  */
-export function RoundSummary({ data, onContinue }: RoundSummaryProps) {
+export function RoundSummary({ data, ledger, onContinue }: RoundSummaryProps) {
   const { meldPointsByTeam, trickPointsByTeam, roundScoreByTeam, bidWinnerTeam, bid, cumulativeScoresByTeam, teamNames } =
     data
   // scoreRound() only ever produces a negative net score for the bidding
@@ -29,7 +35,9 @@ export function RoundSummary({ data, onContinue }: RoundSummaryProps) {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 text-neutral-900 shadow-xl">
+      {/* max-h-full + scroll (#198): the ledger grows with the game, and on a
+          short phone a long one would otherwise push Continue off-screen. */}
+      <div className="max-h-full w-full max-w-sm overflow-y-auto rounded-lg bg-white p-6 text-neutral-900 shadow-xl">
         <h2 className="text-lg font-semibold">Round summary</h2>
         <p className="mt-1 text-sm text-neutral-600">
           {teamNames[bidWinnerTeam]} bid {bid} and{' '}
@@ -82,6 +90,8 @@ export function RoundSummary({ data, onContinue }: RoundSummaryProps) {
             </tr>
           </tbody>
         </table>
+
+        {ledger && <HandLedger entries={ledger} teamNames={teamNames} />}
 
         {onContinue && (
           <button

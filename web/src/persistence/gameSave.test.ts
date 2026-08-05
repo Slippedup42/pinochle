@@ -120,6 +120,37 @@ describe('game save persistence', () => {
     expect(hasSavedGame()).toBe(false)
   })
 
+  it('round-trips the game ledger (#198)', () => {
+    const state: GameFlowState = {
+      ...initGameFlowState(3),
+      phase: 'round-summary',
+      handLedger: [
+        {
+          hand: 1,
+          bidWinnerTeam: 0,
+          bid: 300,
+          trumpSuit: Suit.Hearts,
+          wentSet: false,
+          conceded: false,
+          roundScoreByTeam: { 0: 320, 1: 90 },
+          cumulativeScoresByTeam: { 0: 320, 1: 90 },
+        },
+      ],
+    }
+    saveGame(state)
+    expect(loadGame()!.handLedger).toEqual(state.handLedger)
+  })
+
+  it('resumes a save written before the ledger existed with an empty one (#198)', () => {
+    // The save format's version wasn't bumped for the ledger, so a save
+    // already on a player's device parses but has no handLedger — it has to
+    // come back as [] rather than undefined, which the reducer would crash
+    // appending to at the end of the next hand.
+    const { handLedger: _omitted, ...preLedgerState } = initGameFlowState(3)
+    window.localStorage.setItem('pinochle:save:v1', JSON.stringify({ version: 1, state: preLedgerState }))
+    expect(loadGame()!.handLedger).toEqual([])
+  })
+
   it('treats corrupt JSON as no save', () => {
     window.localStorage.setItem('pinochle:save:v1', '{not json')
     expect(loadGame()).toBeNull()

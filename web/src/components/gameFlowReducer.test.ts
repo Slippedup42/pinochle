@@ -4,10 +4,23 @@ import type { Hands } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
 import type { AuctionResult } from './auctionTypes'
 import { gameFlowReducer, initGameFlowState, type GameFlowState } from './gameFlowReducer'
+import type { HandLedgerEntry } from './scoreTypes'
 import type { TrickPlayResult } from './trickPlayTypes'
 
 function emptyHands(): Hands {
   return [[], [], [], []]
+}
+
+/** One already-played hand, for the ledger tests (#198). */
+const ledgerEntry: HandLedgerEntry = {
+  hand: 1,
+  bidWinnerTeam: 0,
+  bid: 300,
+  trumpSuit: Suit.Hearts,
+  wentSet: false,
+  conceded: false,
+  roundScoreByTeam: { 0: 320, 1: 90 },
+  cumulativeScoresByTeam: { 0: 320, 1: 90 },
 }
 
 describe('initGameFlowState', () => {
@@ -173,6 +186,55 @@ describe('gameFlowReducer', () => {
       const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 0, 1: 0 }, trickWinners: [] }
       expect(gameFlowReducer(state, { type: 'TRICK_COMPLETE', result: trickResult })).toBe(state)
     })
+
+    it('appends the hand to the game ledger, numbered and carrying the bid (#198)', () => {
+      const state = stateAfterAuction()
+      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 100, 1: 150 }, trickWinners: [] }
+      const next = gameFlowReducer(state, { type: 'TRICK_COMPLETE', result: trickResult })
+
+      expect(next.handLedger).toHaveLength(1)
+      expect(next.handLedger[0]).toEqual({
+        hand: 1,
+        bidWinnerTeam: 0,
+        bid: 300,
+        trumpSuit: Suit.Hearts,
+        // 190 meld + 100 tricks = 290 < 300 -> set (see the first test above).
+        wentSet: true,
+        conceded: false,
+        roundScoreByTeam: { 0: -300, 1: 150 },
+        cumulativeScoresByTeam: { 0: -300, 1: 150 },
+      })
+    })
+
+    it('numbers each hand after the last and keeps the earlier ones (#198)', () => {
+      const first = gameFlowReducer(stateAfterAuction(), {
+        type: 'TRICK_COMPLETE',
+        result: { trickPointsByTeam: { 0: 100, 1: 150 }, trickWinners: [] },
+      })
+      // Second hand, played from the scores and ledger the first one left.
+      const second = gameFlowReducer(
+        { ...stateAfterAuction({}, first.scoresByTeam), handLedger: first.handLedger },
+        { type: 'TRICK_COMPLETE', result: { trickPointsByTeam: { 0: 200, 1: 50 }, trickWinners: [] } },
+      )
+
+      expect(second.handLedger.map((e) => e.hand)).toEqual([1, 2])
+      expect(second.handLedger[0].roundScoreByTeam).toEqual({ 0: -300, 1: 150 })
+      // 190 meld + 200 tricks = 390 >= 300 -> made, and the running totals
+      // pick up where hand 1 left off.
+      expect(second.handLedger[1].wentSet).toBe(false)
+      expect(second.handLedger[1].roundScoreByTeam).toEqual({ 0: 390, 1: 50 })
+      expect(second.handLedger[1].cumulativeScoresByTeam).toEqual({ 0: 90, 1: 200 })
+    })
+
+    it('marks a folded hand as conceded in the ledger (#198)', () => {
+      const state = stateAfterAuction()
+      const next = gameFlowReducer(state, {
+        type: 'TRICK_COMPLETE',
+        result: { trickPointsByTeam: { 0: 0, 1: 0 }, trickWinners: [], conceded: true },
+      })
+      expect(next.handLedger[0].conceded).toBe(true)
+      expect(next.handLedger[0].wentSet).toBe(true)
+    })
   })
 
   describe('CONTINUE_ROUND', () => {
@@ -224,6 +286,13 @@ describe('gameFlowReducer', () => {
       const state = initGameFlowState(3)
       expect(gameFlowReducer(state, { type: 'CONTINUE_ROUND' })).toBe(state)
     })
+
+    it('carries the game ledger into the next round (#198)', () => {
+      const state = { ...stateAfterRoundSummary({ 0: 100, 1: 100 }), handLedger: [ledgerEntry] }
+      const next = gameFlowReducer(state, { type: 'CONTINUE_ROUND' })
+      expect(next.phase).toBe('dealing')
+      expect(next.handLedger).toEqual([ledgerEntry])
+    })
   })
 
   describe('NEW_GAME', () => {
@@ -243,6 +312,11 @@ describe('gameFlowReducer', () => {
       expect(next.dealer).toBe(3)
       expect(next.scoresByTeam).toEqual({ 0: 0, 1: 0 })
       expect(next.gameOverData).toBeNull()
+    })
+
+    it('clears the game ledger so a new game starts from an empty one (#198)', () => {
+      const state: GameFlowState = { ...initGameFlowState(1), phase: 'game-over', handLedger: [ledgerEntry] }
+      expect(gameFlowReducer(state, { type: 'NEW_GAME', dealer: 3 }).handLedger).toEqual([])
     })
 
     it('redraws seat and team names for the new game (#73)', () => {

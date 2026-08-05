@@ -22,7 +22,7 @@ import { scoreRound, teamOf, type Hands, type TeamId } from '../engine/round'
 import { sampleTeamNames } from '../engine/teamNames'
 import type { PlayerIndex } from '../engine/trick'
 import type { AuctionResult } from './auctionTypes'
-import type { GameOverData, RoundSummaryData } from './scoreTypes'
+import type { GameOverData, HandLedgerEntry, RoundSummaryData } from './scoreTypes'
 import type { TrickPlayState } from './trickPlayReducer'
 import type { TrickPlayResult } from './trickPlayTypes'
 
@@ -50,6 +50,13 @@ export interface GameFlowState {
    * trick-play scoring. null until the meld phase completes. */
   readonly meldPointsByTeam: Record<TeamId, number> | null
   readonly roundSummary: RoundSummaryData | null
+  /** Hand-by-hand history of the game so far (#198), oldest first — one
+   * entry appended per completed round, cleared by NEW_GAME. The
+   * round-summary and game-over screens render it as a scrolling ledger;
+   * nothing in the game loop reads it back, so it is display-only state
+   * (which is why it lives here, alongside the scores it summarizes,
+   * rather than being reconstructed from a round log that doesn't exist). */
+  readonly handLedger: readonly HandLedgerEntry[]
   readonly gameOverData: GameOverData | null
   /** Local autosave (#54): a snapshot of TrickPlayFlow's internal state,
    * taken after each completed trick (never mid-trick/mid-AI-delay — see
@@ -131,6 +138,7 @@ export function initGameFlowState(dealer: PlayerIndex): GameFlowState {
     auctionResult: null,
     meldPointsByTeam: null,
     roundSummary: null,
+    handLedger: [],
     gameOverData: null,
     trickPlayCheckpoint: null,
     seatNames: randomSeatNames(),
@@ -221,10 +229,25 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         cumulativeScoresByTeam,
         teamNames: state.teamNames,
       }
+      // Game ledger (#198): one row per completed hand. scoreRound only
+      // ever returns a negative score for the bidding team falling short of
+      // their bid, so that sign is what "went set" means here — the same
+      // test RoundSummary.tsx makes.
+      const ledgerEntry: HandLedgerEntry = {
+        hand: state.handLedger.length + 1,
+        bidWinnerTeam,
+        bid,
+        trumpSuit: state.auctionResult.trumpSuit,
+        wentSet: roundScoreByTeam[bidWinnerTeam] < 0,
+        conceded: action.result.conceded === true,
+        roundScoreByTeam,
+        cumulativeScoresByTeam,
+      }
       return {
         ...state,
         phase: 'round-summary',
         roundSummary,
+        handLedger: [...state.handLedger, ledgerEntry],
         scoresByTeam: cumulativeScoresByTeam,
         trickPlayCheckpoint: null,
       }
@@ -257,6 +280,7 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
         auctionResult: null,
         meldPointsByTeam: null,
         roundSummary: null,
+        handLedger: [],
         gameOverData: null,
         trickPlayCheckpoint: null,
         seatNames: randomSeatNames(),
