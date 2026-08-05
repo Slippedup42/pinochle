@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { RoundSummaryData } from './scoreTypes'
+import { Suit } from '../engine/card'
+import type { HandLedgerEntry, RoundSummaryData } from './scoreTypes'
 import { RoundSummary } from './RoundSummary'
 
 // No global `afterEach` is wired up for @testing-library/react's automatic
@@ -28,6 +29,29 @@ const wentSetData: RoundSummaryData = {
   teamNames: { 0: 'Team A', 1: 'Team B' },
 }
 
+const ledger: HandLedgerEntry[] = [
+  {
+    hand: 1,
+    bidWinnerTeam: 0,
+    bid: 250,
+    trumpSuit: Suit.Spades,
+    wentSet: false,
+    conceded: false,
+    roundScoreByTeam: { 0: 420, 1: 380 },
+    cumulativeScoresByTeam: { 0: 420, 1: 380 },
+  },
+  {
+    hand: 2,
+    bidWinnerTeam: 0,
+    bid: 180,
+    trumpSuit: Suit.Hearts,
+    wentSet: false,
+    conceded: false,
+    roundScoreByTeam: { 0: 190, 1: 144 },
+    cumulativeScoresByTeam: { 0: 610, 1: 524 },
+  },
+]
+
 describe('RoundSummary', () => {
   it('renders meld, trick, round, and running scores for both teams', () => {
     render(<RoundSummary data={madeContractData} />)
@@ -53,6 +77,23 @@ describe('RoundSummary', () => {
   it('omits the continue button when onContinue is not supplied', () => {
     render(<RoundSummary data={madeContractData} />)
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('shows every hand played so far when given a ledger (#198)', () => {
+    render(<RoundSummary data={madeContractData} ledger={ledger} />)
+    expect(screen.getByText('Game ledger')).not.toBeNull()
+    // Scoped to the ledger's own table — this screen renders a second one
+    // above it for the round just played.
+    const table = screen.getByRole('table', { name: /Every hand played/ })
+    // Header row + one row per hand.
+    expect(within(table).getAllByRole('row')).toHaveLength(3)
+    expect(within(table).getByText('+420')).not.toBeNull()
+    expect(within(table).getByText('+190')).not.toBeNull()
+  })
+
+  it('renders without a ledger for callers that do not have one', () => {
+    render(<RoundSummary data={madeContractData} />)
+    expect(screen.queryByText('Game ledger')).toBeNull()
   })
 
   it('calls onContinue when the continue button is clicked', () => {

@@ -209,13 +209,20 @@ export function GameFlow({ initialState, options = DEFAULT_OPTIONS, onOpenMenu }
   }
 
   if (state.phase === 'round-summary' && state.roundSummary) {
-    return <RoundSummary data={state.roundSummary} onContinue={() => dispatch({ type: 'CONTINUE_ROUND' })} />
+    return (
+      <RoundSummary
+        data={state.roundSummary}
+        ledger={state.handLedger}
+        onContinue={() => dispatch({ type: 'CONTINUE_ROUND' })}
+      />
+    )
   }
 
   if (state.phase === 'game-over' && state.gameOverData) {
     return (
       <GameOverScreen
         data={state.gameOverData}
+        ledger={state.handLedger}
         onNewGame={() => {
           // Local autosave (#54): the finished game's save would otherwise
           // briefly linger on disk (the autosave effect above skips writes

@@ -127,6 +127,12 @@ function reviveAuctionResult(result: AuctionResult): AuctionResult {
 function reviveGameFlowState(state: GameFlowState): GameFlowState {
   return {
     ...state,
+    // Game ledger (#198) postdates this save format, and the version wasn't
+    // bumped for it: a save written before it exists parses fine and would
+    // otherwise resume with `handLedger: undefined`, crashing the reducer's
+    // append on the first completed hand. An in-progress game predating the
+    // ledger simply resumes with an empty one rather than being discarded.
+    handLedger: state.handLedger ?? [],
     hands: reviveHands(state.hands),
     auctionResult: state.auctionResult ? reviveAuctionResult(state.auctionResult) : null,
     trickPlayCheckpoint: state.trickPlayCheckpoint ? reviveTrickPlayState(state.trickPlayCheckpoint) : null,
