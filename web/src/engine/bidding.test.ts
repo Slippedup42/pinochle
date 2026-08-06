@@ -372,14 +372,20 @@ describe('chooseBid', () => {
       expect(chooseBid(0, strongHand, 300, 10, context)).toBe(310)
     })
 
-    it('defensively pushes against an opening bid of 300 unless the hand is truly hopeless', () => {
+    it('defensively pushes against an opening bid unless the hand is truly hopeless', () => {
+      // Written against OPENING_BID rather than the literal it used to pin:
+      // the rule is "the opponent opened at the minimum", and #200 moved that
+      // minimum from 300 to 250. Held at 300 this test kept feeding a level
+      // that is no longer an opener, so `currentBid <= OPENING_BID` went false
+      // and the push it exists to check stopped firing at all.
+      const opener = { player: 1 as PlayerIndex, amount: OPENING_BID }
       // runOnlyHand has ceiling 300 (Run 150 + Ace 20 + baseline adj 130) >= DEFENSIVE_PUSH_FLOOR (200)
-      const context = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 300 }] })
-      expect(chooseBid(0, runOnlyHand, 300, 10, context)).toBe(310)
+      const context = baseContext({ everBid: true, bidHistory: [opener] })
+      expect(chooseBid(0, runOnlyHand, OPENING_BID, 10, context)).toBe(OPENING_BID + 10)
 
       // weakHand has ceiling 130 (no meld, no aces) < DEFENSIVE_PUSH_FLOOR (200) — truly hopeless
-      const hopelessContext = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 300 }] })
-      expect(chooseBid(0, weakHand, 300, 10, hopelessContext)).toBeNull()
+      const hopelessContext = baseContext({ everBid: true, bidHistory: [opener] })
+      expect(chooseBid(0, weakHand, OPENING_BID, 10, hopelessContext)).toBeNull()
     })
 
     it('relaxes the ceiling to at least 330 once my partner has bid', () => {

@@ -4,7 +4,7 @@
 // hooked up, that the two models stay apart, and that the evaluator responds to
 // the bid level, which is the whole reason it replaces a fixed threshold.
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { type AuctionContext, chooseBid } from './bidding'
 import { Card, OPENING_BID, type Rank, Suit } from './card'
 import { evaluateBid, evaluateFold, modelLogit, shouldBid } from './evaluator'
@@ -223,8 +223,26 @@ describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
   it('leaves easy on the meld-only path, which the evaluator never enters', () => {
     // Skill 1 short-circuits before any Base Bid valuation happens, so its
     // bidding is unchanged by #114 and MELD_ONLY_TRICK_ESTIMATE stays live.
-    // A lone trump Run scores 150 meld + 60 flat + noise in [-30, 30], never
-    // reaching the 300 opening bid.
-    expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'easy')).toBeNull()
+    // This hand melds 190 under Hearts (Run 150 + Royal Marriage 40), so the
+    // meld-only ceiling is 190 + 60 flat + noise in [-30, 30] = [220, 280].
+    //
+    // The noise has to be pinned. Against the old 300 opener the whole range
+    // fell short and a bare `toBeNull()` was deterministic; #200's 250 opener
+    // sits *inside* it, so the same assertion became a coin flip that passed
+    // roughly half the time. Pinning it is also a sharper check than the old
+    // one: at minimum noise `easy` declines a hand the evaluator opens, which
+    // is the divergence this test is named for, and at maximum noise the
+    // decision follows meld + flat arithmetic rather than the model.
+    const random = vi.spyOn(Math, 'random')
+    try {
+      random.mockReturnValue(0) // noise -30 -> ceiling 220, under the opener
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'easy')).toBeNull()
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
+
+      random.mockReturnValue(1) // noise +30 -> ceiling 280, over it
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'easy')).toBe(OPENING_BID)
+    } finally {
+      random.mockRestore()
+    }
   })
 })

@@ -44,13 +44,16 @@ from standard card-game rank order.
 
 ## Phase 1: Bidding
 
-- Opening bid: **300**. Minimum raise: **10**.
+- Opening bid: **250** (300 before #200). Minimum raise: **10**.
 - Starting with the player left of the dealer, bidding rotates clockwise.
 - On your turn: bid `current_bid + 10` (or more), or pass.
 - Once you pass, you're out of the rotation for the rest of the auction.
 - Bidding ends when 3 players have passed. The 4th is the **ContractWinner**.
 - Edge case: if all 4 players pass without ever bidding, the dealer is
-  forced to take the contract at a reduced **forced bid of 250**.
+  forced to take the contract at a **forced bid of 250**. Since the opening
+  bid came down to 250 (#200) this is no longer a reduction — passing the
+  auction out lands the dealer on the same rung the first seat could have
+  opened at.
 
 ## Phase 2: Trump & Passing
 

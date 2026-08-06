@@ -31,8 +31,16 @@ RANK_VALUE = {rank: i for i, rank in enumerate(RANKS)}
 
 GAME_WIN_SCORE = 1000
 GAME_LOSE_SCORE = -1000
-OPENING_BID = 300
-FORCED_BID = 250  # what the dealer is stuck with if everyone passes without ever bidding
+# Lowest rung the auction can open at. 250 since #200 (was 300): a house
+# preference, not a rules discovery. Only the opening rung moved - the minimum
+# raise (10), OPENER_THRESHOLD (320, the hand a bidder needs to open at all)
+# and PARTNER_PASSED_FLOOR (320) are unchanged, so the AI opens on the same set
+# of hands as before and simply commits to 250 rather than 300 when it does.
+OPENING_BID = 250
+# What the dealer is stuck with if everyone passes without ever bidding. Equal
+# to OPENING_BID since #200, so passing the auction out no longer discounts
+# anything - the dealer lands on the rung the first seat could have opened at.
+FORCED_BID = 250
 
 
 class Card:

@@ -64,11 +64,13 @@ export const MAX_BID_MELD_THRESHOLD = 300
 
 // Minimum Base Bid to justify opening at all.
 export const OPENER_THRESHOLD = 320
-// Minimum ceiling to justify a defensive push against an opening bid of 300.
-// Hands at or above this floor should almost always raise a 300 opener,
-// since even moderate hands can contribute toward making 300 with partner's
-// help, and pushing deprives the opponent of a cheap contract. "Truly
-// hopeless" hands (no meld, no aces — ceiling ~130) fall below this floor.
+// Minimum ceiling to justify a defensive push against an opening bid (250
+// since #200, 300 before). Hands at or above this floor should almost always
+// raise an opener, since even moderate hands can contribute toward making it
+// with partner's help, and pushing deprives the opponent of a cheap contract.
+// "Truly hopeless" hands (no meld, no aces — ceiling ~130) fall below this
+// floor. It is a hand-strength threshold, not a bid level, so it did not move
+// with the opener.
 export const DEFENSIVE_PUSH_FLOOR = 200
 
 /**
@@ -576,12 +578,12 @@ export function chooseBid(
 
   const nextBid = currentBid + minIncrement
 
-  // Defensive push (#78): when opponent opened at the minimum (300), respond
-  // unless the hand is truly hopeless. The static rule is a ceiling floor
-  // (DEFENSIVE_PUSH_FLOOR) on the reasoning that 300 is the absolute floor and
-  // is almost always raised — even a moderate hand can contribute toward making
-  // 300 with partner's help, and pushing deprives the opponent of a cheap
-  // contract. The distilled rule asks the evaluator about the level actually
+  // Defensive push (#78): when opponent opened at the minimum (OPENING_BID —
+  // 250 since #200), respond unless the hand is truly hopeless. The static
+  // rule is a ceiling floor (DEFENSIVE_PUSH_FLOOR) on the reasoning that the
+  // opening rung is the absolute floor and is almost always raised — even a
+  // moderate hand can contribute toward making it with partner's help, and
+  // pushing deprives the opponent of a cheap contract. The distilled rule asks the evaluator about the level actually
   // being pushed to; declining here is not the end of the auction, it just
   // falls through to the ordinary raise ladder below.
   const pushLevel = partnerPassed ? Math.max(nextBid, PARTNER_PASSED_FLOOR) : nextBid
