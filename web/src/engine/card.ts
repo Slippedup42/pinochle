@@ -33,8 +33,17 @@ export const COPIES_PER_CARD: readonly CopyId[] = [1, 2]
 
 export const GAME_WIN_SCORE = 1000
 export const GAME_LOSE_SCORE = -1000
-export const OPENING_BID = 300
+// Lowest rung the auction can open at. **250 since #200** (was 300): a house
+// preference, not a rules discovery. Only the opening rung moved — the minimum
+// raise (10), OPENER_THRESHOLD (320, the hand an AI needs to open at all) and
+// PARTNER_PASSED_FLOOR (320) are unchanged, so the AI opens on the same set of
+// hands as before and simply commits to 250 rather than 300 when it does.
+export const OPENING_BID = 250
 // What the dealer is stuck with if everyone passes without ever bidding.
+// Equal to OPENING_BID since #200, so passing the auction out no longer
+// discounts anything — the dealer lands on the rung the first seat could have
+// opened at. Kept as its own constant because the two mean different things
+// and only one of them is a house preference.
 // Coincidentally equal to round.ts's MAX_TRICK_POINTS and entirely unrelated
 // to it — one is an auction floor, the other the trick points in a deck. Do
 // not use either in place of the other (#178).

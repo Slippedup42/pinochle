@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Card, Deck, FORCED_BID, Suit } from '../engine/card'
+import { Card, Deck, FORCED_BID, OPENING_BID, Suit } from '../engine/card'
 import { partnerOf } from '../engine/round'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import type { PlayerIndex } from '../engine/trick'
@@ -279,7 +279,9 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
     expect(onComplete).toHaveBeenCalledOnce()
     const result = onComplete.mock.calls[0][0] as AuctionResult
     expect(result.bidWinner).toBe(0)
-    expect(result.bid).toBe(300)
+    // The human took the contract at the opening rung, whatever that currently
+    // is — 250 since #200. A literal here pinned the rung, not the behaviour.
+    expect(result.bid).toBe(OPENING_BID)
     expect(result.trumpSuit).toBe(Suit.Hearts)
     // The 3 cards the human chose to pass are gone from their final hand.
     expect(result.hands[0].some((c) => c.suit === Suit.Clubs && c.rank === 'A')).toBe(false)
@@ -355,11 +357,11 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
 
     // Left of dealer (1) is seat 2 (Partner), and this hand is worth a contract.
     act(() => vi.advanceTimersByTime(AI_BID_DELAY_MS))
-    // Asserted on the seat's call on the board, not on the bare text "300":
+    // Asserted on the seat's call on the board, not on the bare opening number:
     // the Scoreboard shows the same number as the standing contract, so a plain
-    // text query matches both and cannot tell "seat 2 opened" from "the high bid
-    // is 300" — which is the whole point of the assertion (#191).
-    expect(screen.getByLabelText('Partner: bid 300')).not.toBeNull()
+    // text query matches both and cannot tell "seat 2 opened" from "the high
+    // bid is the opener" — which is the whole point of the assertion (#191).
+    expect(screen.getByLabelText(`Partner: bid ${OPENING_BID}`)).not.toBeNull()
   })
 
   /**
