@@ -17,9 +17,19 @@ import { RED_SUITS, SUIT_GLYPH } from './suitGlyphs'
  * the card shrank under them.
  *
  * Widths: `lg` went 80 -> 64 in #161 to fit a 12-card hand on a phone, and back
- * to **80** here now that #187's two rows only have to fit six. `aspect-5/7` is
- * what turns each width into a card, so the heights follow (lg 112, md 67,
- * sm 39) and the ratio is unchanged.
+ * to **80** here now that #187's two rows only have to fit six. `sm` went
+ * 28 -> **42** in #202 — exactly 1.5x, the size Paul asked for after his dad
+ * found the meld cards hard to read. `aspect-5/7` is what turns each width into
+ * a card, so the heights follow (lg 112, md 67, sm 59) and the ratio is
+ * unchanged.
+ *
+ * **Why 42 and not more.** `sm` is only ever used inside MeldFlow's panel, whose
+ * columns are ~147px on a 375px phone. Cards wrap at 3 per row from 40px all the
+ * way to 47px, so anything in that band costs the same rows; 48px is where it
+ * drops to 2 and a five-card Run needs three rows. Measured on a real 19-card
+ * meld at 375x812: the panel stands 509px tall at 28, 668 at 42, and reaches its
+ * own `max-h-[85vh]` cap (690) at 48, where the list starts scrolling. 42 keeps
+ * the biggest card that still leaves an ordinary hand un-scrolled.
  *
  * Everything else in a row is that row's width times a fixed fraction, which is
  * how the face stays the same face at every size:
@@ -33,7 +43,7 @@ import { RED_SUITS, SUIT_GLYPH } from './suitGlyphs'
  */
 const CARD_SIZES = {
   /** Compact, for dense read-only displays like meld declaration. */
-  sm: { width: 'w-7', rankSize: 'text-[11px]', suitSize: 'text-[15px]', markSize: 'text-[29px]', stripe: 'w-1', indexLeft: 'left-[6px]' },
+  sm: { width: 'w-10.5', rankSize: 'text-[17px]', suitSize: 'text-[23px]', markSize: 'text-[44px]', stripe: 'w-1', indexLeft: 'left-[7px]' },
   /** An AI seat's exposed hand during meld. */
   md: { width: 'w-12', rankSize: 'text-[19px]', suitSize: 'text-[26px]', markSize: 'text-[50px]', stripe: 'w-1', indexLeft: 'left-[7px]' },
   /** Full size — the human's hand, trick area, pass selector, pass reveal. */

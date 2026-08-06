@@ -50,7 +50,7 @@ describe('PlayingCard', { timeout: 20_000 }, () => {
     const { container: md } = render(<PlayingCard suit={Suit.Spades} rank="A" size="md" />)
     const { container: lg } = render(<PlayingCard suit={Suit.Spades} rank="A" />)
 
-    expect(widthsFor(sm.firstElementChild!)).toEqual(['w-7'])
+    expect(widthsFor(sm.firstElementChild!)).toEqual(['w-10.5'])
     expect(widthsFor(md.firstElementChild!)).toEqual(['w-12'])
     expect(widthsFor(lg.firstElementChild!)).toEqual(['w-20'])
   })
@@ -61,7 +61,8 @@ describe('PlayingCard', { timeout: 20_000 }, () => {
   // ratio rather than the pixel value keeps it true if the widths move again.
   it('keeps the index inside the strip the fan leaves visible', () => {
     const px = (cls: string, re: RegExp) => Number(cls.match(re)![1])
-    const WIDTH_PX = { sm: 28, md: 48, lg: 80 } as const
+    // sm is 42 since #202 (`w-10.5` — Tailwind v4's spacing scale takes halves).
+    const WIDTH_PX = { sm: 42, md: 48, lg: 80 } as const
 
     for (const size of ['sm', 'md', 'lg'] as const) {
       const { container } = render(<PlayingCard suit={Suit.Spades} rank="A" size={size} />)
@@ -87,9 +88,9 @@ describe('PlayingCard', { timeout: 20_000 }, () => {
   it('keeps a caller className from introducing a competing width', () => {
     const { container } = render(<PlayingCard suit={Suit.Spades} rank="A" size="sm" className="-ml-2" />)
     const cls = container.firstElementChild!.className
-    expect(cls).toContain('w-7')
+    expect(cls).toContain('w-10.5')
     expect(cls).toContain('-ml-2')
-    expect(cls.match(/(^|\s)w-\S+/g)!.map((s) => s.trim())).toEqual(['w-7'])
+    expect(cls.match(/(^|\s)w-\S+/g)!.map((s) => s.trim())).toEqual(['w-10.5'])
   })
 
   it('renders every suit and rank without throwing', () => {

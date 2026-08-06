@@ -93,8 +93,11 @@ describe('MeldFlow', { timeout: 20_000 }, () => {
     const cards = screen.getAllByRole('img').filter((el) => el.closest('section[aria-label$="meld"]'))
     expect(cards.length).toBeGreaterThan(0)
     for (const card of cards) {
-      // `sm`, per PlayingCard's CARD_SIZES — 28px since #161's sizing pass.
-      expect(card.className).toContain('w-7')
+      // `sm`, per PlayingCard's CARD_SIZES — 28px in #161's sizing pass, 42
+      // since #202 grew it 1.5x for readability. Still the compact size, and
+      // still the only place `sm` is used anywhere in the app, which is what
+      // keeps a meld-panel resize off the table behind it.
+      expect(card.className).toContain('w-10.5')
       expect(card.className).not.toContain('w-16')
     }
   })
