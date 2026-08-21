@@ -15,9 +15,9 @@
 // per-trick resolution one play at a time.
 
 import type { Card, Suit } from '../engine/card'
-import { partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
+import { findClaim, partnerOf, teamOf, type ClaimResult, type Hands, type TeamId } from '../engine/round'
 import { type PlayerIndex, Trick, type TrickPlay } from '../engine/trick'
-import type { TrickPlayLogEntry } from './trickPlayTypes'
+import type { ClaimSummary, TrickPlayLogEntry } from './trickPlayTypes'
 
 const TRICK_COUNT = 12
 const LAST_TRICK_BONUS = 10 // team that wins the 12th trick gets +10, matches round.ts
@@ -44,6 +44,10 @@ export interface TrickPlayState {
   readonly log: readonly TrickPlayLogEntry[]
   /** True when the human has conceded the hand (#83). */
   readonly conceded: boolean
+  /** Set when the hand ended on "the rest are mine" (#208). The message the UI
+   *  shows, and the flag that says the remaining tricks were awarded rather
+   *  than played. */
+  readonly claim: ClaimSummary | null
 }
 
 export type TrickPlayAction =
@@ -71,6 +75,62 @@ export function initTrickPlayState(
     phase: 'playing',
     log: [],
     conceded: false,
+    claim: null,
+  }
+}
+
+/**
+ * Applies "the rest are mine" (#208) if the position allows it, else returns the
+ * state unchanged.
+ *
+ * Called wherever a seat is about to lead with a clean table — after a trick is
+ * cleared, and once at the start of the hand — because `findClaim`'s guarantee
+ * is about a clean lead and says nothing mid-trick.
+ *
+ * The awarded points are added to the running total exactly as a played-out
+ * trick would add them, so nothing downstream needs to know this happened:
+ * `scoreRound` sees the same trick points either way. That is the whole design
+ * constraint, and `round.test.ts` pins it against full play-out on random deals.
+ */
+export function applyClaimIfAvailable(state: TrickPlayState): TrickPlayState {
+  if (state.phase !== 'playing' || state.currentTrick.length > 0) return state
+  const result: ClaimResult | null = findClaim(state.hands, state.trumpSuit, state.turn)
+  if (result === null) return state
+
+  const team = teamOf(result.claimer)
+  const claim: ClaimSummary = {
+    player: result.claimer,
+    name: state.seatNames[result.claimer],
+    cards: result.cards,
+    points: result.trickPoints,
+    tricks: result.tricks,
+  }
+  return {
+    ...state,
+    phase: 'complete',
+    claim,
+    currentTrick: [],
+    trickPointsByTeam: {
+      ...state.trickPointsByTeam,
+      [team]: state.trickPointsByTeam[team] + result.trickPoints,
+    },
+    // The claimer would have won every skipped trick, so the record says so
+    // rather than leaving the hand looking like it stopped early.
+    trickWinners: [
+      ...state.trickWinners,
+      ...Array.from({ length: result.tricks }, () => result.claimer),
+    ],
+    log: [
+      ...state.log,
+      {
+        kind: 'claim',
+        player: result.claimer,
+        name: state.seatNames[result.claimer],
+        cards: result.cards,
+        points: result.trickPoints,
+        tricks: result.tricks,
+      },
+    ],
   }
 }
 
@@ -148,15 +208,16 @@ export function trickPlayReducer(state: TrickPlayState, action: TrickPlayAction)
       if (nextTrickNumber >= TRICK_COUNT) {
         return { ...state, phase: 'complete', currentTrick: [] }
       }
-      // The winner of the trick just settled leads the next one.
-      return {
+      // The winner of the trick just settled leads the next one — and is the
+      // seat a claim would be made by, so the check goes here (#208).
+      return applyClaimIfAvailable({
         ...state,
         phase: 'playing',
         currentTrick: [],
         leader: winner,
         turn: winner,
         trickNumber: nextTrickNumber,
-      }
+      })
     }
     case 'CONCEDE': {
       if (state.phase !== 'playing') return state

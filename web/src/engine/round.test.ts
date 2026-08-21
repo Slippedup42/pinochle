@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { Deck, FORCED_BID, Suit } from './card'
+import { dealFromRng, makeRng } from '../ab/headlessGame'
+import { Card, Deck, FORCED_BID, type Rank, Suit } from './card'
 import {
   type ChooseCardFn,
   type Hands,
   MAX_TRICK_POINTS,
+  findClaim,
   isAutoSet,
   playTrickTakingPhase,
   scoreRound,
   teamOf,
 } from './round'
+import { chooseFollowCard, chooseLeadCard, PlayTracker } from './tracker'
+import { type PlayerIndex, Trick } from './trick'
+
+/** The +10 the 12th trick carries, restated here rather than exported from
+ *  round.ts — a test that reads the constant it is checking proves nothing. */
+const LAST_TRICK_BONUS = 10
 
 describe('teamOf', () => {
   it('pairs player 0 & 2 as team A (0), player 1 & 3 as team B (1)', () => {
@@ -171,5 +179,209 @@ describe('scoreRound', () => {
     // Team 1 (bidding): 60 + 100 = 160 < 400 -> goes set, scores -400.
     expect(scores[1]).toBe(-400)
     expect(scores[0]).toBe(90)
+  })
+})
+
+describe('findClaim — "the rest are mine" (#208)', () => {
+  const trump = Suit.Hearts
+  const c = (suit: Suit, rank: Rank, copy: 1 | 2 = 1) => new Card(suit, rank, copy)
+  const hands = (a: Card[], b: Card[], d: Card[], e: Card[]): Hands => [a, b, d, e]
+
+  it('claims when the leader holds only trump and no one else holds any', () => {
+    const claim = findClaim(
+      hands(
+        [c(Suit.Hearts, 'A'), c(Suit.Hearts, 'K')],
+        [c(Suit.Spades, 'A'), c(Suit.Spades, 'K')],
+        [c(Suit.Clubs, 'A'), c(Suit.Clubs, 'K')],
+        [c(Suit.Diamonds, 'A'), c(Suit.Diamonds, 'K')],
+      ),
+      trump,
+      0,
+    )
+    expect(claim).not.toBeNull()
+    expect(claim?.claimer).toBe(0)
+    expect(claim?.tricks).toBe(2)
+    // Every card left is a counter (8 x 10) plus the last-trick bonus.
+    expect(claim?.trickPoints).toBe(90)
+  })
+
+  it('claims on unbeatable side cards too, which is why this is not a trump rule', () => {
+    // Nobody holds trump at all, and the leader's two Aces cannot be beaten.
+    const claim = findClaim(
+      hands(
+        [c(Suit.Spades, 'A'), c(Suit.Clubs, 'A')],
+        [c(Suit.Spades, 'K'), c(Suit.Clubs, 'K')],
+        [c(Suit.Spades, 'Q'), c(Suit.Clubs, 'Q')],
+        [c(Suit.Spades, 'J'), c(Suit.Clubs, 'J')],
+      ),
+      trump,
+      0,
+    )
+    expect(claim).not.toBeNull()
+    expect(claim?.tricks).toBe(2)
+  })
+
+  it('claims on the second copy of a rank, because ties go to the card led', () => {
+    // The other Ace of Spades is still out, but the claimer leads and
+    // `Trick.winner` gives an equal rank to whoever played first.
+    const claim = findClaim(
+      hands(
+        [c(Suit.Spades, 'A', 1), c(Suit.Clubs, 'A')],
+        [c(Suit.Spades, 'A', 2), c(Suit.Clubs, 'K')],
+        [c(Suit.Spades, 'Q'), c(Suit.Clubs, 'Q')],
+        [c(Suit.Spades, 'J'), c(Suit.Clubs, 'J')],
+      ),
+      trump,
+      0,
+    )
+    expect(claim).not.toBeNull()
+  })
+
+  it('refuses all-the-trump-plus-a-beatable-side-card, the case the literal rule got wrong', () => {
+    // Seat 0 holds every trump left *and* a low club. It wins the trump trick
+    // and then has to lead the club into a higher one. Measured over 3000
+    // hands, this shape is why the literal reading misawarded 906 times.
+    const claim = findClaim(
+      hands(
+        [c(Suit.Hearts, 'A'), c(Suit.Clubs, '9')],
+        [c(Suit.Clubs, 'A'), c(Suit.Spades, 'K')],
+        [c(Suit.Clubs, 'K'), c(Suit.Spades, 'Q')],
+        [c(Suit.Clubs, 'Q'), c(Suit.Spades, 'J')],
+      ),
+      trump,
+      0,
+    )
+    expect(claim).toBeNull()
+  })
+
+  it('refuses when the partner holds trump, since the partner can win and then lead', () => {
+    // Same team, but not every trick: seat 2 must overtrump seat 0's King with
+    // the Ace (rule 3), which puts seat 2 on lead holding a beatable club.
+    const claim = findClaim(
+      hands(
+        [c(Suit.Hearts, 'K'), c(Suit.Hearts, 'Q')],
+        [c(Suit.Spades, 'A'), c(Suit.Spades, 'K')],
+        [c(Suit.Hearts, 'A'), c(Suit.Clubs, '9')],
+        [c(Suit.Diamonds, 'A'), c(Suit.Diamonds, 'K')],
+      ),
+      trump,
+      0,
+    )
+    expect(claim).toBeNull()
+  })
+
+  it('refuses a seat that is not on lead', () => {
+    const h = hands(
+      [c(Suit.Hearts, 'A'), c(Suit.Hearts, 'K')],
+      [c(Suit.Spades, 'A'), c(Suit.Spades, 'K')],
+      [c(Suit.Clubs, 'A'), c(Suit.Clubs, 'K')],
+      [c(Suit.Diamonds, 'A'), c(Suit.Diamonds, 'K')],
+    )
+    expect(findClaim(h, trump, 0)).not.toBeNull()
+    expect(findClaim(h, trump, 1)).toBeNull()
+  })
+
+  it('refuses with one trick left — there is nothing to skip', () => {
+    const claim = findClaim(
+      hands([c(Suit.Hearts, 'A')], [c(Suit.Spades, 'A')], [c(Suit.Clubs, 'A')], [c(Suit.Diamonds, 'A')]),
+      trump,
+      0,
+    )
+    expect(claim).toBeNull()
+  })
+
+  it('refuses mid-trick, when the hands are uneven', () => {
+    const claim = findClaim(
+      hands(
+        [c(Suit.Hearts, 'A'), c(Suit.Hearts, 'K')],
+        [c(Suit.Spades, 'A')],
+        [c(Suit.Clubs, 'A'), c(Suit.Clubs, 'K')],
+        [c(Suit.Diamonds, 'A'), c(Suit.Diamonds, 'K')],
+      ),
+      trump,
+      0,
+    )
+    expect(claim).toBeNull()
+  })
+})
+
+describe('a claim awards exactly what playing it out would have (#208)', () => {
+  // The property the whole feature rests on, and the reason the rule is allowed
+  // to live outside the parity-checked engine loop: `findClaim` is safe only
+  // because it never changes a result. So this plays real deals with the real
+  // AI and checks, every time the rule fires, that the claiming seat did in
+  // fact win every remaining trick and that the points match exactly.
+  //
+  // A played-out control rather than two runs compared, because a game with the
+  // claim applied and one without are not the same state to re-run — this way
+  // the assertion is against what actually happened at the table.
+  it('the claimer wins every skipped trick, on 1500 dealt hands', () => {
+    const rand = makeRng(0x2082026)
+    let fired = 0
+    let tricksSkipped = 0
+
+    for (let g = 0; g < 1500; g++) {
+      const dealt = dealFromRng(rand)
+      const trumpSuit = [Suit.Spades, Suit.Hearts, Suit.Clubs, Suit.Diamonds][Math.floor(rand() * 4)]
+      const working = dealt.map((h) => [...h]) as Hands
+      const tracker = new PlayTracker()
+      let leader: PlayerIndex = 0
+      let claimed: { claimer: PlayerIndex; points: number; fromTrick: number } | null = null
+      let pointsAfterClaim = 0
+
+      for (let t = 0; t < 12; t++) {
+        if (claimed === null) {
+          const claim = findClaim(working, trumpSuit, leader)
+          if (claim !== null) {
+            claimed = { claimer: claim.claimer, points: claim.trickPoints, fromTrick: t }
+            fired++
+            tricksSkipped += claim.tricks
+          }
+        }
+
+        const trick = new Trick(trumpSuit)
+        let p = leader
+        for (let seat = 0; seat < 4; seat++) {
+          const legal = trick.legalMoves(working[p])
+          const card =
+            seat === 0
+              ? chooseLeadCard(working[p], trumpSuit, tracker, false, 'expert', undefined, undefined)
+              : chooseFollowCard(
+                  working[p],
+                  legal,
+                  trick.plays,
+                  trumpSuit,
+                  [p, ((p + 2) % 4) as PlayerIndex],
+                  tracker,
+                  'expert',
+                  undefined,
+                )
+          working[p].splice(
+            working[p].findIndex((x) => x.equals(card)),
+            1,
+          )
+          trick.play(p, card)
+          tracker.record(card)
+          p = ((p + 1) % 4) as PlayerIndex
+        }
+        const winner = trick.winner()
+
+        if (claimed !== null && t >= claimed.fromTrick) {
+          // The claim said this seat takes it. It must.
+          expect(winner).toBe(claimed.claimer)
+          pointsAfterClaim += trick.points() + (t === 11 ? LAST_TRICK_BONUS : 0)
+        }
+        leader = winner
+      }
+
+      if (claimed !== null) {
+        // ...and the points awarded must equal the points actually collected.
+        expect(pointsAfterClaim).toBe(claimed.points)
+      }
+    }
+
+    // Guard against the assertions above passing vacuously.
+    expect(fired).toBeGreaterThan(200)
+    expect(tricksSkipped).toBeGreaterThan(500)
   })
 })

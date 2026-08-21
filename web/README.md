@@ -903,6 +903,83 @@ wired-live and flag-off (#101) rather than being argued either way.
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
 input to `vite build`, so it cannot reach a player or the PWA precache.
 
+## Claiming the rest (#208)
+
+Paul's rule: if one seat holds all the trump and nobody else has any, stop
+playing and give them the tricks. The idea is right and the wording is not, and
+the gap between them is the interesting part of the change.
+
+Trump can only be beaten by trump — so if no one else holds any, the claimer's
+*trump* is unbeatable. That argument says nothing about the rest of their hand.
+A seat holding every remaining trump plus two low hearts wins the trump tricks
+and then has to lead a heart into three players who can beat it. Measured over
+3000 played hands with the real AI:
+
+| reading | fires on | correct |
+|---|---|---|
+| holds all remaining trump (the literal wording) | 59.4% | **no** — in 906 of the 1624 hands where it alone applies, the claiming team went on to lose a trick |
+| hand is *nothing but* trump, nobody else has any | 7.8% | yes |
+| **on lead, no card can be beaten** | 22.8% | yes — 0 misawards in 3000 hands |
+
+The third is what shipped, on Paul's call. It is the same idea generalised past
+trump: a card is unbeatable if it is trump and no one else holds trump, or if no
+one holds a higher card of its suit — equal ranks included, since ties go to the
+card led and the claimer is on lead. That covers the trump case, covers the
+ordinary "I have the last two Aces and you have no trump" case, and triples the
+coverage of the safe trump-only reading without giving up the guarantee.
+
+**Being on lead is load-bearing, not incidental.** It is what lets the claimer
+choose the suit every trick, so none of its cards ever meets anything above it. A
+seat that is not on lead can be pulled into a suit it is void in with no trump to
+answer, and loses the trick it was about to claim. Same reason the partner
+holding trump kills the claim: the partner must overtrump if able, wins the
+trick, and is then on lead holding beatable cards.
+
+### Where it lives, and why not in the engine loop
+
+`findClaim` is in `round.ts` next to `isAutoSet`, but `playTrickTakingPhase`
+does **not** call it — and that is the part worth remembering.
+
+That function is the parity-checked port of Python's trick loop.
+`engineParity.test.ts` replays recorded Python rounds through it and asserts the
+winner and points of every individual trick, and `pinochle_engine.py` has no
+claim rule. Applying a TS-only shortcut inside it would make the parity
+guarantee conditional on the shortcut never firing in a fixture — true today,
+silently false the day someone adds a scenario. So the claim lives in
+`trickPlayReducer`, which drives the interactive game, and the frozen loop stays
+a faithful port.
+
+It was briefly wired into `playTrickTakingPhase` during development, which is
+how this was found: `round.test.ts`'s "the winner of each trick leads the next"
+started failing about one run in six, because the loop stopped producing twelve
+tricks.
+
+### The property it rests on
+
+The claim is safe only because it changes nothing. `round.test.ts` pins that
+directly rather than by argument: 1500 dealt hands played out in full with the
+real AI, and every time `findClaim` fires, the claiming seat must actually win
+every remaining trick and the awarded points must equal the points collected. It
+fires on ~340 of those hands and skips ~800 tricks, so the assertion is not
+passing vacuously — the test asserts that too.
+
+The same conservation shows up end-to-end: `TrickPlayFlow.test.tsx` plays a full
+round through the component, hits a real claim, and still finds twelve trick
+winners and 250 total points.
+
+### The notice
+
+`ClaimNotice` follows `AutoSetNotice` exactly, for the same reason it exists:
+the rule alone would skip several tricks and jump to the round summary, and an
+unexplained jump reads as the game losing cards rather than as a rule. So the
+round does not hand off until it is acknowledged, and an unacknowledged claim
+also blocks the #54 checkpoint — resuming from one would land on a summary for
+tricks the player never saw.
+
+The claimer's hand is shown face up, an AI's included. The message asserts that
+none of those cards can be beaten, and the player is entitled to check it rather
+than take it on trust; there is nothing left to conceal by then anyway.
+
 ## Portrait fit (#161)
 
 The game has to fit a phone in portrait with no scrolling, and that is a

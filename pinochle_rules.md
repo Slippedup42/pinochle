@@ -138,6 +138,36 @@ Legal-move rules, applied in order:
   Spades) go to whichever copy was played **first**.
 - The trick winner collects all 4 cards and leads the next trick.
 
+### Claiming the rest ("the rest are mine")
+
+A **house shortcut, not a rule of the game.** When the player on lead holds a
+hand in which no card can be beaten, the remaining tricks are awarded to their
+team instead of being played out, and the game shows the hand face up. This
+saves the clicks; it never changes a score.
+
+"Cannot be beaten" is stricter than "holds all the trump", and the difference is
+the whole point:
+
+- A **trump** card is unbeatable when no other seat holds any trump.
+- A **side** card is unbeatable when no other seat holds a higher card of that
+  suit. Equal rank is fine — the deck has two of each card and a tie goes to the
+  one played first, which is the claimer's, because the claimer is on lead.
+
+Holding every remaining trump is *not* sufficient. A seat with all the trump and
+two low hearts wins the trump tricks and then has to lead a heart into three
+players who can beat it. Measured over 3000 played hands, awarding on "holds all
+the trump" would have handed over tricks the claiming team went on to lose in
+906 cases.
+
+Both conditions are checked only between tricks, for the seat about to lead:
+being on lead is what lets the claimer choose the suit every time, so no card of
+theirs ever meets anything above it.
+
+**TypeScript only.** `pinochle_engine.py` plays every trick out. The shortcut is
+outcome-neutral by construction, so the two engines still agree on every score —
+and `playTrickTakingPhase`, which is what the parity tests replay Python rounds
+through, deliberately does not apply it.
+
 ## Phase 5: Round Scoring
 
 - Every **Ace, 10, and King** collected in tricks = 10 points each.
