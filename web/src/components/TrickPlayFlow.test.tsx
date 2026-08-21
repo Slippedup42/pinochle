@@ -219,6 +219,11 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
       )
       if (playable) {
         fireEvent.click(playable)
+      } else if (screen.queryByRole('dialog', { name: /the rest are mine/i })) {
+        // A claim (#208) ended the hand early. The notice holds `onComplete`
+        // back until it is acknowledged, exactly as the auto-SET one does, so
+        // the driver has to dismiss it the way a player would.
+        fireEvent.click(screen.getByRole('button', { name: 'See the score' }))
       } else {
         // Either an AI turn or the post-trick settle pause is in flight —
         // advancing past the longer of the two delays flushes whichever

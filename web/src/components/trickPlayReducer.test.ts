@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { Card, Suit } from '../engine/card'
+import { Card, type Rank, Suit } from '../engine/card'
 import type { PlayerIndex } from '../engine/trick'
+import { formatTrickPlayLogEntry } from './trickPlayTypes'
 import {
+  applyClaimIfAvailable,
   buildTrick,
   initTrickPlayState,
   teammatesOf,
@@ -134,5 +136,110 @@ describe('buildTrick', () => {
       { player: 1, card: new Card(Suit.Spades, '10', 1) },
     ])
     expect(trick.winner()).toBe(1)
+  })
+})
+
+describe('"the rest are mine" (#208)', () => {
+  const c = (suit: Suit, rank: Rank, copy: 1 | 2 = 1) => new Card(suit, rank, copy)
+
+  /** Trick 11 of 12: two cards each, seat 0 on lead holding only trump and
+   *  nobody else holding any. The position `findClaim` exists for. */
+  const claimableState = (): TrickPlayState => {
+    const hands = [
+      [c(Suit.Hearts, 'A'), c(Suit.Hearts, 'K')],
+      [c(Suit.Spades, 'A'), c(Suit.Spades, 'K')],
+      [c(Suit.Clubs, 'A'), c(Suit.Clubs, 'K')],
+      [c(Suit.Diamonds, 'A'), c(Suit.Diamonds, 'K')],
+    ] as [Card[], Card[], Card[], Card[]]
+    return initTrickPlayState(hands, Suit.Hearts, 0, SEAT_NAMES)
+  }
+
+  it('ends the hand and awards every remaining trick point', () => {
+    const state = applyClaimIfAvailable(claimableState())
+    expect(state.phase).toBe('complete')
+    expect(state.claim?.player).toBe(0)
+    expect(state.claim?.tricks).toBe(2)
+    // 8 counters at 10, plus the last-trick bonus, to seat 0's team.
+    expect(state.trickPointsByTeam[0]).toBe(90)
+    expect(state.trickPointsByTeam[1]).toBe(0)
+  })
+
+  it('records the claimer as the winner of every skipped trick', () => {
+    const state = applyClaimIfAvailable(claimableState())
+    expect(state.trickWinners).toEqual([0, 0])
+  })
+
+  it('carries the claimer\'s hand on the state, for the message to show', () => {
+    const state = applyClaimIfAvailable(claimableState())
+    expect(state.claim?.cards).toHaveLength(2)
+    expect(state.claim?.cards.every((card) => card.suit === Suit.Hearts)).toBe(true)
+    expect(state.claim?.name).toBe('You')
+  })
+
+  it('logs the claim so the trick log does not just stop', () => {
+    const state = applyClaimIfAvailable(claimableState())
+    const entry = state.log.at(-1)
+    expect(entry?.kind).toBe('claim')
+    expect(formatTrickPlayLogEntry(state.log.at(-1)!)).toContain('The rest are mine')
+  })
+
+  it('leaves an unclaimable position completely alone', () => {
+    // Seat 1 holds a trump, so seat 0 cannot claim.
+    const hands = [
+      [c(Suit.Hearts, 'A'), c(Suit.Hearts, 'K')],
+      [c(Suit.Hearts, 'Q'), c(Suit.Spades, 'K')],
+      [c(Suit.Clubs, 'A'), c(Suit.Clubs, 'K')],
+      [c(Suit.Diamonds, 'A'), c(Suit.Diamonds, 'K')],
+    ] as [Card[], Card[], Card[], Card[]]
+    const before = initTrickPlayState(hands, Suit.Hearts, 0, SEAT_NAMES)
+    expect(applyClaimIfAvailable(before)).toBe(before)
+  })
+
+  it('does not fire mid-trick', () => {
+    const state = claimableState()
+    const midTrick = trickPlayReducer(state, {
+      type: 'PLAY_CARD',
+      player: 0,
+      card: c(Suit.Hearts, 'A'),
+    })
+    expect(applyClaimIfAvailable(midTrick)).toBe(midTrick)
+  })
+
+  it('fires from CLEAR_TRICK, which is where a real hand reaches it', () => {
+    // Three cards each. Seat 0 holds nothing but trump, but seat 1 is on lead,
+    // so there is no claim yet — the rule is about the seat with the lead, and
+    // seat 1's spades are all trumpable. Seat 1 leads, seat 0 trumps in, and
+    // the claim becomes available the moment the lead changes hands.
+    const hands = [
+      [c(Suit.Hearts, 'A'), c(Suit.Hearts, 'K'), c(Suit.Hearts, 'Q')],
+      [c(Suit.Spades, 'A'), c(Suit.Spades, 'K'), c(Suit.Spades, 'Q')],
+      [c(Suit.Clubs, 'A'), c(Suit.Clubs, 'K'), c(Suit.Clubs, 'Q')],
+      [c(Suit.Diamonds, 'A'), c(Suit.Diamonds, 'K'), c(Suit.Diamonds, 'Q')],
+    ] as [Card[], Card[], Card[], Card[]]
+    let state = applyClaimIfAvailable(initTrickPlayState(hands, Suit.Hearts, 1, SEAT_NAMES))
+    expect(state.phase).toBe('playing')
+    expect(state.claim).toBeNull()
+
+    // The reducer removes a played card by identity, so a trick has to be
+    // dispatched with the very objects sitting in the hands — not equal copies.
+    for (const [player, card] of [
+      [1, hands[1][0]],
+      [2, hands[2][0]],
+      [3, hands[3][0]],
+      [0, hands[0][2]],
+    ] as [PlayerIndex, Card][]) {
+      state = trickPlayReducer(state, { type: 'PLAY_CARD', player, card })
+    }
+    expect(state.phase).toBe('trick-complete')
+    expect(state.trickWinners.at(-1)).toBe(0)
+
+    state = trickPlayReducer(state, { type: 'CLEAR_TRICK' })
+    // CLEAR_TRICK hands the lead to seat 0, and the claim fires there.
+    expect(state.phase).toBe('complete')
+    expect(state.claim?.player).toBe(0)
+    expect(state.claim?.tricks).toBe(2)
+    // The trick actually played still counts, and the claim adds the rest.
+    expect(state.trickPointsByTeam[0]).toBe(30 + 60)
+    expect(state.trickWinners).toEqual([0, 0, 0])
   })
 })

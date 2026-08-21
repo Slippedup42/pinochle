@@ -11,11 +11,14 @@ import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
 import type { TableState } from './tableTypes'
+import { SUIT_NAME } from './auctionTypes'
 import { AutoSetNotice } from './AutoSetNotice'
+import { ClaimNotice } from './ClaimNotice'
 import { ConfirmDialog } from './ConfirmDialog'
 import { TrickLog } from './TrickLog'
 import {
   buildTrick,
+  applyClaimIfAvailable,
   initTrickPlayState,
   teammatesOf,
   trickPlayReducer,
@@ -117,7 +120,11 @@ export function TrickPlayFlow({
   const [state, dispatch] = useReducer(
     trickPlayReducer,
     undefined,
-    () => initialState ?? initTrickPlayState(hands, trumpSuit, bidWinner, seatNames),
+    // A claim is checked on the way in as well as after each trick (#208).
+    // A fresh deal can never be claimable — nobody holds twelve unbeatable
+    // cards — but a #54 resume can drop straight into a position that is,
+    // including a checkpoint written before this rule existed.
+    () => applyClaimIfAvailable(initialState ?? initTrickPlayState(hands, trumpSuit, bidWinner, seatNames)),
   )
   // Accumulates every card played so far this round (tracker.ts's
   // PlayTracker) — mutated directly alongside each PLAY_CARD dispatch
@@ -145,6 +152,12 @@ export function TrickPlayFlow({
   // (below) waits for this to clear before handing off, so the round summary
   // cannot appear before the explanation of why no cards were played.
   const [autoSetFired, setAutoSetFired] = useState(false)
+  // Set once a claim (#208) has been shown and acknowledged. Holds `onComplete`
+  // back for exactly the reason `autoSetFired` does: the hand is already
+  // decided, but handing off unmounts this component and takes the explanation
+  // with it, leaving the player at a summary for tricks they never saw played.
+  const [claimAcknowledged, setClaimAcknowledged] = useState(false)
+  const claimPending = state.claim !== null && !claimAcknowledged
 
   // A card hits the table once and everyone sees it — the exact tracker and all
   // four trump memories, the human's card included. Stable (`[]`), because it
@@ -266,15 +279,16 @@ export function TrickPlayFlow({
   // take the explanation with it, leaving the player at a round summary for a
   // hand they never saw played.
   useEffect(() => {
-    if (state.phase !== 'complete' || completedRef.current || autoSetFired) return
+    if (state.phase !== 'complete' || completedRef.current || autoSetFired || claimPending) return
     completedRef.current = true
     const result: TrickPlayResult = {
       trickPointsByTeam: state.trickPointsByTeam,
       trickWinners: state.trickWinners,
       ...(state.conceded ? { conceded: true } : {}),
+      ...(state.claim !== null ? { claim: state.claim } : {}),
     }
     onComplete?.(result)
-  }, [state, onComplete, autoSetFired])
+  }, [state, onComplete, autoSetFired, claimPending])
 
   // Local autosave (#54): checkpoint after each completed trick — i.e.
   // whenever currentTrick is empty (a fresh trick just started, or all 12
@@ -290,8 +304,12 @@ export function TrickPlayFlow({
     // the notice is shown again — the round is decided either way, so the only
     // difference is whether the player gets told.
     if (autoSetFired) return
+    // Same for an unacknowledged claim (#208): resuming from it would land on
+    // the round summary having silently eaten the last few tricks. Re-entering
+    // trick play instead re-detects the claim and shows the notice again.
+    if (claimPending) return
     onCheckpoint?.(state)
-  }, [state, onCheckpoint, autoSetFired])
+  }, [state, onCheckpoint, autoSetFired, claimPending])
 
   // Concede/fold (#83): show a fold button when the human won the bid, hide
   // it after they play their first card or the hand ends.
@@ -351,6 +369,18 @@ export function TrickPlayFlow({
 
   return (
     <div className="relative">
+      {claimPending && state.claim !== null && (
+        <ClaimNotice
+          claimerName={state.claim.name}
+          teamName={teamNames[teamOf(state.claim.player)]}
+          humanIsClaimer={state.claim.player === humanPlayer}
+          cards={state.claim.cards}
+          points={state.claim.points}
+          tricks={state.claim.tricks}
+          trumpName={SUIT_NAME[state.trumpSuit]}
+          onDismiss={() => setClaimAcknowledged(true)}
+        />
+      )}
       {autoSetFired && (
         <AutoSetNotice
           biddingTeamName={teamNames[biddingTeamId]}

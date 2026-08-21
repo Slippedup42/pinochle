@@ -31,6 +31,16 @@ export type TrickPlayLogEntry =
       readonly points: number
       readonly trickNumber: number
     }
+  | {
+      /** "The rest are mine" (#208) — the remaining tricks conceded to a seat
+       *  whose hand cannot be beaten, rather than played out one by one. */
+      readonly kind: 'claim'
+      readonly player: PlayerIndex
+      readonly name: string
+      readonly cards: readonly Card[]
+      readonly points: number
+      readonly tricks: number
+    }
 
 /** Renders one log entry as a single line of human-readable text. Pure and
  * exported on its own so TrickLog's formatting logic is unit-testable
@@ -41,6 +51,8 @@ export function formatTrickPlayLogEntry(entry: TrickPlayLogEntry): string {
       return `${entry.name} ${entry.isLead ? 'led' : 'played'} the ${entry.card.rank} of ${SUIT_NAME[entry.card.suit]}`
     case 'trick-won':
       return `${entry.name} won the trick (${entry.points} point${entry.points === 1 ? '' : 's'})`
+    case 'claim':
+      return `${entry.name}: "The rest are mine" — took the last ${entry.tricks} tricks (${entry.points} points)`
   }
 }
 
@@ -58,4 +70,18 @@ export interface TrickPlayResult {
   /** True when the bidding team conceded/folded. The bidding team's meld
    * is forfeited (they score -bid) and opponents get meld but no tricks. */
   readonly conceded?: boolean
+  /** Set when the hand ended on a claim (#208) rather than being played out.
+   * Purely informational — the trick points above already include everything
+   * the claim awarded, because a claim only fires on a position whose every
+   * remaining trick was already decided. */
+  readonly claim?: ClaimSummary
+}
+
+/** What the "The rest are mine" message needs to render. */
+export interface ClaimSummary {
+  readonly player: PlayerIndex
+  readonly name: string
+  readonly cards: readonly Card[]
+  readonly points: number
+  readonly tricks: number
 }

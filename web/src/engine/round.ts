@@ -87,6 +87,127 @@ export function isAutoSet(biddingTeamMeld: number, bid: number): boolean {
   return biddingTeamMeld + MAX_TRICK_POINTS < bid
 }
 
+export interface ClaimResult {
+  /** The seat on lead that provably takes every remaining trick. */
+  readonly claimer: PlayerIndex
+  /** The claimer's whole remaining hand — every card of it a winner, and what
+   *  the message shows. */
+  readonly cards: readonly Card[]
+  /** Trick points transferred: every counter still held by anyone, plus the
+   *  last-trick bonus, since the claimer necessarily wins the 12th. */
+  readonly trickPoints: number
+  /** How many tricks the claim skips. */
+  readonly tricks: number
+}
+
+/**
+ * How many tricks must remain for a claim to be worth interrupting the game
+ * for. At one trick there is nothing to skip — the last card is played, the
+ * message and the play resolve identically — so a dialog there costs a tap and
+ * saves nothing.
+ */
+export const MIN_CLAIMABLE_TRICKS = 2
+
+/**
+ * "The rest are mine" — the seat on lead that is guaranteed every remaining
+ * trick, or null (#208).
+ *
+ * Paul's rule, and the reason it is not spelled the way he first said it. The
+ * idea he gave is exactly right: trump can only be beaten by trump, so if no
+ * one else holds any, playing it out is a formality. What that argument covers
+ * is the claimer's *trump*. It does not cover the rest of their hand, and the
+ * difference decides hands rather than merely tidying them.
+ *
+ * A seat holding every remaining trump plus two low hearts does not take every
+ * trick. It leads trump while it has trump and wins those, and then it has to
+ * lead a heart into three players who are free to beat it. Measured over 3000
+ * played hands, the literal reading — "holds all the trump" — fires on 59.4% of
+ * hands, and in **906 of the 1624** where it alone applies the claiming team
+ * went on to lose a trick. It is not a shortcut; it is a scoring bug.
+ *
+ * So the test is not about trump. It is about whether anything the claimer
+ * holds *can be beaten at all*:
+ *
+ *   - A trump card is a winner when no other seat holds trump.
+ *   - A side card is a winner when no other seat holds a higher card of its
+ *     suit. Equal rank is fine — the deck has two of everything, and
+ *     `Trick.winner` gives ties to the card played first, which is the
+ *     claimer's, because the claimer is on lead.
+ *
+ * That last clause is why this takes a `leader`. On lead the claimer chooses
+ * the suit every trick, so each of its cards meets only what is below it and
+ * the order it plays them in cannot matter. A seat that is *not* on lead can be
+ * dragged into a suit it is void in with no trump to answer, and would lose the
+ * trick it was about to claim.
+ *
+ * Given lead plus unbeatable-everywhere, the induction is one line: the claimer
+ * leads a winner, takes the trick, and is on lead again with a strictly smaller
+ * hand of the same kind. So every remaining counter and the last-trick bonus go
+ * to its team.
+ *
+ * Measured on the same 3000 hands: fires on 22.8%, skipping 1705 tricks, and
+ * the claiming seat won every one of those tricks in the played-out control —
+ * zero misawards. `round.test.ts` keeps that control as a test.
+ *
+ * Evaluated only between tricks, with nothing on the table. Mid-trick the cards
+ * already played change which lines are legal, and this reasoning assumes a
+ * clean lead.
+ */
+export function findClaim(
+  hands: Readonly<Hands>,
+  trumpSuit: Suit,
+  leader: PlayerIndex,
+  minTricks: number = MIN_CLAIMABLE_TRICKS,
+): ClaimResult | null {
+  const remaining = hands[leader].length
+  if (remaining < minTricks) return null
+  // Between tricks every seat holds the same number of cards. If they do not,
+  // this is being asked mid-trick and the guarantee above does not apply.
+  if (!hands.every((h) => h.length === remaining)) return null
+
+  const others = ([0, 1, 2, 3] as PlayerIndex[]).filter((p) => p !== leader)
+  const anyoneElseHasTrump = others.some((p) => hands[p].some((c) => c.suit === trumpSuit))
+
+  const unbeatable = (card: Card): boolean =>
+    card.suit === trumpSuit
+      ? !anyoneElseHasTrump
+      : !anyoneElseHasTrump &&
+        !others.some((p) => hands[p].some((o) => o.suit === card.suit && o.rankValue > card.rankValue))
+
+  if (!hands[leader].every(unbeatable)) return null
+
+  const counters = hands
+    .flat()
+    .reduce((sum, c) => sum + (POINT_RANKS.has(c.rank) ? COUNTER_VALUE : 0), 0)
+  return {
+    claimer: leader,
+    cards: [...hands[leader]],
+    trickPoints: counters + LAST_TRICK_BONUS,
+    tricks: remaining,
+  }
+}
+
+/**
+ * `playTrickTakingPhase` deliberately does **not** consult `findClaim`, and that
+ * is an architectural line rather than an omission (#208).
+ *
+ * This function is the parity-checked port of Python's `Round._trick_taking_loop`
+ * — `engineParity.test.ts` replays recorded Python rounds through it and asserts
+ * the winner and the points of every individual trick. `pinochle_engine.py` has
+ * no claim rule, so a claim firing inside a replay would have the two engines
+ * describing the same round differently even when they agree about the score.
+ * CLAUDE.md's rule is that Python is the reference; a rule that exists on only
+ * one side does not belong in the loop the two are compared through.
+ *
+ * The claim is not a rule anyway. It is a shortcut over a decided position, and
+ * `findClaim`'s guarantee is exactly that it changes no outcome — so it belongs
+ * in whatever drives an interactive game and wants to skip the formality, which
+ * is `trickPlayReducer`. `round.test.ts` pins the equivalence directly: random
+ * deals played out in full and played with the claim applied reach identical
+ * trick points, which is the property that makes the shortcut safe to take
+ * anywhere.
+ */
+
 /**
  * Plays all 12 tricks of a round. `hands` are cloned internally (not
  * mutated in place), so the caller's arrays are safe to reuse/inspect
