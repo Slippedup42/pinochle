@@ -21,6 +21,7 @@ import {
   BID_AB_POLICIES,
   DISTILLED_LEVEL,
   FOLD_AB_POLICIES,
+  OPENING_AB_POLICIES,
   PLAY_AB_POLICIES,
   SAFE_COUNTER_CONTROL,
   STATIC_LEVEL,
@@ -97,7 +98,7 @@ describe('the policy override', () => {
     // attributed to. Cheap to assert, and it is the assertion that keeps the
     // next map (#154 onward) honest as the union of policies grows.
     const safeCounter = safeCounterAbPolicies('expert', SAFE_COUNTER_CONTROL.expert)
-    const maps = [BID_AB_POLICIES, FOLD_AB_POLICIES, AUTO_SET_AB_POLICIES, PLAY_AB_POLICIES, safeCounter]
+    const maps = [BID_AB_POLICIES, FOLD_AB_POLICIES, AUTO_SET_AB_POLICIES, PLAY_AB_POLICIES, OPENING_AB_POLICIES, safeCounter]
     for (const policies of maps) {
       const [a, b] = Object.values(policies)
       const differing = (Object.keys(a) as (keyof typeof a)[]).filter((field) => a[field] !== b[field])
@@ -320,6 +321,8 @@ describe('the A/B self-test', () => {
     // the most scope to desynchronise dealer rotation or scoring between the
     // two orientations of a pair — exactly what a zero paired margin rules out.
     ['auto-set', DISTILLED_LEVEL, AUTO_SET_AB_POLICIES],
+    ['walk', DISTILLED_LEVEL, OPENING_AB_POLICIES],
+    ['fixed-open', STATIC_LEVEL, OPENING_AB_POLICIES],
     // #158's two arms, both of which now play behind auto-SET.
     ['counted', 'expert', safeCounterAbPolicies('expert', SAFE_COUNTER_CONTROL.expert)],
     ['uncounted', SAFE_COUNTER_CONTROL.expert, safeCounterAbPolicies('expert', SAFE_COUNTER_CONTROL.expert)],

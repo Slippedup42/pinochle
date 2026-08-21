@@ -109,6 +109,41 @@ export const DEFENSIVE_PUSH_FLOOR = 200
  * of three seeds (`web/README.md`, "The partner-passed bid floor").
  */
 export const PARTNER_PASSED_FLOOR = 320
+/**
+ * How sure the evaluator has to be before an `openingPolicy: 'walk'` seat steps
+ * its opening up another rung (#204).
+ *
+ * `modelDecision` uses the model's own `threshold` (0.5), which means a greedy
+ * walk stops at the *highest* rung the model still tolerates — and that rung is
+ * by construction the marginal one, where the model is barely past a coin flip.
+ * Walking to it therefore lands the seat on the worst contract it is willing to
+ * hold, systematically, on every deal it opens.
+ *
+ * That is the mechanism behind #204's headline result, and raising this number
+ * buys it back, monotonically and at a fixed exchange rate. Measured on `hard`,
+ * 3000 paired deals, seed 1, against the `'fixed'` arm:
+ *
+ * | confidence | avg bid | set % | margin/deal |
+ * |---|---|---|---|
+ * | 0.50 | 322 | 30.5% | -53 (-61 to -46) |
+ * | 0.60 | 320 | 29.8% | -48 (-59 to -38) |
+ * | 0.70 | 317 | 29.4% | -43 (-53 to -33) |
+ * | 0.80 | 314 | 28.2% | -26 (-35 to -17) |
+ * | 0.90 | 309 | 27.0% | -7 (-14 to +0) |
+ *
+ * There is no free rung on that curve: roughly three points of score margin per
+ * point of bid lift, all the way down to the one setting whose CI touches zero,
+ * which lifts the average bid by 8 and does not reach the distribution the
+ * change was asked for. That is the finding, not a tuning failure — the model
+ * was fitted to measured rollouts, and it is right that the cheap contract is a
+ * good price.
+ *
+ * Left at the model's own threshold because that is the arm the three-seed
+ * headline measurement ran, so the committed constant and the recorded number
+ * describe the same thing. Anyone enabling `'walk'` should move this first and
+ * re-measure, not inherit the greedy walk by default.
+ */
+export const WALK_CONFIDENCE = 0.5
 
 /**
  * The bid a seat must commit to when it raises **over its own partner** (#206).
@@ -547,6 +582,45 @@ export function chooseBid(
         })
       : staticVerdict
 
+  // What number to put on the table once `opens` is true (#204). Under
+  // `'fixed'` — every shipped row today — that is the floor and nothing else,
+  // which is the behaviour this dial was split off to make measurable rather
+  // than to change. Under `'walk'` the seat steps up while its own policy still
+  // says the hand is worth the next rung, so the level it names reflects the
+  // hand it is holding instead of the rung the auction happens to start on.
+  //
+  // Bounded above by `ceiling`, so the walk cannot talk a seat past what its
+  // cards are worth, and it steps by `minIncrement` so it cannot leave the
+  // multiple-of-ten grid (#177). The static verdict keeps the cushion
+  // `OPENER_THRESHOLD` already implies over `OPENING_BID` — 70 points — so a
+  // static seat asked about level L wants a ceiling of L + 70, which at the
+  // opening rung is exactly `OPENER_THRESHOLD` and stays self-consistent as the
+  // level climbs. Without that the level-independent static verdict would walk
+  // every opener to its ceiling.
+  const openingLevelFor = (floor: number): number => {
+    if (SKILL_PARAMS[skill].openingPolicy !== 'walk') return floor
+    const cushion = OPENER_THRESHOLD - OPENING_BID
+    const accepts = (level: number): boolean =>
+      distilled
+        ? shouldBid(
+            {
+              hand,
+              bid: level,
+              ourScore: myScore,
+              theirScore: oppScore,
+              partnerHasBid,
+              partnerHasPassed: partnerPassed,
+            },
+            WALK_CONFIDENCE,
+          )
+        : ceiling >= level + cushion
+    let level = floor
+    while (level + minIncrement <= ceiling && accepts(level + minIncrement)) {
+      level += minIncrement
+    }
+    return level
+  }
+
   if (!context.everBid) {
     // Dealer-protection, restored from `Player.choose_bid` by the #126 audit.
     // This tier was dropped in aeb97b3 — the same hand-port slip that took
@@ -567,8 +641,9 @@ export function chooseBid(
     // retired the two branches say the same thing, so they are one. The level
     // being committed to still differs: a partner-passed seat opens at the
     // floor rather than at OPENING_BID.
-    const openingLevel = partnerPassed ? minBidAfterPartnerPass : OPENING_BID
-    const opens = worthContract(openingLevel, ceiling >= OPENER_THRESHOLD)
+    const floorLevel = partnerPassed ? minBidAfterPartnerPass : OPENING_BID
+    const opens = worthContract(floorLevel, ceiling >= OPENER_THRESHOLD)
+    const openingLevel = opens ? openingLevelFor(floorLevel) : floorLevel
 
     // 3rd bidder opens cheap.
     if (context.passesSoFar === 2) {
@@ -578,7 +653,7 @@ export function chooseBid(
       // Positional, not a hand judgement: with partner still to speak this
       // seat opens on anything to deny the last player a cheap contract, so
       // neither policy is consulted.
-      return partnerPassed ? (opens ? openingLevel : null) : OPENING_BID
+      return partnerPassed ? (opens ? openingLevel : null) : opens ? openingLevel : OPENING_BID
     }
 
     // Normal opener threshold (4th bidder / dealer — partner has already

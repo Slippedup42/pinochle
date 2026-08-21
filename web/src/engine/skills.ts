@@ -136,6 +136,35 @@ export type AutoSetPolicy = 'forced' | 'off'
  */
 export type SafeCounterPolicy = 'off' | 'counted'
 
+/**
+ * What number a seat that decides to open actually puts on the table (#204).
+ *
+ *   `'fixed'`  open at `OPENING_BID` — 250 — whatever the hand is worth. What
+ *              every level has always done.
+ *   `'walk'`   open at the highest rung the seat's own bid policy still says
+ *              the hand is worth, starting from `OPENING_BID` and stepping by
+ *              the auction's minimum increment.
+ *
+ * The distinction exists because `chooseBid` asks two separable questions and
+ * has only ever acted on the first: *should* I open, and *at what level*. The
+ * opening branch answers the first with `worthContract(OPENING_BID, ...)` and
+ * then hard-codes the second to `OPENING_BID`, so a seat holding a 400-ceiling
+ * hand opens at 250 and, if the other three pass, buys the contract for 250.
+ * Measured over 4000 AI-vs-AI auctions on `hard`, that is 27.4% of all deals,
+ * and 44.5% of those hands were worth 320 or more.
+ *
+ * `'walk'` does not make a seat open on hands it would have passed: the loop
+ * only runs once `opens` is already true, and it is bounded above by the
+ * hand's own capped ceiling. It changes the *price*, not the *appetite*.
+ *
+ * This is a `SkillParams` field rather than a constant for the reason
+ * `FoldPolicy` and `PlayPolicy` are: `abRun.ts` can only sit two rules at one
+ * table by running two levels that differ in exactly one field, so a rule with
+ * no field is a rule that cannot be measured. No shipped row selects `'walk'`
+ * until #204's A/B says it should.
+ */
+export type OpeningPolicy = 'fixed' | 'walk'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -143,6 +172,7 @@ export interface SkillParams {
   readonly playPolicy: PlayPolicy
   readonly autoSetPolicy: AutoSetPolicy
   readonly safeCounterPolicy: SafeCounterPolicy
+  readonly openingPolicy: OpeningPolicy
 }
 
 /**
@@ -261,6 +291,7 @@ export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
   medium: {
     handValuation: 'base_bid',
@@ -269,6 +300,7 @@ export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
   hard: {
     handValuation: 'base_bid',
@@ -277,6 +309,7 @@ export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
   proficient: {
     handValuation: 'base_bid',
@@ -285,6 +318,7 @@ export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
   expert: {
     handValuation: 'base_bid',
@@ -293,6 +327,7 @@ export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
 }
 

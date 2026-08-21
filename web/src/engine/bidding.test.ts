@@ -20,6 +20,7 @@ import {
   PARTNER_RAISE_FLOOR,
 } from './bidding'
 import { partnerOf } from './round'
+import { SKILL_PARAMS } from './skills'
 import type { PlayerIndex } from './trick'
 
 const trump = Suit.Spades
@@ -720,6 +721,111 @@ describe('raising over a bid our own team already holds (#206)', () => {
         passedPlayers: [],
       }
       expect(chooseBid(2, weakHand, oppBid, 10, context, 'hard')).toBe(oppBid + 10)
+    }
+  })
+})
+
+// -- openingPolicy: 'walk' (#204) -------------------------------------------
+//
+// No shipped `SKILL_PARAMS` row selects `'walk'`, so these install it the way
+// `abRun.ts` does. The measurement said `'fixed'` wins on score margin and the
+// dial ships off; these exist so the arm stays correct and re-measurable rather
+// than rotting into something the harness can no longer trust.
+describe("openingPolicy: 'walk'", () => {
+  // Base Bid 210 (Run 150 + extra Royal Marriage 40 + Ace 20) -> ceiling 340 at
+  // the 0/0 adjustment, so it clears OPENER_THRESHOLD and has room above the
+  // opening rung for the walk to actually climb into.
+  const strongHand = [
+    ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
+    new Card(Suit.Hearts, 'K', 2),
+    new Card(Suit.Hearts, 'Q', 2),
+  ]
+
+  // Dealer 1, so dealer-protection (which keys off the partner being dealer)
+  // does not fire and the opening branch is a hand judgement.
+  const context: AuctionContext = {
+    everBid: false,
+    passesSoFar: 0,
+    bidHistory: [],
+    dealer: 1,
+    scores: { 0: 0, 1: 0 },
+    passedPlayers: [],
+  }
+
+  const withWalk = (level: SkillLevel, run: () => void) => {
+    const saved = SKILL_PARAMS[level]
+    SKILL_PARAMS[level] = { ...saved, openingPolicy: 'walk' }
+    try {
+      run()
+    } finally {
+      SKILL_PARAMS[level] = saved
+    }
+  }
+
+  it('opens above OPENING_BID on a hand worth more than the opening rung', () => {
+    // The defect #204 names: `'fixed'` prices this hand at whatever rung the
+    // auction happens to start on, however much it is holding.
+    expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
+    withWalk('hard', () => {
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, 'hard')).toBeGreaterThan(OPENING_BID)
+    })
+  })
+
+  it('never opens a hand that would have passed — it changes price, not appetite', () => {
+    // `openingLevelFor` runs only once `opens` is already true, so both arms
+    // open on an identical set of deals. That is what lets #204's A/B attribute
+    // its result to the level named and not to a change in how often the AI
+    // bids at all.
+    const realRandom = Math.random
+    Math.random = seededRandom(20260820)
+    try {
+      for (let i = 0; i < 100; i++) {
+        const deck = new Deck()
+        deck.shuffle()
+        const hands = deck.deal()
+        for (const level of ['medium', 'hard'] as SkillLevel[]) {
+          for (const seat of SEATS) {
+            const fixed = chooseBid(seat, hands[seat], OPENING_BID - 10, 10, context, level)
+            withWalk(level, () => {
+              const walked = chooseBid(seat, hands[seat], OPENING_BID - 10, 10, context, level)
+              expect(walked === null).toBe(fixed === null)
+            })
+          }
+        }
+      }
+    } finally {
+      Math.random = realRandom
+    }
+  })
+
+  it('stays on the multiple-of-ten grid and never exceeds the hand ceiling (#177)', () => {
+    const realRandom = Math.random
+    Math.random = seededRandom(4242)
+    try {
+      withWalk('hard', () => {
+        for (let i = 0; i < 200; i++) {
+          const deck = new Deck()
+          deck.shuffle()
+          const hands = deck.deal()
+          const opened = chooseBid(0, hands[0], OPENING_BID - 10, 10, context, 'hard')
+          if (opened === null) continue
+          expect(opened % 10).toBe(0)
+          expect(opened).toBeGreaterThanOrEqual(OPENING_BID)
+          // The walk is ceiling-bounded; the opening *floor* is not — a
+          // distilled seat may take OPENING_BID on a hand whose speculative
+          // ceiling is under it, and always could. What must never happen is
+          // the walk carrying a seat above what its cards are worth.
+          expect(opened).toBeLessThanOrEqual(Math.max(OPENING_BID, bestBaseBid(hands[0], 0, 0).total))
+        }
+      })
+    } finally {
+      Math.random = realRandom
+    }
+  })
+
+  it('leaves every shipped level on the fixed opening rung', () => {
+    for (const level of SKILL_LEVELS) {
+      expect(SKILL_PARAMS[level].openingPolicy).toBe('fixed')
     }
   })
 })
