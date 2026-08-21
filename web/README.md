@@ -861,6 +861,12 @@ with a change in how often the AI bids at all.
 | 2 | 264 | 509 | 4227 | **-56** | -65 to -48 |
 | 3 | 277 | 512 | 4211 | **-53** | -61 to -46 |
 
+These numbers were taken before #206 merged and were re-run against it, the way
+#158's table was re-run against #178. They did not move by a single point — same
+-52, same -59 to -44 interval, same 265/484/4251 sweep — which is the full-game
+confirmation of what #206's auction fingerprint already showed: a rule that only
+fires with a human in a seat is inert in a harness that has none.
+
 p < 1e-4 on every seed. The mechanism is in the summary rows: walk lifts the
 average bid from 301 to 322 and its made rate falls from 73.2% to 69.2%, with
 auto-SET hands rising from 7.1% to 9.9%. It is buying the distribution with
