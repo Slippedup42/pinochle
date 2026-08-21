@@ -70,6 +70,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -78,6 +79,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
 }
 
@@ -98,6 +100,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -106,6 +109,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
 }
 
@@ -134,6 +138,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'off',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -142,6 +147,48 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
+  },
+}
+
+/**
+ * Opening-level A/B (#204): identical appetites, differing only in what number
+ * a seat that has already decided to open actually names.
+ *
+ * Both arms bid `'distilled'`, fold with the model and play the cascade — the
+ * same choice `FOLD_AB_POLICIES` and `PLAY_AB_POLICIES` make, and for the same
+ * reason: this describes the change as it would ship on `hard` and above.
+ *
+ * What makes this map worth reading carefully is that the two arms do not
+ * disagree about *which* hands are worth a contract. `openingPolicy` is
+ * consulted only after `worthContract` has already returned true, so both sides
+ * open on exactly the same deals and pass on exactly the same deals. The only
+ * difference is the price on the table, which means a negative result here has
+ * one clean interpretation — naming a higher number buys contracts that get
+ * set — rather than being confounded with a change in how often the AI bids
+ * at all.
+ *
+ * Side A (`DISTILLED_LEVEL`) carries the arm under test, matching every other
+ * map in this file.
+ */
+export const OPENING_AB_POLICIES: Record<string, SkillParams> = {
+  [STATIC_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
+  },
+  [DISTILLED_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+    openingPolicy: 'walk',
   },
 }
 
@@ -176,6 +223,7 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'simple',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -184,6 +232,7 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   },
 }
 
@@ -231,6 +280,7 @@ export function safeCounterAbPolicies(
       playPolicy: 'cascade',
       autoSetPolicy: 'forced',
       safeCounterPolicy: 'counted',
+      openingPolicy: 'fixed',
     },
     [offLevel]: {
       handValuation: 'base_bid',
@@ -239,6 +289,7 @@ export function safeCounterAbPolicies(
       playPolicy: 'cascade',
       autoSetPolicy: 'forced',
       safeCounterPolicy: 'off',
+      openingPolicy: 'fixed',
     },
   }
 }
@@ -283,6 +334,7 @@ export function safeCounterCapacityPolicies(
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingPolicy: 'fixed',
   }
   return { [highLevel]: counted, [lowLevel]: counted }
 }

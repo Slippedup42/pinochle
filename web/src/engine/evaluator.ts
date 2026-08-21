@@ -166,8 +166,9 @@ export function evaluateBid(situation: BidSituation): Evaluation {
 }
 
 /** True when the evaluator says taking the contract at `bid` beats defending it. */
-export function shouldBid(situation: BidSituation): boolean {
-  return evaluateBid(situation).decision
+export function shouldBid(situation: BidSituation, threshold?: number): boolean {
+  const evaluation = evaluateBid(situation)
+  return threshold === undefined ? evaluation.decision : evaluation.probability >= threshold
 }
 
 // -- The concede decision ---------------------------------------------------

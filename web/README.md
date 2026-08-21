@@ -824,6 +824,81 @@ contracts against cascade's 24.9% from the same bids on the same deals. A dial
 that can separate those by 202 points and separate a policy from itself by
 exactly 0 is one a null result from can be believed.
 
+### What the opener puts on the table (`openingPolicy`, #204)
+
+Paul, playing the deployed PWA, reported that too many hands settle under 300
+when almost all of them should land between 320 and 350. Measured over 4000
+AI-vs-AI auctions on `hard`, he was right and the distribution is stranger than
+the complaint: **41.1% settle at 250 and 51.7% at 320–350, with 0% anywhere in
+between.** Nothing in this engine ever settles at 260–310, because
+`PARTNER_PASSED_FLOOR` and the `Math.max(ceiling, 330)` in `chooseBid`'s
+competitive branch mean that once a raise ladder starts at all it clears 320. So
+"under 300" is exactly and only "the contract was never contested".
+
+Two causes, and only one of them is about aggression. 13.6% of deals are passed
+out and the dealer eats `FORCED_BID`. The other 27.4% are the one worth naming:
+**the opener never puts a number above the opening rung on the table.**
+`chooseBid` asks two separable questions — *should* I open, and *at what level* —
+and has only ever acted on the first, answering the second with `OPENING_BID`.
+A seat holding a 400-ceiling hand opens at 250 and, if the other three pass, buys
+the contract for 250. On those deals the winner's ceiling ran median 310, p75
+370, and 44.5% of them were worth 320 or more.
+
+`openingPolicy: 'walk'` is the fix, and it does not survive measurement.
+
+The dial is deliberately narrow. It is consulted only after `worthContract` has
+already returned true, so both arms open on an identical set of deals and pass on
+an identical set — `bidding.test.ts` asserts that directly. The only thing that
+differs is the price, which is what makes the result readable: a loss here means
+naming a higher number buys contracts that get set, and cannot be confounded
+with a change in how often the AI bids at all.
+
+`opening`, 5000 pairs x 3 seeds, both arms `distilled`/`model`/`cascade`:
+
+| seed | walk swept | fixed swept | split | margin/deal | 95% CI |
+|---|---|---|---|---|---|
+| 1 | 265 | 484 | 4251 | **-52** | -59 to -44 |
+| 2 | 264 | 509 | 4227 | **-56** | -65 to -48 |
+| 3 | 277 | 512 | 4211 | **-53** | -61 to -46 |
+
+These numbers were taken before #206 merged and were re-run against it, the way
+#158's table was re-run against #178. They did not move by a single point — same
+-52, same -59 to -44 interval, same 265/484/4251 sweep — which is the full-game
+confirmation of what #206's auction fingerprint already showed: a rule that only
+fires with a human in a seat is inert in a harness that has none.
+
+p < 1e-4 on every seed. The mechanism is in the summary rows: walk lifts the
+average bid from 301 to 322 and its made rate falls from 73.2% to 69.2%, with
+auto-SET hands rising from 7.1% to 9.9%. It is buying the distribution with
+sets, at a bad exchange rate.
+
+`WALK_CONFIDENCE` buys the loss back and cannot buy enough of it. A greedy walk
+stops at the highest rung the model still tolerates, which is by construction the
+marginal one — probability barely past a coin flip — so it lands on the worst
+contract it is willing to hold, every deal. Requiring more confidence per rung
+helps monotonically: -48 at 0.60, -43 at 0.70, -26 at 0.80, and -7 (CI -14 to
++0) at 0.90. But the only setting whose interval touches zero lifts the average
+bid by 8 points, to 309, which is not the distribution the change was asked for.
+Roughly three points of score margin per point of bid lift, the whole way down.
+There is no free rung. The model was fitted to measured rollouts and it is right
+that the cheap contract is a good price.
+
+**The number that answers Paul's actual question is not in the A/B table.** A
+paired A/B asks whether walk *beats* fixed, but in a real game every AI seat runs
+the same policy, so the head-to-head penalty is not what a player experiences.
+Running each arm against itself (`selftest`, 2000 pairs) gives the house feel
+instead:
+
+| all-`fixed` table | all-`walk` table |
+|---|---|
+| avg bid 301, set 26.3% | avg bid 322, set 30.5% |
+
+That is the honest price of the distribution Paul asked for: symmetric, nobody
+disadvantaged, contracts going down about one extra time in every 24. Whether
+that is worse *play* or just a livelier game is a house-rules question and not a
+measurement one — which is why #204 is `ready-for-human` and why the dial ships
+wired-live and flag-off (#101) rather than being argued either way.
+
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
 input to `vite build`, so it cannot reach a player or the PWA precache.
