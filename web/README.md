@@ -597,6 +597,56 @@ a `bidFloorAbPolicies` factory, a capacity equaliser and a `cli.ts floor --a X
 column (c) exist at all: an arm carrying only the constant cannot measure the
 comparison, and would have shipped the collapse unmeasured.
 
+### The bid that only a human can see is wrong (#206)
+
+The dial has a blind spot, and this is the case that found it. Everything in
+`src/ab/` plays AI against AI. A rule that is only wrong when a *human* sits at
+the table is one the harness cannot fail on, however many deals it runs.
+
+`chooseBid`'s partner-raise branch demanded `ceiling >= 340` and then bid
+`currentBid + minIncrement`. In an all-AI auction that is not observably broken:
+the competitive branch's `Math.max(ceiling, 330)` walks the ladder to 330, so
+`+ minIncrement` lands on 340 by arithmetic accident. Over 4000 AI-vs-AI
+auctions on `hard`, 123 deals place a bid over one's own partner and **all 123
+are exactly 340** — min, median and max identical. There is no distribution to
+look at and nothing to flag.
+
+A human's bid is not on that ladder. Paul, playing the deployed PWA, bid 260 as
+the partner of an AI holding a 360 ceiling and was raised to 270 — the AI
+bidding against its own team for ten points, having just certified the hand as
+worth a 340 contract. That is the whole defect, and only the human seat can
+produce it.
+
+**What this costs the measurement programme is worth stating plainly.** Three
+separate bidding constants have now been wrong in the same way — #177's
+`320 + 1`, #180's clear-versus-reach, and this — and none of the three were
+caught by an A/B. They were caught by reading the code, and this one by playing
+the game. The harness measures which of two rules wins; it does not measure
+whether a rule does what its own constant says. Those are different questions and
+only the first has a tool.
+
+The fix is `PARTNER_RAISE_FLOOR`, the same shape as `PARTNER_PASSED_FLOOR`: the
+ceiling gate decides *whether* to raise, the floor decides *what* to raise to,
+and both are 340. Passing stays available, so the change alters what a raise says
+rather than how often one happens.
+
+Verification, in place of an A/B that would have measured nothing: a seeded
+4000-deal auction sweep on each of `easy`/`medium`/`hard` — 12,000 auctions —
+produces a **bit-identical fingerprint** of every settled contract and winner
+before and after. The change provably reaches only auctions with a human in a
+seat, which is exactly the population the harness cannot reach.
+
+`easy` is deliberately outside all of this. `meldOnlyBid` has no partner tracking
+of any kind, so it never enters the branch and answers the plain next rung;
+`bidding.test.ts` excludes it from the property with that reason attached, so the
+exclusion does not later read as an oversight.
+
+The other half of Paul's report — that a seat should not pass and let the
+opponents buy it cheap after both partners have bid — needed no change and is
+recorded so it does not get re-fixed. `Math.max(ceiling, 330)` already makes a
+seat whose partner has bid push the opponents to 330 on any hand at all; probed
+with a ceiling-190 hand, it answers 270/290/310/330 and only passes at 330.
+
 ### "Cannot be beaten", and the first place skill decides a card (#158)
 
 The last child of epic #152, and the one that makes #157's trump memory do

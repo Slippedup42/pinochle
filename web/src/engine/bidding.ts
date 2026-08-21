@@ -110,6 +110,39 @@ export const DEFENSIVE_PUSH_FLOOR = 200
  */
 export const PARTNER_PASSED_FLOOR = 320
 
+/**
+ * The bid a seat must commit to when it raises **over its own partner** (#206).
+ *
+ * Read `PARTNER_PASSED_FLOOR` above first; this is the same kind of number and
+ * it was the same kind of bug. `340` has always been in `chooseBid`, gating the
+ * one branch where a seat bids over a bid its own team already holds — but it
+ * gated the *ceiling* and the seat then bid `currentBid + minIncrement`. So the
+ * rule read "I need a hand worth a 340 contract to do this" and the action was
+ * "raise my partner by ten". The constant never reached the table.
+ *
+ * That is #177 exactly, one branch over, and it hid for the same reason: in an
+ * all-AI auction it is invisible. The competitive branch's `Math.max(ceiling,
+ * 330)` means the ladder arrives at 330 and `+ minIncrement` lands on 340 by
+ * arithmetic accident, so a 4000-deal AI-vs-AI sweep shows every such bid at
+ * exactly 340 and nothing wrong. **The human seat is what exposes it**, because
+ * a human's bid is not on the AI ladder: bid 260 as the partner of an AI holding
+ * a 360 ceiling and it answers 270, having just required a 340-worthy hand to
+ * say so.
+ *
+ * Paul's call (2026-08-20), and his reasoning is the rule's justification rather
+ * than a preference laid on top of it: raising your own partner costs your team
+ * points and gains it nothing, so the only thing that can justify it is holding
+ * substantially more than your partner's bid already showed. A raise that means
+ * that should say it. Ten points does not say it — it just looks like the AI
+ * bidding against itself, which is what made the table confusing to read.
+ *
+ * The alternative is to pass, and the ceiling gate is what keeps that available:
+ * a seat that cannot support 340 still backs off rather than being talked into a
+ * commitment it cannot make. This changes what a raise *says*, not how often one
+ * happens.
+ */
+export const PARTNER_RAISE_FLOOR = 340
+
 function handCount(hand: readonly Card[], suit: Suit, rank: Rank): number {
   return hand.reduce((count, c) => count + (c.suit === suit && c.rank === rank ? 1 : 0), 0)
 }
@@ -446,8 +479,9 @@ function meldOnlyBid(
  *   - My team currently holds the bid:
  *     - Partner has already bid twice this auction - back off, they're
  *       carrying it.
- *     - Partner just raised over my own earlier bid - match it if my
- *       ceiling supports at least 340, otherwise back off.
+ *     - Partner just raised over my own earlier bid - commit to
+ *       PARTNER_RAISE_FLOOR (340) if my ceiling supports it, else back off.
+ *       Never a ten-point nudge over one's own partner (#206).
  *     - Otherwise my own (or partner's) bid already stands - no need to
  *       raise myself.
  *   - The opponents currently hold the bid: raise to current + minIncrement
@@ -563,8 +597,13 @@ export function chooseBid(
     if (partnerBidCount >= 2) return null // partner's carrying it, back off
 
     if (lastBidder === partner && myOwnBids.length > 0 && currentBid > myOwnBids[myOwnBids.length - 1]) {
-      // partner raised over my own earlier bid
-      return ceiling < 340 ? null : currentBid + minIncrement
+      // Partner raised over my own earlier bid, so this seat is being asked
+      // whether to bid over a contract its own team already holds. The ceiling
+      // gate decides *whether* (#206 left it exactly where it was); the floor
+      // decides *what*, and it is the same number, because a raise that cannot
+      // reach PARTNER_RAISE_FLOOR is not worth making at all.
+      if (ceiling < PARTNER_RAISE_FLOOR) return null
+      return Math.max(PARTNER_RAISE_FLOOR, currentBid + minIncrement)
     }
 
     return null // our own bid already stands, no need to raise ourselves

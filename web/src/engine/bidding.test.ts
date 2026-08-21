@@ -17,6 +17,7 @@ import {
   NEAR_RUN_VALUE,
   OPENER_THRESHOLD,
   PARTNER_PASSED_FLOOR,
+  PARTNER_RAISE_FLOOR,
 } from './bidding'
 import { partnerOf } from './round'
 import type { PlayerIndex } from './trick'
@@ -330,7 +331,7 @@ describe('chooseBid', () => {
       expect(chooseBid(0, strongHand, 320, 10, context)).toBeNull()
     })
 
-    it('matches a partner raise over my own earlier bid when the ceiling supports it', () => {
+    it('commits to PARTNER_RAISE_FLOOR on a partner raise over my own earlier bid (#206)', () => {
       const context = baseContext({
         everBid: true,
         bidHistory: [
@@ -339,7 +340,10 @@ describe('chooseBid', () => {
           { player: 2, amount: 320 },
         ],
       })
-      expect(chooseBid(0, strongHand, 320, 10, context)).toBe(330)
+      // Was 330 — `currentBid + minIncrement` — while the branch above it
+      // required a 340-worthy ceiling to get here at all. #206 makes the number
+      // the rule already demanded the number that reaches the table.
+      expect(chooseBid(0, strongHand, 320, 10, context)).toBe(PARTNER_RAISE_FLOOR)
     })
 
     it('backs off a partner raise over my own earlier bid when the ceiling does not support it', () => {
@@ -606,5 +610,116 @@ describe('every bid chooseBid can return is legal (#177)', () => {
       passedPlayers: [2],
     }
     expect(chooseBid(0, ceiling320Hand, OPENING_BID - 10, 10, context, 'medium')).toBe(PARTNER_PASSED_FLOOR)
+  })
+})
+
+// -- PARTNER_RAISE_FLOOR (#206) ----------------------------------------------
+//
+// The AI-vs-AI harness cannot see this rule. `Math.max(ceiling, 330)` in the
+// competitive branch means an all-AI ladder arrives at 330 and `+ minIncrement`
+// lands on 340 by arithmetic accident, so every bid an AI has ever placed over
+// its own partner was already exactly 340 and a 4000-deal sweep shows nothing
+// wrong. A human partner's bid is not on that ladder, which is the only reason
+// the defect was ever visible — so these tests drive the branch from an
+// off-ladder `currentBid` on purpose. Do not "simplify" them onto round AI
+// numbers; that is precisely the blind spot.
+describe('raising over a bid our own team already holds (#206)', () => {
+  // Ceiling 360 — clears PARTNER_RAISE_FLOOR with room above it.
+  const strongHand = [
+    ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
+    new Card(Suit.Hearts, 'K', 2),
+    new Card(Suit.Hearts, 'Q', 2),
+    new Card(Suit.Spades, 'A', 1),
+  ]
+  // Ceiling 320 — opens happily, but cannot support a 340 commitment.
+  const modestHand = [...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)), new Card(Suit.Spades, 'A', 1)]
+
+  /** Seat 2 opened at OPENING_BID; its partner (seat 0) then bid `partnerBid`. */
+  const afterPartnerRaise = (partnerBid: number): AuctionContext => ({
+    everBid: true,
+    passesSoFar: 0,
+    bidHistory: [
+      { player: 2 as PlayerIndex, amount: OPENING_BID },
+      { player: 0 as PlayerIndex, amount: partnerBid },
+    ],
+    dealer: 1,
+    scores: { 0: 0, 1: 0 },
+    passedPlayers: [],
+  })
+
+  it('commits to PARTNER_RAISE_FLOOR rather than nudging its partner by ten', () => {
+    expect(bestBaseBid(strongHand, 0, 0).total).toBe(360)
+    // Every one of these used to answer `partnerBid + 10` — 270 over a 260 —
+    // while requiring a 340-worthy hand to say it.
+    for (const partnerBid of [260, 270, 280, 290, 300, 310, 320, 330]) {
+      expect(chooseBid(2, strongHand, partnerBid, 10, afterPartnerRaise(partnerBid), 'hard')).toBe(
+        PARTNER_RAISE_FLOOR,
+      )
+    }
+  })
+
+  it('still takes the ordinary next rung once the partner is already past the floor', () => {
+    // The floor is a floor, not a fixed bid: above it the normal ladder applies.
+    expect(chooseBid(2, strongHand, 350, 10, afterPartnerRaise(350), 'hard')).toBe(360)
+  })
+
+  it('backs off instead of being talked into a commitment it cannot make', () => {
+    expect(bestBaseBid(modestHand, 0, 0).total).toBeLessThan(PARTNER_RAISE_FLOOR)
+    for (const partnerBid of [260, 300, 330]) {
+      expect(chooseBid(2, modestHand, partnerBid, 10, afterPartnerRaise(partnerBid), 'hard')).toBeNull()
+    }
+  })
+
+  it('never places a bid over its own partner below the floor, on any hand', () => {
+    const realRandom = Math.random
+    Math.random = seededRandom(0x2060_2026)
+    try {
+      for (let i = 0; i < 300; i++) {
+        const deck = new Deck()
+        deck.shuffle()
+        const hands = deck.deal()
+        for (const partnerBid of [260, 275, 290, 305, 330]) {
+          // `easy` is excluded on purpose, not because it fails: `meldOnlyBid`
+          // is the deliberately-weak skill-1 path with no partner tracking of
+          // any kind (see its docstring), so it never reaches this branch and
+          // answers the plain next rung. Sweeping it here would assert that
+          // skill 1 has partner logic, which is the opposite of what it is for.
+          for (const level of SKILL_LEVELS.filter((l) => l !== 'easy')) {
+            const out = chooseBid(2, hands[2], partnerBid, 10, afterPartnerRaise(partnerBid), level)
+            if (out === null) continue
+            expect(out).toBeGreaterThanOrEqual(PARTNER_RAISE_FLOOR)
+          }
+        }
+      }
+    } finally {
+      Math.random = realRandom
+    }
+  })
+
+  it('pushes opponents rather than handing them a cheap contract once the partner has bid', () => {
+    // The other half of Paul's report: passing here would let the opponents buy
+    // it low after both seats have shown cards. `Math.max(ceiling, 330)` already
+    // covers it, and this pins that down — a ceiling-190 hand still pushes.
+    const weakHand = [
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Hearts, 'Q', 1),
+      new Card(Suit.Spades, 'A', 1),
+    ]
+    expect(bestBaseBid(weakHand, 0, 0).total).toBeLessThan(330)
+    for (const oppBid of [260, 280, 300, 320]) {
+      const context: AuctionContext = {
+        everBid: true,
+        passesSoFar: 0,
+        bidHistory: [
+          { player: 2 as PlayerIndex, amount: OPENING_BID },
+          { player: 0 as PlayerIndex, amount: 260 },
+          { player: 1 as PlayerIndex, amount: oppBid },
+        ],
+        dealer: 3,
+        scores: { 0: 0, 1: 0 },
+        passedPlayers: [],
+      }
+      expect(chooseBid(2, weakHand, oppBid, 10, context, 'hard')).toBe(oppBid + 10)
+    }
   })
 })
