@@ -15,12 +15,18 @@
 // per-trick resolution one play at a time.
 
 import type { Card, Suit } from '../engine/card'
-import { findClaim, partnerOf, teamOf, type ClaimResult, type Hands, type TeamId } from '../engine/round'
+import {
+  LAST_TRICK_BONUS,
+  TRICK_COUNT,
+  findClaim,
+  partnerOf,
+  teamOf,
+  type ClaimResult,
+  type Hands,
+  type TeamId,
+} from '../engine/round'
 import { type PlayerIndex, Trick, type TrickPlay } from '../engine/trick'
 import type { ClaimSummary, TrickPlayLogEntry } from './trickPlayTypes'
-
-const TRICK_COUNT = 12
-const LAST_TRICK_BONUS = 10 // team that wins the 12th trick gets +10, matches round.ts
 
 export type TrickPlayPhase = 'playing' | 'trick-complete' | 'complete'
 
