@@ -36,6 +36,14 @@ export type CopyId = 1 | 2
  *  below, `round.ts`'s MAX_TRICK_POINTS — derives from one place. */
 export const COPIES_PER_CARD: readonly CopyId[] = [1, 2]
 
+/** Every copy of one suit in a full deck: 6 ranks x 2 copies. Named for trump
+ *  because trump is the only suit anyone counts to exhaustion — `tracker.ts`
+ *  calls trump "secure" once this many are accounted for, and `trumpMemory.ts`
+ *  sizes a seat's recall against it (#158). Same name and value as Python's
+ *  `TOTAL_TRUMP_COPIES`, derived here rather than written as 12 so it follows
+ *  the deck the way MAX_TRICK_POINTS does (#241). */
+export const TOTAL_TRUMP_COPIES = RANKS.length * COPIES_PER_CARD.length
+
 export const GAME_WIN_SCORE = 1000
 export const GAME_LOSE_SCORE = -1000
 // Lowest rung the auction can open at. **250 since #200** (was 300): a house
@@ -94,6 +102,37 @@ export class Card {
   toString(): string {
     return `${this.rank}${this.suit}_${this.copyId}`
   }
+}
+
+// Card-collection helpers. Pure queries over an array of cards, with no rules
+// or strategy in them, which is why they live beside Card rather than in the
+// module that happened to need one first: bidding.ts and tracker.ts each had
+// their own byte-identical `handCount`, and trick.ts and tracker.ts their own
+// `maxByRank` (#241). Python keeps the same pairing, `_hand_count` next to
+// `_suit_length`.
+
+/** How many copies of one exact card (suit + rank) a hand holds: 0, 1 or 2. */
+export function handCount(hand: readonly Card[], suit: Suit, rank: Rank): number {
+  return hand.reduce((count, c) => count + (c.suit === suit && c.rank === rank ? 1 : 0), 0)
+}
+
+/** How many cards of a suit a hand holds. */
+export function suitLength(hand: readonly Card[], suit: Suit): number {
+  return hand.reduce((count, c) => count + (c.suit === suit ? 1 : 0), 0)
+}
+
+/** Highest-ranked card of a non-empty set, in pinochle rank order (10 beats
+ *  King). Ties keep the first element, since only a strictly greater rank
+ *  replaces the running best — the same stability Python's `max()` has.
+ *  Compares rank alone, so the caller is responsible for passing cards that
+ *  are actually comparable (one suit, or all trump). */
+export function maxByRank(cards: readonly Card[]): Card {
+  return cards.reduce((best, c) => (c.rankValue > best.rankValue ? c : best))
+}
+
+/** Lowest-ranked card of a non-empty set. Mirror of `maxByRank`, same caveats. */
+export function minByRank(cards: readonly Card[]): Card {
+  return cards.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
 }
 
 /**

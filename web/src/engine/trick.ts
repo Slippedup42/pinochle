@@ -8,7 +8,7 @@
 // no dependency on however bidding/passing (#17) would end up representing
 // players. round.ts's teamOf() maps a PlayerIndex to its team.
 
-import type { Card, Rank, Suit } from './card'
+import { type Card, maxByRank, type Rank, type Suit } from './card'
 
 export type PlayerIndex = 0 | 1 | 2 | 3
 
@@ -108,10 +108,9 @@ export class Trick {
   }
 }
 
-function maxByRank(cards: readonly Card[]): Card {
-  return cards.reduce((best, c) => (c.rankValue > best.rankValue ? c : best))
-}
-
+/** Deliberately not card.ts's `maxByRank` (#241): this takes plays, not cards,
+ *  and its first-wins tie-break *is* the trick-winner rule — the seat, not just
+ *  the card, is the answer. Keep the two separate. */
 function firstMaxByRank(plays: readonly TrickPlay[]): TrickPlay {
   return plays.reduce((best, p) => (p.card.rankValue > best.card.rankValue ? p : best))
 }
