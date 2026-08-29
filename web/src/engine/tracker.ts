@@ -19,15 +19,21 @@
 // that behaves differently at different skill levels.
 
 import type { SkillLevel } from '../persistence/options'
-import { type Card, RANK_VALUE, RANKS, type Rank, type Suit } from './card'
-import type { PlayerIndex, TrickPlay } from './trick'
+import {
+  type Card,
+  handCount,
+  maxByRank,
+  minByRank,
+  RANK_VALUE,
+  RANKS,
+  type Rank,
+  suitLength,
+  type Suit,
+  TOTAL_TRUMP_COPIES,
+} from './card'
+import { POINT_RANKS, type PlayerIndex, type TrickPlay } from './trick'
 import { SKILL_PARAMS } from './skills'
 import type { TrumpMemory } from './trumpMemory'
-
-const POINT_RANKS = new Set(['A', '10', 'K'])
-/** 6 ranks x 2 copies, matching Python's `TOTAL_TRUMP_COPIES`. `chooseFollowCard`
- *  calls trump "secure" once this many copies are accounted for. */
-const TOTAL_TRUMP_COPIES = 12
 
 /** Tracks cards played so far this round, across all 4 hands. */
 export class PlayTracker {
@@ -45,14 +51,6 @@ export class PlayTracker {
   playedCount(suit: Suit, rank: Rank): number {
     return this.played.get(PlayTracker.key(suit, rank)) ?? 0
   }
-}
-
-function handCount(hand: readonly Card[], suit: Suit, rank: Rank): number {
-  return hand.reduce((count, c) => count + (c.suit === suit && c.rank === rank ? 1 : 0), 0)
-}
-
-function suitLength(hand: readonly Card[], suit: Suit): number {
-  return hand.reduce((count, c) => count + (c.suit === suit ? 1 : 0), 0)
 }
 
 /**
@@ -349,14 +347,6 @@ export function chooseLeadCard(
 
   // Fallback when side is unknown (old callers): original safe-card cascade
   return leadSafeCascade(hand, trump, tracker, memory)
-}
-
-function minByRank(cards: readonly Card[]): Card {
-  return cards.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
-}
-
-function maxByRank(cards: readonly Card[]): Card {
-  return cards.reduce((highest, c) => (c.rankValue > highest.rankValue ? c : highest))
 }
 
 /**

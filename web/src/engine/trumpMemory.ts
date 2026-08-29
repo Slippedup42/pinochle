@@ -42,11 +42,10 @@ import type { PlayerIndex } from './trick'
  * card is not a strong player, it is a different kind of thing to play against,
  * and the top of the dial is meant to still be beatable.
  *
- * The 12-copy total (6 ranks x 2 copies) is `TOTAL_TRUMP_COPIES` in
- * `tracker.ts`, which is module-private there. This module deliberately does
- * **not** declare a second copy of it: capacity is expressed against skill
- * level, and nothing here needs the total. When #158 needs to compare the two,
- * export the existing constant rather than adding one.
+ * The 12-copy total is `TOTAL_TRUMP_COPIES`, exported from `card.ts` and
+ * derived there from the deck (#241). This module deliberately does **not**
+ * declare a second copy of it: capacity is expressed against skill level, and
+ * nothing here needs the total. Anything that does should import that one.
  */
 export const TRUMP_MEMORY_CAPACITY: Record<SkillLevel, number> = {
   easy: 2,

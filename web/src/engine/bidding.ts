@@ -29,7 +29,7 @@
 // components/auctionReducer.ts (#34), under gameFlowReducer.ts (#47).
 
 import type { SkillLevel } from '../persistence/options'
-import { type Card, GAME_WIN_SCORE, OPENING_BID, type Rank, Suit, SUITS } from './card'
+import { type Card, GAME_WIN_SCORE, handCount, OPENING_BID, type Rank, Suit, SUITS } from './card'
 import { shouldBid } from './evaluator'
 import { MELD_ONLY_BID_NOISE, MELD_ONLY_TRICK_ESTIMATE, SKILL_PARAMS } from './skills'
 import {
@@ -197,10 +197,6 @@ export const WALK_CONFIDENCE = 0.5
  * happens.
  */
 export const PARTNER_RAISE_FLOOR = 340
-
-function handCount(hand: readonly Card[], suit: Suit, rank: Rank): number {
-  return hand.reduce((count, c) => count + (c.suit === suit && c.rank === rank ? 1 : 0), 0)
-}
 
 /** Remove up to `count` cards matching suit/rank from `pool` in place; returns how many were removed. */
 function claim(pool: Card[], suit: Suit, rank: Rank, count = 1): number {

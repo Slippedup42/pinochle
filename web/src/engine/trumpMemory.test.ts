@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { SkillLevel } from '../persistence/options'
-import { type CopyId, Card, RANKS, Suit } from './card'
+import { type CopyId, Card, RANKS, Suit, TOTAL_TRUMP_COPIES } from './card'
 import { TRUMP_MEMORY_CAPACITY, TrumpMemory, newTrumpMemories } from './trumpMemory'
 
 const TRUMP = Suit.Spades
-
-/** 6 ranks x 2 copies — the same 12 `tracker.ts` calls `TOTAL_TRUMP_COPIES`,
- *  derived here rather than hard-coded so this drifts if the deck ever does. */
-const TOTAL_TRUMP = RANKS.length * 2
 
 /** Every trump in the deck, in a fixed order: both copies of 9, then J, and so
  *  on up to A. Order is what these tests are about, so it must not be random. */
@@ -27,8 +23,8 @@ describe('TRUMP_MEMORY_CAPACITY', () => {
   })
 
   it('leaves even expert short of the full 12 trump', () => {
-    expect(TOTAL_TRUMP).toBe(12)
-    expect(TRUMP_MEMORY_CAPACITY.expert).toBeLessThan(TOTAL_TRUMP)
+    expect(TOTAL_TRUMP_COPIES).toBe(12)
+    expect(TRUMP_MEMORY_CAPACITY.expert).toBeLessThan(TOTAL_TRUMP_COPIES)
   })
 
   const levels: [SkillLevel, number][] = [
@@ -116,7 +112,7 @@ describe('TrumpMemory forgetting', () => {
     const memory = new TrumpMemory(TRUMP, 'expert') // capacity 10
     memory.seeAll(allTrumpInOrder()) // 9,9,J,J,Q,Q,K,K,10,10,A,A
     expect(memory.size).toBe(10)
-    expect(memory.forgottenCount).toBe(TOTAL_TRUMP - TRUMP_MEMORY_CAPACITY.expert)
+    expect(memory.forgottenCount).toBe(TOTAL_TRUMP_COPIES - TRUMP_MEMORY_CAPACITY.expert)
     expect(memory.seenCount('9')).toBe(0) // the two earliest sightings
     expect(memory.seenCount('J')).toBe(2)
     expect(memory.seenCount('A')).toBe(2)
