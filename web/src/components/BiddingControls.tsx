@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { MIN_BID_INCREMENT } from '../engine/card'
 
 export interface BiddingControlsProps {
   /** Lowest legal bid right now — `OPENING_BID` before anyone has bid,
-   * `currentBid + 10` afterward (round.ts's `_bidding_loop` increment). */
+   * `currentBid + MIN_BID_INCREMENT` afterward. Both constants live in
+   * `card.ts`; `AuctionFlow` does that arithmetic and passes the result in. */
   minBid: number
   /** The standing bid, for display context ("current bid: N"). Only
    * meaningful once someone has bid; 0 beforehand. */
@@ -45,15 +47,15 @@ export function BiddingControls({
       <div className="mt-3 flex items-center gap-2">
         <button
           type="button"
-          aria-label="Decrease bid by 10"
-          onClick={() => setAmount((a) => Math.max(minBid, a - 10))}
+          aria-label={`Decrease bid by ${MIN_BID_INCREMENT}`}
+          onClick={() => setAmount((a) => Math.max(minBid, a - MIN_BID_INCREMENT))}
           className="rounded bg-neutral-200 px-3 py-1 font-semibold hover:bg-neutral-300"
         >
           −
         </button>
         <input
           type="number"
-          step={10}
+          step={MIN_BID_INCREMENT}
           min={minBid}
           value={amount}
           onChange={(e) => setAmount(Number(e.target.value))}
@@ -62,8 +64,8 @@ export function BiddingControls({
         />
         <button
           type="button"
-          aria-label="Increase bid by 10"
-          onClick={() => setAmount((a) => a + 10)}
+          aria-label={`Increase bid by ${MIN_BID_INCREMENT}`}
+          onClick={() => setAmount((a) => a + MIN_BID_INCREMENT)}
           className="rounded bg-neutral-200 px-3 py-1 font-semibold hover:bg-neutral-300"
         >
           +
