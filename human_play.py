@@ -171,7 +171,16 @@ class InteractiveRound(Round):
     """Same rules as Round, but every phase is resumable: state lives in
     instance attributes instead of local variables, so a NeedsHumanInput
     exception can propagate all the way out (through run()) without
-    losing progress, then pick back up on the next call to run()."""
+    losing progress, then pick back up on the next call to run().
+
+    That makes this a hand-maintained mirror of Round: only the phases
+    holding a human decision point are overridden here, so a rules change
+    in one of them has to be repeated on this side or the interactive
+    path silently plays a different game from the AI-only path, with
+    nothing at runtime comparing the two. `_check_misdeal` is where the
+    two have already diverged - deliberately, and frozen that way (issue
+    #128) - so read it as the example of the drift, not as the exception
+    to it."""
 
     def _check_misdeal(self):
         """House rule: 5+ nines in a single hand qualifies for a reshuffle.
