@@ -144,7 +144,7 @@ because nothing needs them yet (see Open questions).
 
 Most of this is now done. What shipped:
 
-- **Full `pytest` suite** — 269 tests, `python -m pytest -q`, ~3 min.
+- **Full `pytest` suite** — 310 tests, `python -m pytest -q`, ~1m45s.
 - **Tournament-simulation harness** — `tournament_sim.py` (+
   `test_tournament_sim.py`), issue #64: batch-runs N full games between
   two team configs, alternating seats to cancel positional bias.
@@ -169,15 +169,15 @@ What is still open:
   to settle it either way. The rollout, win-probability, dataset,
   fitting, export and A/B layers already live in their own modules; the
   engine file is the remaining lump, and it is what all of them import.
-- Dedupe win-condition logic: `Game.play` in `pinochle_engine.py` and
-  `play_local.py:130` each implement the bust/over check independently.
-  They share the constants, not the logic.
 - An explicit "changes to `Round` must be mirrored here" note on
-  `InteractiveRound` — its docstring explains *how* it differs from
-  `Round`, not that it has to be kept in step with it.
+  `InteractiveRound` (`human_play.py:170`) — its docstring explains *how*
+  it differs from `Round`, not that it has to be kept in step with it.
 
-The last two are cheap and are folded into #214 rather than tracked
-separately.
+Dedupe of the win-condition logic was the third item here and **shipped
+in #6**: `determine_winner` in `pinochle_engine.py` is now the single
+home for the bust/over check, and `play_local.py:143` calls it rather
+than reimplementing it. The remaining item is cheap and rides along with
+#214 rather than being tracked separately.
 
 Deliberately **not** doing:
 
