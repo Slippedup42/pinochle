@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Suit } from '../engine/card'
-import { formatAuctionLogEntry, partnerOf } from './auctionTypes'
+import { formatAuctionLogEntry } from './auctionTypes'
 
 describe('formatAuctionLogEntry', () => {
   it('formats a bid entry', () => {
@@ -45,14 +45,5 @@ describe('formatAuctionLogEntry', () => {
       count: 1,
     })
     expect(text).toBe('Partner passed 1 card to You')
-  })
-})
-
-describe('partnerOf', () => {
-  it('pairs seats two apart, matching round.ts teamOf', () => {
-    expect(partnerOf(0)).toBe(2)
-    expect(partnerOf(1)).toBe(3)
-    expect(partnerOf(2)).toBe(0)
-    expect(partnerOf(3)).toBe(1)
   })
 })

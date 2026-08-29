@@ -86,9 +86,4 @@ export interface AuctionResult {
   readonly log: readonly AuctionLogEntry[]
 }
 
-/** Fixed team pairing, matches round.ts's `teamOf`. */
-export function partnerOf(player: PlayerIndex): PlayerIndex {
-  return ((player + 2) % 4) as PlayerIndex
-}
-
 export type ScoresByTeam = Record<TeamId, number>

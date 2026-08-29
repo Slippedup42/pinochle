@@ -7,6 +7,7 @@ import {
   MAX_TRICK_POINTS,
   findClaim,
   isAutoSet,
+  partnerOf,
   playTrickTakingPhase,
   scoreRound,
   teamOf,
@@ -25,6 +26,15 @@ describe('teamOf', () => {
     expect(teamOf(2)).toBe(0)
     expect(teamOf(1)).toBe(1)
     expect(teamOf(3)).toBe(1)
+  })
+})
+
+describe('partnerOf', () => {
+  it('pairs seats two apart, onto the team teamOf reports', () => {
+    expect(partnerOf(0)).toBe(2)
+    expect(partnerOf(1)).toBe(3)
+    expect(partnerOf(2)).toBe(0)
+    expect(partnerOf(3)).toBe(1)
   })
 })
 
