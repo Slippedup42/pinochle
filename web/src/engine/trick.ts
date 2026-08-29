@@ -1,12 +1,12 @@
 // Trick — owns lead suit, trump, legal-move filtering, and winner
-// resolution. Ported from pinochle_engine.py's Trick class (frozen
-// Python reference).
+// resolution. Ported from pinochle_engine.py's Trick class, which stays
+// authoritative for these rules: engineParity.test.ts replays a full
+// Python round through legalMoves/winner and a mismatch is TS drift (#125).
 //
 // Trick doesn't know about Player/Team objects — plays are recorded by
-// PlayerIndex (0-3, matching clockwise table seating) so this module has
-// no dependency on however Round ends up representing players once
-// bidding/passing (#17) lands. round.ts's teamOf() maps a PlayerIndex to
-// its team.
+// PlayerIndex (0-3, matching clockwise table seating), so this module took
+// no dependency on however bidding/passing (#17) would end up representing
+// players. round.ts's teamOf() maps a PlayerIndex to its team.
 
 import type { Card, Rank, Suit } from './card'
 

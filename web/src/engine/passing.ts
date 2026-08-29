@@ -1,4 +1,7 @@
-// 3-card pass — ported from pinochle_engine.py (frozen Python reference).
+// 3-card pass — ported from pinochle_engine.py, which stays authoritative for
+// the rule itself: three cards each way, per pinochle_rules.md. Which three is
+// AI strategy, and strategy is the half of the port that is allowed to diverge
+// on the TS side (#213) — PASS_COUNT is not.
 //
 // Skill-level-proficient strategy, split by trump category (Diamonds/
 // Spades vs Hearts/Clubs) and role (bidder vs partner). choosePassCards

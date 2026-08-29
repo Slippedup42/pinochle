@@ -1,4 +1,17 @@
-// Bidding — ported from pinochle_engine.py (frozen Python reference).
+// Bidding — ported from pinochle_engine.py, but no longer downstream of it.
+// #213 settled the split: Python stays authoritative for rules constants
+// (card.ts, melds.ts, round.ts), while the auction *strategy* in this module
+// is authoritative on the TS side. PARTNER_PASSED_FLOOR (#180),
+// PARTNER_RAISE_FLOOR (#206) and the 330 competitive floor were measured or
+// decided here — in web/src/ab/, against a human partner — and are
+// deliberately not ported back. The matching Python branches still hold
+// their own bare literals; #213 traced that divergence and found it inert on
+// every path that still consumes Python's bidding, so it is a decision to
+// read, not a parity bug to fix.
+//
+// The Base Bid constants below are the exception and still track Python
+// (#118). Python is not frozen either — it is the live AI-research and
+// measurement platform — it simply does not rule this file.
 //
 // Two layers. Valuation: computeBaseBid (guaranteed + speculative hand
 // value) -> computeCompetitiveAdjustment (score-context) -> the 400-cap /
@@ -7,8 +20,8 @@
 // Decision: chooseBid/chooseTrump wrap that valuation with the stateful
 // auction rules (dealer protection, 3rd-bidder-opens-cheap, when to raise
 // vs. pass) - ported from Player.choose_bid / Player.choose_trump. This
-// module only decides; it does not run an auction loop (that's a future
-// Round orchestrator, see round.ts's module docstring).
+// module only decides; it does not run an auction loop — that lives in
+// components/auctionReducer.ts (#34), under gameFlowReducer.ts (#47).
 
 import type { SkillLevel } from '../persistence/options'
 import { type Card, GAME_WIN_SCORE, OPENING_BID, type Rank, Suit, SUITS } from './card'
@@ -36,7 +49,9 @@ import type { PlayerIndex } from './trick'
 // estimate), not the actual guaranteed meld. ------------------------------
 
 // These two are ported from pinochle_engine.py, which CLAUDE.md names the
-// frozen reference implementation for this port. They read 60/60 here until
+// reference implementation for this port and which is still authoritative
+// here — valuation is a ported constant, unlike the auction floors below,
+// which #213 put on the TS side. They read 60/60 here until
 // #118 — a hand-port slip, not a deliberate divergence: every other constant
 // in this block already matched Python exactly, and `bidding.test.ts`'s own
 // case is titled "credits a near-run ... at 120" while asserting against the

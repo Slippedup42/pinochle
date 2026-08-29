@@ -1,11 +1,12 @@
 // Game — cumulative team scores and the +-1000 win/loss thresholds.
-// Ported from pinochle_engine.py's Game class (frozen Python reference).
+// Ported from pinochle_engine.py's Game class, which stays authoritative
+// for the bounds and the tie rule below — they are rules constants, and a
+// disagreement between the two engines is TS drift (#118, #126).
 //
-// Deliberately scoped to just the threshold check, not a full game loop:
-// running an actual multi-round game needs Round's bidding/pass phases
-// (#17) to exist first. A future Game orchestrator adds each round's
-// scoreRound() result (round.ts) onto each team's running total, then
-// calls checkGameOutcome() to see whether the game just ended.
+// Deliberately scoped to just the threshold check, not a full game loop.
+// The orchestrator arrived as components/gameFlowReducer.ts (#47): it adds
+// each round's scoreRound() result (round.ts) onto each team's running
+// total, then calls checkGameOutcome() to see whether the game just ended.
 
 import { GAME_LOSE_SCORE, GAME_WIN_SCORE } from './card'
 import type { TeamId } from './round'
