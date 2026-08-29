@@ -127,11 +127,17 @@ const suiteCompletenessReporter = {
   },
 }
 
-// The app is not currently hosted anywhere — GitHub holds the code only.
-// Root base works for `npm run dev` / `npm run preview` and for any host that
-// serves the build at a domain root. If it is ever deployed under a subpath
-// (e.g. a project page at `example.com/pinochle/`), set this to that subpath
-// or built asset URLs will not resolve.
+// The app is served from Netlify at a domain root
+// (<https://pinochle-house-rulez.netlify.app>), which is why this is `/`; the
+// same value is what `npm run dev` / `npm run preview` want. Deploys are manual
+// uploads of a locally built `web/dist` (see `netlify.toml`), so changing this
+// does not reach the live site until someone deploys.
+//
+// If the site ever moves under a subpath (e.g. `example.com/pinochle/`), set
+// this to that subpath *and* move the manifest's `id`/`start_url`/`scope` below
+// with it. Built asset URLs will not resolve otherwise, and a manifest left
+// behind installs an app that launches into a 404 — #141 shipped exactly that
+// and it stayed invisible until #143.
 const base = '/'
 
 // https://vite.dev/config/
