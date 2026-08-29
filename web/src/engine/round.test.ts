@@ -14,8 +14,9 @@ import {
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from './tracker'
 import { type PlayerIndex, Trick } from './trick'
 
-/** The +10 the 12th trick carries, restated here rather than exported from
- *  round.ts — a test that reads the constant it is checking proves nothing. */
+/** The +10 the 12th trick carries, restated here rather than imported from
+ *  round.ts (which does now export it, #218) — a test that reads the constant
+ *  it is checking proves nothing. */
 const LAST_TRICK_BONUS = 10
 
 describe('teamOf', () => {

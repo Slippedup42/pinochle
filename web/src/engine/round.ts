@@ -49,8 +49,17 @@ export interface TrickTakingResult {
   trickWinners: PlayerIndex[]
 }
 
-const TRICK_COUNT = 12
-const LAST_TRICK_BONUS = 10 // team that wins the 12th trick gets +10
+/**
+ * Tricks in a round, and the bonus the 12th carries. Exported because
+ * `trickPlayReducer.ts` runs the same per-trick resolution one play at a
+ * time for the UI and must award the bonus on the same trick this module's
+ * `scoreRound` and `findClaim` do — previously it kept its own copies with
+ * a `// matches round.ts` comment as the only thing holding them in step
+ * (#218). This module owns them: it is where every other trick-scoring
+ * constant lives, and `MAX_TRICK_POINTS` below derives from one of them.
+ */
+export const TRICK_COUNT = 12
+export const LAST_TRICK_BONUS = 10 // team that wins the 12th trick gets +10
 
 /**
  * Every trick point that exists in one round: each counter rank, in each
