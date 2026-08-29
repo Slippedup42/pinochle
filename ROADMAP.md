@@ -85,6 +85,20 @@ but the mismatch had to be resolved by grepping a feature string out of
 both bundles, because neither the repo nor the build records which commit
 is deployed (#237).
 
+**No CI, and no `.github/` directory — decided, not overlooked
+(2026-08-29, #234).** "GitHub is source control only" is meant literally:
+it rules out GitHub automation in general, not just deploys. A test-only
+workflow was proposed and declined. The consequence is that **running
+both suites before merging is a human discipline with no machine
+backstop** — `gh pr view <n> --json statusCheckRollup` is empty on every
+PR, and the two parity nets (`export_parity_scenarios.py --check`,
+`export_evaluator.py --check`) fire only when someone runs `python -m
+pytest -q` locally. #118 is the bug class those nets exist to catch, and
+an unrun net is as silent as no net. Worth knowing that vitest has gone
+quietly partial under CPU contention (#170 — 23 of 42 files, caught only
+by the harness's own banner), so "the tests passed" deserves a glance at
+the file count. This is the standing answer; please do not refile it.
+
 Two standing constraints: `base` in `web/vite.config.ts` must match the
 path the build is served under — and the manifest's `id`/`start_url`/
 `scope` must move with it, which #143 caught after #141 missed it and
