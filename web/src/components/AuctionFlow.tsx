@@ -164,7 +164,7 @@ export function AuctionFlow({
 
   const overlay = useMemo(() => {
     if (state.phase === 'bidding' && state.bidding.turn === humanPlayer) {
-      const minBid = state.bidding.everBid ? state.bidding.currentBid + 10 : OPENING_BID
+      const minBid = state.bidding.everBid ? state.bidding.currentBid + MIN_BID_INCREMENT : OPENING_BID
       const myTeam = teamOf(humanPlayer)
       const oppTeam: TeamId = myTeam === 0 ? 1 : 0
       const { total: suggestedCeiling } = bestBaseBid(
