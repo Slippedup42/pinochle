@@ -193,6 +193,27 @@ through, deliberately does not apply it.
   ends immediately and the **other team wins**, regardless of that
   team's own score.
 
+### Why 1000
+
+**A house rule, and a one-sitting target.** The number is chosen so a game
+is a handful of hands rather than an evening. Measured over 2000 games
+(`pinochle_engine.py`, Proficient seats, deal seeds 1000-2999): a mean of
+**4.52** hands to a win, median **4**, with **4.1%** finishing in two hands
+or fewer. Four hands is the shape this is meant to have, so 1000 stays where
+it is and is not a constant waiting to be tidied upward.
+
+The consequence is that a **Double Run** (1500) beats the whole game on its
+own, and that is known and accepted rather than an oversight. It needs no
+contract to cash: the defending team always scores their own meld, so the
+hand wins from either seat, before a card is led. It happened in 2 of the
+2000 games — **0.10%** — which reads as a story about a hand rather than a
+hole in the balance.
+
+Moving the target later would not be a one-constant change. Both engines read
+`GAME_WIN_SCORE`, but `win_probability.py` derives its `BUCKET_COUNT` from the
+win/lose pair and its `WIN_PROBABILITY_TABLE` is a hard-coded 20×20 literal
+that would have to be re-measured.
+
 ## Implementation Notes (for future chats picking this up)
 
 ### Which engine is the real one
