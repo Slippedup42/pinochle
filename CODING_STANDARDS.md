@@ -92,11 +92,71 @@ behavior the fallback preserves.
 
 ## Tests
 
-No test framework is wired up yet. `pinochle_engine.py`'s `__main__`
-block runs assertion-based sanity checks (meld scoring edge cases, full
-games to completion) as a stand-in. This is a known gap, not a
-pattern to replicate as the codebase grows — see QA's lens for
-follow-up.
+`pytest` is the suite. Seventeen `test_*.py` modules sit at the repo
+root, 310 tests, run with `python -m pytest -q` — about 1m45s, most of
+it the dataset and model-fitting modules. There is no `pytest.ini`,
+`conftest.py`, or `pyproject.toml`: collection is stock discovery from
+the repo root, so a new file needs nothing but the `test_` prefix and a
+home beside the module it covers.
+
+- **One `test_<module>.py` per module under test, at the repo root
+  beside the module.** There is no `tests/` package; don't start one
+  for a single new file and leave the other seventeen behind.
+- **Every module opens with a docstring naming what is under test and
+  *why those cases*.** This is the "docstrings explain why" rule above,
+  applied to tests, and it is the part most worth copying.
+  `test_determine_winner.py` says the tie-break and the bust-before-win
+  ordering "were previously stated twice with nothing checking them
+  against each other" — that tells a later reader what the file is
+  defending, which a list of function names does not.
+  `test_ab_harness.py` numbers its five areas and calls out which
+  property the whole harness rests on.
+- **Plain `assert`, plain module-level `def test_*` functions.** No
+  test file imports `pytest`: no fixtures, no `parametrize`, no test
+  classes. All 310 tests are module-level functions. Classes do appear
+  in test files, but only as test doubles for the code under test
+  (`_AlwaysFolds`, `_RiggedRound`, `_ScriptedHumanPlayer`), and they
+  take the same leading underscore as any other module-internal helper.
+- **Test names state the behaviour being asserted**, not just the
+  function being called:
+  `test_the_fixture_covers_a_last_trick_taken_by_the_defenders`,
+  `test_bid_ev_strong_hand_beats_weak_hand_at_same_bid`. Long is fine —
+  the name is what a failure prints.
+- Longer modules use the same `# ---` banner comments as the source
+  modules to group cases by area.
+
+### The `if __name__ == "__main__":` block is optional
+
+Eight of the seventeen modules end with one, calling their test
+functions in order and printing as each passes; nine do not. Treat it
+as an affordance you may add, not a requirement:
+
+- It is deliberate where it exists. `test_determine_winner.py`'s
+  docstring advertises the path — "Run directly (`python
+  test_determine_winner.py`) or via pytest" — and that is the newest
+  test module in the repo, so the block is not a vestige nobody has
+  cleaned up.
+- It does not track runtime, whatever the intuition suggests. The two
+  slowest modules by a wide margin, `test_rollout_dataset.py` and
+  `test_fit_evaluator.py`, have no block. The eight that do are the
+  original batch of strategy and simulation modules, plus
+  `test_determine_winner.py`.
+- It carries a maintenance cost the pytest path doesn't. Five of the
+  eight list their test functions by hand, so adding a test means
+  editing two places and forgetting is silent. The other three
+  (`test_determine_winner.py`, `test_expert_pass.py`,
+  `test_trick_play_strategy.py`) scan `globals()` for `test_`-prefixed
+  callables instead — copy that shape, not the hand-written list, if
+  you add one.
+
+Add a block when you expect to iterate on that module in isolation,
+skip it otherwise, and don't retrofit blocks into the nine that go
+without. `python -m pytest -q` is the suite either way.
+
+`pinochle_engine.py`'s own `__main__` block still exists and still
+asserts — Double Run scoring, ten full games to completion — but pytest
+does not collect it, and it is a demo and smoke run rather than part of
+the suite. New coverage goes in a `test_*.py` module.
 
 ## Known duplication (intentional, needs care)
 
