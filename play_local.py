@@ -13,7 +13,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 from human_play import HumanPlayer, InteractiveRound, NeedsHumanInput, hand_grouped
-from pinochle_engine import Player, Team, GAME_WIN_SCORE, GAME_LOSE_SCORE
+from pinochle_engine import Player, Team, GAME_LOSE_SCORE, determine_winner
 from pinochle_rollout import MAX_TRICK_POINTS
 
 SUIT_NAME = {"S": "Spades", "H": "Hearts", "D": "Diamonds", "C": "Clubs"}
@@ -140,17 +140,14 @@ def play_game():
             team.score += score
             print(f"{team.name}: {'+' if score >= 0 else ''}{score} -> total {team.score}")
 
-        busted = [t for t in (team_a, team_b) if t.score <= GAME_LOSE_SCORE]
-        if busted:
-            winner = team_a if team_a not in busted else team_b
-            print(f"\n{winner.name} WINS! (opponent dropped to {GAME_LOSE_SCORE} or below)")
-            break
-
-        over = [t for t in (team_a, team_b) if t.score >= GAME_WIN_SCORE]
-        if over:
-            bidding_team = round_.bid_winner.team
-            winner = bidding_team if bidding_team in over else over[0]
-            print(f"\n{winner.name} WINS!")
+        winner = determine_winner([team_a, team_b], round_.bid_winner.team)
+        if winner is not None:
+            # The rule itself lives in determine_winner; all that's left
+            # here is picking which of the two endings to announce.
+            if any(t.score <= GAME_LOSE_SCORE for t in (team_a, team_b)):
+                print(f"\n{winner.name} WINS! (opponent dropped to {GAME_LOSE_SCORE} or below)")
+            else:
+                print(f"\n{winner.name} WINS!")
             break
 
         dealer_index = (dealer_index + 1) % 4

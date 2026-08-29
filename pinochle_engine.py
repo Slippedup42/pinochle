@@ -2956,6 +2956,38 @@ class Round:
 # Game — persistent scores across rounds, win condition.
 # ---------------------------------------------------------------------------
 
+def determine_winner(teams, bidding_team):
+    """
+    Decide whether the game has ended, given cumulative team scores that
+    already include the round just scored. Returns the winning Team, or
+    None if the game continues.
+
+    This is the single home for the rule (issue #6); `Game.play` and
+    `play_local.py` both go through it rather than re-deriving it, which
+    is how the tie-break below stayed correct in one copy and not the
+    other. Per pinochle_rules.md "Game Win / Loss":
+
+      - A team whose cumulative score is at or below GAME_LOSE_SCORE ends
+        the game immediately and the OTHER team wins, regardless of that
+        team's own score. Busting is checked first.
+      - Otherwise, if either team has reached GAME_WIN_SCORE, that team
+        wins - and if both crossed it in the same round, the bidding team
+        wins the tie.
+
+    Mirrors `checkGameOutcome` in web/src/engine/game.ts, including
+    returning None in the degenerate case where every team busted at once.
+    """
+    busted = [t for t in teams if t.score <= GAME_LOSE_SCORE]
+    if busted:
+        return next((t for t in teams if t not in busted), None)
+
+    over = [t for t in teams if t.score >= GAME_WIN_SCORE]
+    if over:
+        return bidding_team if bidding_team in over else over[0]
+
+    return None
+
+
 class Game:
     def __init__(self, player_names):
         players = [Player(name, None) for name in player_names]
@@ -3023,13 +3055,7 @@ class Game:
             for team in self.teams:
                 team.score += round_scores[team]
 
-            busted = [t for t in self.teams if t.score <= GAME_LOSE_SCORE]
-            if busted:
-                winner = next(t for t in self.teams if t not in busted)
-            else:
-                over = [t for t in self.teams if t.score >= GAME_WIN_SCORE]
-                if over:
-                    winner = bidding_team if bidding_team in over else over[0]
+            winner = determine_winner(self.teams, bidding_team)
 
             self.dealer_index = (self.dealer_index + 1) % 4
 
