@@ -41,6 +41,11 @@ OPENING_BID = 250
 # to OPENING_BID since #200, so passing the auction out no longer discounts
 # anything - the dealer lands on the rung the first seat could have opened at.
 FORCED_BID = 250
+# The minimum raise, stated by pinochle_rules.md on the same line as the
+# opening rung. Passed to Player.choose_bid as its min_increment argument
+# rather than read there directly - the parameter is deliberate, so a caller
+# can drive an auction on a different rung size.
+MIN_BID_INCREMENT = 10
 
 
 class Card:
@@ -2777,7 +2782,7 @@ class Round:
         while passes < 3:
             if active[idx]:
                 player = self.players[idx]
-                min_bid = OPENING_BID if not ever_bid else current_bid + 10
+                min_bid = OPENING_BID if not ever_bid else current_bid + MIN_BID_INCREMENT
                 context = {
                     "ever_bid": ever_bid,
                     "passes_so_far": passes_so_far,
@@ -2787,7 +2792,11 @@ class Round:
                     "dealer": dealer,
                     "teams": self.teams,
                 }
-                bid = player.choose_bid(current_bid if ever_bid else OPENING_BID - 10, 10, context)
+                bid = player.choose_bid(
+                    current_bid if ever_bid else OPENING_BID - MIN_BID_INCREMENT,
+                    MIN_BID_INCREMENT,
+                    context,
+                )
                 if bid is not None and bid >= min_bid:
                     current_bid = bid
                     ever_bid = True

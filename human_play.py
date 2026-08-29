@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from names import NAME_POOL
 from pinochle_engine import (
     Player, Team, Round, Trick, Suit, RANKS, RANK_VALUE,
-    OPENING_BID, FORCED_BID, PASS_COUNT,
+    OPENING_BID, FORCED_BID, MIN_BID_INCREMENT, PASS_COUNT,
 )
 
 STATE_PATH = os.path.join(os.path.dirname(__file__), "game_state.pkl")
@@ -271,7 +271,7 @@ class InteractiveRound(Round):
         while self._bid_passes < 3:
             if self._bid_active[self._bid_idx]:
                 player = self.players[self._bid_idx]
-                min_bid = OPENING_BID if not self._bid_ever else self._bid_current + 10
+                min_bid = OPENING_BID if not self._bid_ever else self._bid_current + MIN_BID_INCREMENT
                 context = {
                     "ever_bid": self._bid_ever,
                     "passes_so_far": self._bid_passes_so_far,
@@ -281,7 +281,9 @@ class InteractiveRound(Round):
                     "players": self.players,
                 }
                 bid = player.choose_bid(
-                    self._bid_current if self._bid_ever else OPENING_BID - 10, 10, context
+                    self._bid_current if self._bid_ever else OPENING_BID - MIN_BID_INCREMENT,
+                    MIN_BID_INCREMENT,
+                    context,
                 )
                 if bid is not None and bid >= min_bid:
                     self._bid_current = bid

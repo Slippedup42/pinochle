@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef } from 'react'
 import { bestBaseBid, chooseBid, chooseTrump, type AuctionContext } from '../engine/bidding'
-import { OPENING_BID } from '../engine/card'
+import { MIN_BID_INCREMENT, OPENING_BID } from '../engine/card'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import { partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
@@ -17,8 +17,6 @@ import type { SeatCall, SeatState, TableState } from './tableTypes'
 import { TrumpSelector } from './TrumpSelector'
 
 export const AI_BID_DELAY_MS = 600
-
-const MIN_INCREMENT = 10
 
 /** Returns the SkillLevel to use for a given AI player, based on options. */
 function skillForPlayer(player: PlayerIndex, humanPlayer: PlayerIndex, options: GameOptions): SkillLevel {
@@ -68,7 +66,7 @@ export function AuctionFlow({
         passedPlayers: passedPlayersOf(state.bidding.active),
       }
       const skill = skillForPlayer(turn, humanPlayer, options)
-      const decision = chooseBid(turn, state.hands[turn], state.bidding.currentBid, MIN_INCREMENT, context, skill)
+      const decision = chooseBid(turn, state.hands[turn], state.bidding.currentBid, MIN_BID_INCREMENT, context, skill)
       const timer = setTimeout(() => {
         if (decision === null) dispatch({ type: 'PASS_BID', player: turn })
         else dispatch({ type: 'BID', player: turn, amount: decision })

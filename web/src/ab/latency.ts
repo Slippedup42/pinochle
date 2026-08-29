@@ -22,14 +22,12 @@
 // single-shot samples, which is where jitter would show up; the CLI prints both.
 
 import { type AuctionContext, chooseBid } from '../engine/bidding'
-import type { Card } from '../engine/card'
+import { MIN_BID_INCREMENT, type Card } from '../engine/card'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
 import { type BidSituationSample, makeRng, playHeadlessGame } from './headlessGame'
 import { DISTILLED_LEVEL, STATIC_LEVEL, installPolicies } from './abRun'
 import { percentile } from './stats'
-
-const MIN_INCREMENT = 10
 
 /** Collects auction positions by playing real games. Both seats run `level` so
  *  the positions are the ones that policy actually produces. */
@@ -81,7 +79,7 @@ function callOnce(s: BidSituationSample, level: SkillLevel): number {
     s.player,
     s.hand as readonly Card[],
     s.currentBid,
-    MIN_INCREMENT,
+    MIN_BID_INCREMENT,
     s.context as AuctionContext,
     level,
   )
