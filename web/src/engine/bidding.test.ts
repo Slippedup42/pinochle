@@ -411,9 +411,13 @@ describe('chooseBid', () => {
 
 // -- Parity with the Python reference engine (#118) -------------------------
 //
-// `pinochle_engine.py` is the frozen reference implementation this module was
-// ported from (CLAUDE.md). NEAR_RUN_VALUE and NEAR_DOUBLE_PINOCHLE_VALUE
-// silently shipped at 60/60 against Python's 120/225 - a hand-port slip that
+// `pinochle_engine.py` is the reference implementation this module was ported
+// from (CLAUDE.md), and it stays authoritative for the valuation constants
+// this block pins — the auction floors are the other way round since #213, so
+// this suite deliberately checks the Base Bid constants and not those.
+//
+// NEAR_RUN_VALUE and NEAR_DOUBLE_PINOCHLE_VALUE silently shipped at 60/60
+// against Python's 120/225 - a hand-port slip that
 // survived because both of this file's cases asserted loosely: one against the
 // constant itself, the other against a hardcoded 60 under a title saying 225.
 //

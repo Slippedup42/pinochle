@@ -1,16 +1,18 @@
 // Round — trick-taking phase and round-level (contract) scoring. Ported
-// from pinochle_engine.py's Round._trick_taking_loop / Round._score_round
-// (frozen Python reference).
+// from pinochle_engine.py's Round._trick_taking_loop / Round._score_round,
+// which stays authoritative for the scoring rules below (MAX_TRICK_POINTS,
+// LAST_TRICK_BONUS, made-vs-set): engineParity.test.ts replays a complete
+// Python round against this module, and a mismatch is TS drift (#125).
 //
-// Bidding and the 3-card pass (#17) aren't reimplemented here — this
-// module picks up *after* trump is set and hands are finalized (post
-// pass), taking the bid winner and the agreed contract as given inputs.
-// A future Round orchestrator (once #17 lands) is expected to run, in
-// order: deal -> bidding (#17) -> passing (#17) -> scoreMelds (melds.ts,
-// per player) -> playTrickTakingPhase -> scoreRound -> feed the result
-// into game.ts's checkGameOutcome. Using PlayerIndex/TeamId from this
-// module and trick.ts keeps that future glue code consistent with
-// however bidding/passing chooses to represent players/hands.
+// Bidding and the 3-card pass aren't reimplemented here — this module
+// picks up *after* trump is set and hands are finalized (post pass),
+// taking the bid winner and the agreed contract as given inputs. The
+// orchestrator that runs the whole round is components/gameFlowReducer.ts
+// (#47): deal -> auctionReducer.ts's bidding/passing (#34) -> scoreMelds
+// (melds.ts, per player) -> playTrickTakingPhase -> scoreRound -> feed the
+// result into game.ts's checkGameOutcome. It uses PlayerIndex/TeamId from
+// this module and trick.ts, which is what keeps that glue consistent with
+// how bidding/passing represent players/hands.
 
 import { COPIES_PER_CARD, type Card, type Suit, SUITS } from './card'
 import { COUNTER_VALUE, POINT_RANKS, type PlayerIndex, Trick } from './trick'

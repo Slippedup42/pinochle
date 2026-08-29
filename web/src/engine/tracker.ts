@@ -1,6 +1,10 @@
 // Card-counting tracker + lead-card/follow-card AI — ported from
 // pinochle_engine.py's PlayTracker class, choose_lead_card, and
-// choose_follow_card functions (frozen Python reference).
+// choose_follow_card functions. Python is the reference implementation this
+// was ported from, but what lives here is trick-play *strategy*, not rules,
+// and strategy is the half that is allowed to diverge on the TS side (#213).
+// TrumpMemory below (#158) is exactly that: it has no Python counterpart, and
+// is not a parity gap to close.
 //
 // PlayTracker accumulates played-card counts across a round; both the
 // lead-card strategy and the follow-card strategy here consume the same

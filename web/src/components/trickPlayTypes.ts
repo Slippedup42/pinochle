@@ -1,8 +1,9 @@
 // Shared data shapes for the trick-play flow (#35). Built from the real
 // engine types (card.ts/round.ts/trick.ts) rather than ad-hoc UI types,
 // same approach auctionTypes.ts took for the auction/pass flow (#34) — so
-// a live Round orchestrator (#47, once it lands) can drive this UI and
-// consume its result without the component/reducer shapes changing.
+// the round orchestrator that followed (gameFlowReducer.ts, #47) could drive
+// this UI and consume its result without the component/reducer shapes
+// changing, which is how it landed.
 
 import type { Card } from '../engine/card'
 import type { TeamId } from '../engine/round'

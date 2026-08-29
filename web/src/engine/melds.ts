@@ -1,4 +1,8 @@
-// Melding — ported from pinochle_engine.py (frozen Python reference).
+// Melding — ported from pinochle_engine.py, which stays authoritative for the
+// meld values below: they are rules constants, so a disagreement between the
+// two engines is TS drift rather than a house rule (#118's bug class, #126's
+// audit). Python being actively developed does not loosen that — what moves
+// there is AI research, not the value of a Double Run.
 //
 // A pure function over a hand and the trump suit, not a player decision.
 // A card can count toward multiple *different* meld types at once (a trump

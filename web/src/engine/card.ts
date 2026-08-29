@@ -1,4 +1,9 @@
-// Card / Deck — ported from pinochle_engine.py (frozen Python reference).
+// Card / Deck — ported from pinochle_engine.py, the reference implementation
+// this engine is checked against (engineParity.test.ts, #125). Python is not
+// frozen — it is still where the AI research and measurement run — but it does
+// stay authoritative for the rules constants in this file (the +-1000 bounds,
+// OPENING_BID/FORCED_BID): if the two engines disagree on one of these, Python
+// is right and this side has drifted. That is #118's bug class, #126's audit.
 
 export const Suit = {
   Spades: 'S',

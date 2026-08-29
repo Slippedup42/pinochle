@@ -4,8 +4,8 @@
 // rule flags mixed component+logic exports since it breaks fast refresh
 // (same reason auctionReducer.ts is split out from AuctionFlow.tsx).
 //
-// Mirrors round.ts's playTrickTakingPhase loop (frozen reference for the
-// rules: Trick.legalMoves/winner/points, teamOf, the 12th-trick bonus) but
+// Mirrors round.ts's playTrickTakingPhase loop (which owns the rules:
+// Trick.legalMoves/winner/points, teamOf, the 12th-trick bonus) but
 // broken into individual PLAY_CARD/CLEAR_TRICK actions instead of running
 // all 12 tricks synchronously in one call — the UI needs to pause after
 // each AI play (a brief delay, #35) and after each completed trick (so the
