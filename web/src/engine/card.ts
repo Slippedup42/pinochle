@@ -40,9 +40,10 @@ export const GAME_WIN_SCORE = 1000
 export const GAME_LOSE_SCORE = -1000
 // Lowest rung the auction can open at. **250 since #200** (was 300): a house
 // preference, not a rules discovery. Only the opening rung moved — the minimum
-// raise (10), OPENER_THRESHOLD (320, the hand an AI needs to open at all) and
-// PARTNER_PASSED_FLOOR (320) are unchanged, so the AI opens on the same set of
-// hands as before and simply commits to 250 rather than 300 when it does.
+// raise (MIN_BID_INCREMENT below), OPENER_THRESHOLD (320, the hand an AI needs
+// to open at all) and PARTNER_PASSED_FLOOR (320) are unchanged, so the AI opens
+// on the same set of hands as before and simply commits to 250 rather than 300
+// when it does.
 export const OPENING_BID = 250
 // What the dealer is stuck with if everyone passes without ever bidding.
 // Equal to OPENING_BID since #200, so passing the auction out no longer
@@ -53,6 +54,15 @@ export const OPENING_BID = 250
 // to it — one is an auction floor, the other the trick points in a deck. Do
 // not use either in place of the other (#178).
 export const FORCED_BID = 250
+
+/** The minimum raise, stated by pinochle_rules.md on the same line as the
+ *  opening rung ("Opening bid: **250**... Minimum raise: **10**") and living
+ *  here beside OPENING_BID for that reason. Exported because three callers —
+ *  AuctionFlow and both A/B drivers in web/src/ab/ — feed it to `chooseBid`'s
+ *  `minIncrement` parameter, and each of them used to write out its own `10`.
+ *  `chooseBid` still takes it as a parameter rather than reading it directly,
+ *  mirroring Python's `choose_bid(current_bid, min_increment, ...)`. */
+export const MIN_BID_INCREMENT = 10
 
 export class Card {
   readonly suit: Suit

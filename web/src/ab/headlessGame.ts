@@ -30,7 +30,7 @@ import { auctionReducer, initAuctionState, passedPlayersOf, type AuctionState } 
 import { meldPointsByTeam } from '../components/gameFlowReducer'
 import { teammatesOf } from '../components/trickPlayReducer'
 import { type AuctionContext, chooseBid, chooseTrump } from '../engine/bidding'
-import { Card, type CopyId, RANKS, type Suit, SUITS } from '../engine/card'
+import { Card, type CopyId, MIN_BID_INCREMENT, RANKS, type Suit, SUITS } from '../engine/card'
 import { shouldConcede } from '../engine/evaluator'
 import { checkGameOutcome } from '../engine/game'
 import { isMisdealEligible } from '../engine/misdeal'
@@ -42,8 +42,6 @@ import { newTrumpMemories } from '../engine/trumpMemory'
 import type { PlayerIndex } from '../engine/trick'
 import type { SkillLevel } from '../persistence/options'
 
-/** Matches AuctionFlow's MIN_INCREMENT. */
-const MIN_INCREMENT = 10
 const SEATS: readonly PlayerIndex[] = [0, 1, 2, 3]
 const SEAT_NAMES: Record<PlayerIndex, string> = { 0: 'S0', 1: 'S1', 2: 'S2', 3: 'S3' }
 /** A real game reaches 1000 in well under this. The guard exists so a rules
@@ -192,7 +190,7 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
         turn,
         state.hands[turn],
         state.bidding.currentBid,
-        MIN_INCREMENT,
+        MIN_BID_INCREMENT,
         context,
         seatSkills[turn],
       )
