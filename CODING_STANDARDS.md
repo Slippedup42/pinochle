@@ -6,6 +6,15 @@ it, match what's here. If a new pattern is genuinely better, update
 this doc in the same PR rather than leaving the code inconsistent with
 it.
 
+The two engines have genuinely different conventions, and neither is
+being converged onto the other. **Part 1 is Python** (`pinochle_engine.py`
+and the harnesses around it); **Part 2 is TypeScript** (`web/`). Read the
+part that matches the file you are touching. Cross-engine concerns —
+which constants Python is authoritative for, what the parity fixtures pin
+— live in `CLAUDE.md` and `web/README.md`, not here.
+
+# Part 1 — Python
+
 ## Module layout
 
 - Every module opens with a triple-quoted docstring stating what it
@@ -101,3 +110,166 @@ but it means **a rule or bug fix to those three methods in
 `pinochle_engine.py` must be manually mirrored into the matching
 `InteractiveRound` method**, and nothing currently enforces that. When
 you touch one side, check the other.
+
+# Part 2 — TypeScript (`web/`)
+
+`web/` is the product and is roughly six times the size of the Python
+engine. It follows its own conventions throughout; do not carry Python
+habits into it.
+
+## Formatting
+
+There is no Prettier and no formatting rule in `.oxlintrc.json`, so
+formatting is upheld by matching neighbouring code. In practice it is
+completely consistent and worth keeping that way:
+
+- **No semicolons.** Across `web/src` there is not one
+  statement-terminating semicolon — the only lines ending in `;` are
+  prose inside comments.
+- Single quotes for strings; double quotes only in JSX attributes.
+- Two-space indent.
+
+`npm run lint` (oxlint) is the only automated check, and it enforces
+exactly two rules — `react/rules-of-hooks` and
+`react/only-export-components`. Everything else here is on the author.
+
+## TypeScript config constraints
+
+`tsconfig.app.json` turns on flags that change what you are allowed to
+write. These are constraints, not preferences:
+
+- **`erasableSyntaxOnly`** — no `enum`, no constructor parameter-property
+  shorthand. The replacement for an enum is the const-object-plus-type
+  pattern, and `card.ts`'s `Suit` is the reference implementation:
+
+  ```ts
+  export const Suit = { Spades: 'S', Diamonds: 'D', Clubs: 'C', Hearts: 'H' } as const
+  export type Suit = (typeof Suit)[keyof typeof Suit]
+  ```
+
+  A class writes its fields out and assigns them in the constructor body
+  (`Card`, `Trick`).
+- **`verbatimModuleSyntax`** — type-only imports must say so. Use
+  `import type { ... }` when the whole import is types, and the inline
+  `type` specifier when a line mixes both:
+  `import { type Card, Suit, SUITS } from './card'`.
+- **`noUnusedLocals` / `noUnusedParameters`** — an unused import or
+  parameter fails `npm run build`, so unreachable code does not
+  accumulate silently here the way it can in Python.
+
+## Naming and file layout
+
+- Files: `PascalCase.tsx` for React components (`TrickPlayFlow.tsx`,
+  `ClaimNotice.tsx`); `camelCase.ts` for everything else — engine
+  modules (`bidding.ts`), reducers (`trickPlayReducer.ts`), shared
+  shapes (`trickPlayTypes.ts`), hooks (`useDraggable.ts`).
+- Types, interfaces and components: `PascalCase`. Functions, methods,
+  variables and object properties: `camelCase`. Module-level constants:
+  `SCREAMING_SNAKE_CASE`.
+- Constants are declared next to the code that uses them rather than in
+  a shared constants module, and carry a comment when the *value* needs
+  justifying — the same rule as Part 1. `card.ts`'s `OPENING_BID` and
+  `FORCED_BID` are the model: both are 250, and the comments say why
+  they are nonetheless two constants.
+- Tests are colocated with what they test: `bidding.ts` /
+  `bidding.test.ts`, `Seat.tsx` / `Seat.test.tsx`. Large recorded inputs
+  go in a separate `*.fixture.ts` (`engineParity.fixture.ts`).
+
+## Shared values live in one module and are imported
+
+A value two modules both need is exported from the module that owns it
+and imported — never restated. `card.ts`'s `COPIES_PER_CARD` and
+`trick.ts`'s `POINT_RANKS` each carry a comment saying that is why they
+are exported at all: so `round.ts` can derive `MAX_TRICK_POINTS` from
+the same set that scores a trick, rather than encoding "how many
+counters a deck holds" in two places. A comment of the form
+`// matches round.ts` is what this rule looks like while it is being
+broken; export and import instead.
+
+## Immutable state shapes
+
+Reducer state, engine results, and anything crossing a module boundary
+is declared `readonly` field by field, with `readonly T[]` for arrays:
+
+```ts
+export interface ClaimResult {
+  readonly claimer: PlayerIndex
+  readonly cards: readonly Card[]
+  ...
+}
+```
+
+Reducers return a new object via spread and never mutate. Discriminated
+unions use a `kind` field (`TrickPlayLogEntry`) and are consumed with an
+exhaustive `switch` with no `default`, so adding a variant becomes a
+type error at every consumer instead of a silent fallthrough.
+
+## Components, reducers, and shared shapes
+
+A phase of the game is three files, and the split is enforced by
+oxlint's `react/only-export-components` — a file exporting both a
+component and logic breaks fast refresh:
+
+- `XFlow.tsx` — the component, and the *only* export of that file.
+- `xReducer.ts` — the state machine: `XState`, `XAction`, `initXState`,
+  `xReducer`, plus pure helpers. Testable without mounting anything.
+- `xTypes.ts` — shapes shared between the two, built from engine types
+  rather than re-declared, plus pure formatters
+  (`formatTrickPlayLogEntry`) so display strings are testable without a
+  DOM.
+
+`AuctionFlow` / `auctionReducer` / `auctionTypes` and `TrickPlayFlow` /
+`trickPlayReducer` / `trickPlayTypes` both follow it. New phase work
+should.
+
+## Where a TypeScript-only rule is allowed to live
+
+`round.ts`'s `playTrickTakingPhase` is the parity-checked port of
+Python's `Round._trick_taking_loop`; `engineParity.test.ts` replays
+recorded Python rounds through it and asserts the winner and points of
+every trick. **A behaviour Python does not have must not go inside that
+loop**, because parity would then hold only for as long as the new
+behaviour never fires.
+
+The established answer is to expose the decision as a pure exported
+function in the engine module and apply it one layer up, in the reducer.
+`findClaim` in `round.ts` is the reference: the engine *answers* "can
+this seat be beaten", and `trickPlayReducer`'s `applyClaimIfAvailable`
+is what acts on it. `round.ts` carries a comment beside
+`playTrickTakingPhase` recording that line and the reason for it — keep
+that note alive if you add another such rule.
+
+## Doc comments
+
+- Modules open with a `//` block naming what the module owns and, when
+  the design is non-obvious, why it is built that way.
+  `gameFlowReducer.ts` is the model: it says which phase it sits above,
+  what it deliberately does *not* reimplement, and why it is not inside
+  `GameFlow.tsx`.
+- Exported symbols get `/** */` JSDoc explaining *why*, in the same
+  spirit as Part 1 — restate the rule or the measurement a reader would
+  otherwise have to reconstruct. `findClaim` and the `SkillParams`
+  policy types are the high-water mark.
+- Issue numbers are cited inline (`(#208)`) as the pointer to the full
+  rationale in `web/README.md`. Cite the issue that *established* the
+  behaviour, not whichever one you happen to be working.
+- Do not leave forward-looking comments standing after the thing
+  arrives. "A future Round orchestrator (once #17 lands)" and "frozen
+  Python reference" both outlived their truth in modules nobody re-read.
+  If you touch a file whose header describes a state of the world that
+  has since changed, fix the header in the same PR.
+
+## AI behaviour goes on a dial, not behind a constant
+
+New AI behaviour that could plausibly be measured becomes a field on
+`SkillParams` (`web/src/engine/skills.ts`) with a string-union type —
+not a boolean, not a bare constant. `abRun.ts` can only compare two
+rules by sitting two skill levels at one table that differ in exactly
+one field, so a rule with no field is a rule that cannot be measured.
+
+Each policy type carries a docstring stating every arm, which arm each
+shipped row selects, and — when no shipped row selects an arm — why that
+arm still exists. `OpeningPolicy`, `FoldPolicy` and `AutoSetPolicy` all
+do this. A dial whose losing arm is retained for measurement is normal
+here (see `ROADMAP.md` on null results being recorded and shipped
+disabled); a dial with no such note is drift.

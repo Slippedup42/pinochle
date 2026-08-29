@@ -5,12 +5,24 @@ or priorities shift. Other team-lead agents should treat this as the
 top-level source of truth for sequencing; individual specs (rules, AI
 strategy) live in their own docs and are linked from here.
 
-**Current focus (2026-08-01): port fidelity.** The game is built, live,
-and played by a distilled AI. The open work is proving the TypeScript
-engine still agrees with the Python reference it was ported from — the
-parity net (Phase 1.6, #125) and the constant-by-constant audit (#126).
-That is the whole near-term queue; Phases 2 and 4 are the backlog behind
-it.
+**Current focus (2026-08-28): the queue is nearly empty.** Port fidelity
+is done — the parity net (#125) and the constant-by-constant audit (#126)
+both landed on 2026-08-01, and `export_parity_scenarios.py --check` now
+fails the Python suite when the committed fixture goes stale. The weeks
+since have been Phase 4 polish and TypeScript-side bidding measurement,
+both shipped. What is actually open:
+
+- **#185** — the rollout dataset cannot report its own staleness, so a
+  Python trick-play change silently changes what the browser bids with.
+  Blocked on a human call about whether to stamp provenance, refit, or
+  record the dependency as weak.
+- **#214** — splitting `pinochle_engine.py`, which this document has
+  carried as open while the tracker carried #3 as wont-fix.
+- **#211** — `web/src/ab/stats.ts` is a hand-port of `ab_harness.py`'s
+  three statistics with no fixture behind it, and it is now what shipped
+  strategy decisions are judged on.
+- **#212** — `vite.config.ts`'s `base` comment still says the app is not
+  hosted anywhere.
 
 **Mission shift (2026-07-10) — satisfied.** The short-runway call was to
 get an installable PWA in front of players ahead of Expert-tier AI and
@@ -33,7 +45,7 @@ ordered the way they are, not because it is still a live constraint.
   implementation the TS port is checked against, and the platform all
   the AI research runs on. Every result in Phase 3 was produced here.
 
-## Phase 1 — PWA critical path — shipped (1.6 open)
+## Phase 1 — PWA critical path — shipped
 
 Stack: **React + TypeScript + Vite + Tailwind CSS**, PWA via
 `vite-plugin-pwa` (manifest + service worker). Chosen for a modern,
@@ -58,7 +70,10 @@ Netlify's git integration — that would rebuild the coupling #141
 removed, in a different service. Deploys are manual from a locally built
 `web/dist` (`npx netlify deploy --prod` from the repo root; see
 `netlify.toml`). "Shipped" in this document means merged to `main`; a
-change reaches players only when someone deploys.
+change reaches players only when someone deploys. The way to check is
+the asset hash: `curl -s https://pinochle-house-rulez.netlify.app/ |
+grep -o 'assets/[^"]*\.js'` against what is in `web/dist/assets`. As of
+2026-08-28 they match, so everything through #208 is live.
 
 Two standing constraints: `base` in `web/vite.config.ts` must match the
 path the build is served under — and the manifest's `id`/`start_url`/
@@ -68,9 +83,11 @@ would be needed for `SharedArrayBuffer` and multi-threaded WebAssembly;
 Netlify *can* set them (GitHub Pages could not), and they are off
 because nothing needs them yet (see Open questions).
 
-1. **Decisions** — done. Opening-bid mismatch resolved (engine value,
-   300 min / 250 forced, is canonical; `pinochle_rules.md` updated to
-   match). Stack locked (above).
+1. **Decisions** — done. Opening-bid mismatch resolved: the engine
+   value was canonical and `pinochle_rules.md` was updated to match.
+   **Superseded by #200** — the auction now opens at 250 rather than
+   300, changed in both engines in the same commit. Stack locked
+   (above).
 2. **Rules engine port to TS** — done. `web/src/engine/` holds the core
    data model, deal, meld scoring, bidding, the 3-card pass,
    trick-taking, and round/game scoring, one file per concern with
@@ -86,11 +103,15 @@ because nothing needs them yet (see Open questions).
    that was part of this item has since been removed (see Hosting
    above). Icons are programmatic placeholders (#129, closed — Paul's
    call is to keep them).
-6. **Correctness net** — **open, tracked as #125.** Seeded-scenario
-   parity between the Python and TS rules engines: pin the deal *and*
-   the decisions in a committed fixture, replay the recorded play
-   through the TS engine, assert agreement on meld scores, every trick
-   winner, and the final round score. Note the two constraints recorded
+6. **Correctness net** — **done (#125).** Seeded-scenario parity
+   between the Python and TS rules engines: `export_parity_scenarios.py`
+   records complete Python rounds into `parity_scenarios.json` and
+   renders `web/src/engine/engineParity.fixture.ts` from it;
+   `engineParity.test.ts` replays the recorded play through the TS engine
+   and asserts agreement on meld scores, every trick winner, and the
+   final round score. Recording and rendering are separate stages on
+   purpose, so `--check` can fail a stale fixture without the answer
+   depending on what the AI decides today. Note the two constraints recorded
    on the issue — the PRNGs differ, so do not seed both sides and
    compare; and AI *decisions* are meant to diverge (Python rolls out,
    TS `hard`+ runs the distilled evaluator), so only the rules engine is
@@ -98,9 +119,16 @@ because nothing needs them yet (see Open questions).
    bidding constants had silently drifted from the reference and changed
    which suit the browser names as trump. It was found by hand.
 
-   Alongside it, #126 audits every ported constant and formula in
+   Alongside it, #126 audited every ported constant and formula in
    `web/src/engine/` against the Python reference — the one-time sweep
-   for drift that already happened, where #125 is the standing net.
+   for drift that had already happened, where #125 is the standing net.
+   Both closed 2026-08-01.
+
+   **The net does not cover everything that crosses the boundary.** It
+   covers the rules engine, and `export_evaluator.py --check` covers the
+   evaluator model. Two seams remain uncovered and are tracked: the
+   dataset the evaluator is fit to (#185) and `web/src/ab/stats.ts`
+   (#211).
 
 ## Phase 2 — Post-MVP hardening
 
@@ -122,18 +150,24 @@ Most of this is now done. What shipped:
 
 What is still open:
 
-- Split `pinochle_engine.py` (~2,900 lines) into rules-engine and
-  AI-strategy modules. This got *more* valuable, not less: the old
-  reason to skip it was that Python was a frozen reference, and it
-  isn't. The rollout, win-probability, dataset, fitting, and export
-  layers already live in their own modules; the engine file is the
-  remaining lump.
-- Dedupe win-condition logic: `Game.play` (`pinochle_engine.py:2857`)
-  and `play_local.py:130` each implement the bust/over check
-  independently. They share the constants, not the logic.
+- **Split `pinochle_engine.py` — now #214, and it needs a decision
+  before it needs work.** The file is 3,081 lines, up from the 1,164 it
+  had when #3 asked for this and was closed as wont-fix "migrating to
+  the TS/PWA client and retiring the Python engine." That premise is
+  disowned in [Settled questions](#settled-questions) below, so this
+  document and the tracker have been saying opposite things. #214 exists
+  to settle it either way. The rollout, win-probability, dataset,
+  fitting, export and A/B layers already live in their own modules; the
+  engine file is the remaining lump, and it is what all of them import.
+- Dedupe win-condition logic: `Game.play` in `pinochle_engine.py` and
+  `play_local.py:130` each implement the bust/over check independently.
+  They share the constants, not the logic.
 - An explicit "changes to `Round` must be mirrored here" note on
   `InteractiveRound` — its docstring explains *how* it differs from
   `Round`, not that it has to be kept in step with it.
+
+The last two are cheap and are folded into #214 rather than tracked
+separately.
 
 Deliberately **not** doing:
 
@@ -225,24 +259,56 @@ What is left of the Expert tier:
   original mapping assumed the top tiers would have them; in the
   browser they do not, so the distilled evaluator is currently their
   floor rather than their ceiling.
-- The evaluator only governs the opening decision and the defensive
-  push. The ordinary raise ladder and the 330/340 constants in
-  `chooseBid` are untouched, and the two policies differ on 6.5% of
-  real auction positions — that is the ceiling on what any of this can
-  be credited with.
+- The evaluator still only governs the opening decision and the
+  defensive push, and the two policies differ on 6.5% of real auction
+  positions — that is the ceiling on what any of this can be credited
+  with. The claim that the ordinary raise ladder is untouched has
+  **expired**: #180 moved `PARTNER_PASSED_FLOOR` to 320, #206 made
+  `PARTNER_RAISE_FLOOR = 340` a real floor rather than an accident of
+  the ladder's arithmetic, and #204 added an `openingPolicy` dial in
+  `skills.ts` (measured, shipped `'fixed'`). Those are tuned constants
+  reached by A/B rather than by the evaluator, and all three were
+  measured in `web/src/ab/`, not in Python.
 - Every seat in every A/B is an AI. The results show the policy is
   stronger, **not** that it is a better partner for a human. Measuring
   that needs a different harness.
 
-## Phase 4 — UI/UX polish
+## Phase 4 — UI/UX polish — largely shipped
 
-- The MVP UI is proven playable, so the fuller "modern and pretty"
-  treatment is now unblocked: table layout refinement, animations,
-  responsive/mobile-first interaction details. Not yet scoped in
-  detail.
+This was "not yet scoped in detail" as recently as the last revision of
+this file. It was then scoped one issue at a time and mostly built. What
+landed, all in `web/src/components/`:
+
+- **Phone-first layout** — #161 (portrait pass: the table was too wide
+  and too tall), then #187 (the hand overflowed, Menu sat on top of the
+  scoreboard, the trick circle read off-centre).
+- **Card rendering** — #189 (card-face redesign, jumbo index at 80px)
+  and #202 (meld cards 28 → 42px, because they were unreadable on a
+  phone).
+- **Less chrome during play** — #191 moved auction status onto the trick
+  circle, #193 dropped the auction history from trick play, #142
+  permanently hid opponents' card fans and removed the toggle, #148
+  deleted `showMeldHint` (a UI toggle nothing read).
+- **Score context** — #198 added a hand-by-hand game ledger to both
+  scoring screens, carried in `scoreTypes.ts` and persisted through
+  `gameSave.ts`.
+- **Skill presentation** — #194 collapsed the visible dial to Easy /
+  Medium / Hard, defaulting to Medium.
+- **#208, "the rest are mine"** — the one item here that is a rules
+  shortcut rather than presentation, and worth flagging on the two-engine
+  seam: it lives in `web/src/engine/round.ts` and **has no Python
+  counterpart**. `pinochle_rules.md` says so explicitly, and
+  `playTrickTakingPhase` — what the parity tests replay Python rounds
+  through — deliberately does not apply it, so the shortcut stays
+  outcome-neutral and the parity net stays valid. This is the right shape
+  for a TS-only addition; it is documented rather than merely absent.
+
+Still open:
+
 - **#129** — the PWA ships programmatic placeholder icons (solid
   colour). Real art needs to keep the same filenames and sizes that
   `vite.config.ts` references. Blocked on a human, not an agent.
+- Animation and transition work, which nothing has asked for yet.
 
 ## Tooling & process (parallel track, not phase-gated)
 
@@ -252,7 +318,11 @@ workflow — team-lead agents (architect, design, engineering, QA), the
 lifecycle rules are all live.
 
 - [CODING_STANDARDS.md](CODING_STANDARDS.md) covers naming, module
-  layout, and docstring style. Design and dev specs beyond that are
+  layout, and docstring style, in two parts: Python, and the separate
+  TypeScript conventions `web/` follows (formatting, the
+  `erasableSyntaxOnly`/`verbatimModuleSyntax` constraints, the
+  component/reducer/types split, and where a TS-only rule may live
+  without breaking engine parity). Design and dev specs beyond that are
   still written per-issue rather than as standing documents.
 
 ## Settled questions
@@ -268,6 +338,27 @@ lifecycle rules are all live.
   generates `evaluatorModel.ts` and a parity fixture, and `--check`
   fails the Python suite if the committed TS has drifted. Expensive
   thinking in Python, cheap conclusions in the browser.
+
+### Where measurement runs
+
+**A/B measurement has two homes now, and that is deliberate.** The rule
+is *measure a policy where that policy ships*:
+
+- `ab_harness.py` measures Python-side AI — the rollout, EV and
+  win-probability work of Phase 3. Still in use (#173's Proficient arm
+  was measured with it) though the harness itself has not needed a
+  change since #178.
+- `web/src/ab/` measures anything that reaches a player. #153, #156,
+  #158, #180, #204 and #206 all ran here. It is not a lesser harness:
+  `headlessGame.ts` drives the same reducers and AI entry points the UI
+  calls, `abRun.ts` pairs deals and mirrors seats the way `ab_harness.py`
+  does, and `selftest` asserts a policy against itself finds exactly
+  nothing.
+
+The seam this creates is that `stats.ts` is a hand-port of
+`ab_harness.py`'s three statistics with nothing checking it (#211) — the
+only thing crossing the Python/TS boundary that is neither generated nor
+guarded.
 
 ## Open questions
 
