@@ -5,24 +5,29 @@ or priorities shift. Other team-lead agents should treat this as the
 top-level source of truth for sequencing; individual specs (rules, AI
 strategy) live in their own docs and are linked from here.
 
-**Current focus (2026-08-28): the queue is nearly empty.** Port fidelity
-is done — the parity net (#125) and the constant-by-constant audit (#126)
-both landed on 2026-08-01, and `export_parity_scenarios.py --check` now
-fails the Python suite when the committed fixture goes stale. The weeks
-since have been Phase 4 polish and TypeScript-side bidding measurement,
-both shipped. What is actually open:
+**Current focus (2026-08-29).** Port fidelity is done — the parity net
+(#125) and the constant-by-constant audit (#126) both landed on
+2026-08-01, and `export_parity_scenarios.py --check` now fails the Python
+suite when the committed fixture goes stale. What is actually open:
 
+- **Removing the difficulty setting — epic #215, decided.** Paul's call
+  is one AI shipped at the current `expert` configuration; #224 measures
+  the Easy-to-Hard span first, #222 is the coupled edit, #221 deletes the
+  `openingPolicy: 'walk'` arm, #223 writes the arm-retirement rule down.
+  The explicit boundary is that `web/src/ab/`'s policy types and
+  `*_AB_POLICIES` maps stay — the A/B ruler outlives the product dial.
+  This contradicts the per-tier language further down this file; those
+  passages are marked rather than rewritten ahead of the code.
 - **#185** — the rollout dataset cannot report its own staleness, so a
   Python trick-play change silently changes what the browser bids with.
-  Blocked on a human call about whether to stamp provenance, refit, or
-  record the dependency as weak.
+  The human call has been made: children #225 (fingerprint the dataset
+  and add `generate_rollout_dataset.py --check`), #226 (regenerate,
+  refit, re-export), #227 (re-measure the bidding baseline after).
 - **#214** — splitting `pinochle_engine.py`, which this document has
   carried as open while the tracker carried #3 as wont-fix.
 - **#211** — `web/src/ab/stats.ts` is a hand-port of `ab_harness.py`'s
   three statistics with no fixture behind it, and it is now what shipped
   strategy decisions are judged on.
-- **#212** — `vite.config.ts`'s `base` comment still says the app is not
-  hosted anywhere.
 
 **Mission shift (2026-07-10) — satisfied.** The short-runway call was to
 get an installable PWA in front of players ahead of Expert-tier AI and
@@ -73,7 +78,12 @@ removed, in a different service. Deploys are manual from a locally built
 change reaches players only when someone deploys. The way to check is
 the asset hash: `curl -s https://pinochle-house-rulez.netlify.app/ |
 grep -o 'assets/[^"]*\.js'` against what is in `web/dist/assets`. As of
-2026-08-28 they match, so everything through #208 is live.
+2026-08-29 they do **not** match. What is live is the #208 build; `main`
+has since gained the dedupe refactors (#218, #229, #231, #6) and doc
+changes, none of which a player can see, so nothing is waiting to ship —
+but the mismatch had to be resolved by grepping a feature string out of
+both bundles, because neither the repo nor the build records which commit
+is deployed (#237).
 
 Two standing constraints: `base` in `web/vite.config.ts` must match the
 path the build is served under — and the manifest's `id`/`start_url`/
@@ -151,7 +161,7 @@ Most of this is now done. What shipped:
 What is still open:
 
 - **Split `pinochle_engine.py` — now #214, and it needs a decision
-  before it needs work.** The file is 3,081 lines, up from the 1,164 it
+  before it needs work.** The file is 3,107 lines, up from the 1,164 it
   had when #3 asked for this and was closed as wont-fix "migrating to
   the TS/PWA client and retiring the Python engine." That premise is
   disowned in [Settled questions](#settled-questions) below, so this
@@ -231,12 +241,17 @@ Browser side, epic **#104** (#112 → #115), strictly sequential:
   54.6%.
 - `easy` and `medium` keep the thresholds on purpose — the evaluator
   distils *skill 5*, so wiring it into `easy` would delete the tier
-  rather than calibrate it.
+  rather than calibrate it. **Overtaken by #215:** the three selectable
+  levels turned out to be byte-identical rows of `SKILL_PARAMS` differing
+  only in trump recall, worth ~4 points a deal, and the dial is being
+  removed. Nothing about the evaluator changes; the tier it was withheld
+  from stops existing.
 - **#95** ("AI underbids, avg 307 vs the 320 floor") was resolved here
   rather than fixed: under a measured-EV AI, average bid is an output,
   not a target. It was closed against games won.
 
-**#123** — the fold model wired at **all five** skill levels. Bidding
+**#123** — the fold model wired at **all five** skill levels (five as
+of the measurement; #215 collapses them to one). Bidding
 is the skill dial; folding is shared competence, because conceding and
 being set cost the bidding team exactly the same (`-bid`, meld
 forfeited) and a fold only denies the defenders their trick points — it
@@ -249,9 +264,12 @@ static-vs-rollout switch moves together across all decision points.
 entry points the UI calls, minus React and the delays; `abRun.ts` pairs
 them the way `ab_harness.py` does; `stats.ts` is a direct port of its
 three statistics; `bench/index.html` is the browser side of the latency
-measurement. None of it reaches the bundle. Run `selftest` before
-believing `ab`: one policy against itself must find *exactly* nothing,
-and `ab.test.ts` asserts that.
+measurement. None of it reaches the bundle — though nothing
+checks that, and `installPolicies` writes into the shared `SKILL_PARAMS`
+object rather than a copy, so the failure mode is a mutable engine config
+rather than a fat bundle (#236). Run `selftest` before believing `ab`:
+one policy against itself must find *exactly* nothing, and `ab.test.ts`
+asserts that.
 
 What is left of the Expert tier:
 
@@ -308,6 +326,9 @@ Still open:
 - **#129** — the PWA ships programmatic placeholder icons (solid
   colour). Real art needs to keep the same filenames and sizes that
   `vite.config.ts` references. Blocked on a human, not an agent.
+- **#194's three-level Options panel is being removed** — see #215 in
+  Current focus. The skill-presentation entry above records what shipped,
+  not where it is going.
 - Animation and transition work, which nothing has asked for yet.
 
 ## Tooling & process (parallel track, not phase-gated)
@@ -362,8 +383,12 @@ guarded.
 
 ## Open questions
 
-- Do skills 4–5 eventually get real rollouts in the browser (Web
-  Worker), or does the distilled evaluator stay the top tier? Cost is
-  the whole question and it has not been measured.
+- Do the top skills eventually get real rollouts in the browser (Web
+  Worker), or does the distilled evaluator stay the ceiling? Cost is the
+  whole question and it has not been measured. After #215 there is only
+  one shipped AI, so this is no longer "a tier gets rollouts" but "the
+  AI does", which raises the bar: it would have to be affordable for
+  every player, not just the ones who chose Hard. The prerequisite
+  COOP/COEP headers are noted in `netlify.toml` and stay off until then.
 - Is a stronger AI a better *opponent and partner* for a human? Every
   measurement so far is AI-vs-AI, which cannot answer it.
