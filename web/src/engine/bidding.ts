@@ -1,10 +1,15 @@
 // Bidding — ported from pinochle_engine.py, but no longer downstream of it.
 // #213 settled the split: Python stays authoritative for rules constants
 // (card.ts, melds.ts, round.ts), while the auction *strategy* in this module
-// is authoritative on the TS side. PARTNER_PASSED_FLOOR (#180),
-// PARTNER_RAISE_FLOOR (#206) and the 330 competitive floor were measured or
-// decided here — in web/src/ab/, against a human partner — and are
-// deliberately not ported back. The matching Python branches still hold
+// is authoritative on the TS side. PARTNER_PASSED_FLOOR (#180) was measured
+// here — 5000 paired deals on three seeds, in web/src/ab/. PARTNER_RAISE_FLOOR
+// (#206) was reasoned rather than measured: the argument is what a raise says
+// to a *human* partner, which has no referent in an all-AI Python game. It is
+// reasoning because no harness in this project seats a human — every A/B run,
+// on both sides, is AI-vs-AI, and ROADMAP.md carries "is a stronger AI a
+// better partner for a human?" as a standing open question no measurement
+// here can answer. The 330 competitive floor is likewise a TS-side decision.
+// None of the three are ported back. The matching Python branches still hold
 // their own bare literals; #213 traced that divergence and found it inert on
 // every path that still consumes Python's bidding, so it is a decision to
 // read, not a parity bug to fix.
