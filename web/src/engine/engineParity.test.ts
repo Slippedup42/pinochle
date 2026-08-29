@@ -60,6 +60,13 @@ function handTokens(hand: readonly Card[]): string {
 const SEATS: readonly PlayerIndex[] = [0, 1, 2, 3]
 const TEAMS: readonly TeamId[] = [0, 1]
 
+/**
+ * Reimplemented here rather than imported from `round.ts`, deliberately: this
+ * file is the parity net between the Python engine and the TypeScript one
+ * (#125), and a parity test that calls the very function it is checking
+ * asserts nothing. The independent copy is the point — do not dedupe it
+ * (#231).
+ */
 function partnerOf(player: PlayerIndex): PlayerIndex {
   return ((player + 2) % 4) as PlayerIndex
 }
