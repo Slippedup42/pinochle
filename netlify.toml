@@ -97,3 +97,17 @@
 
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+# `version.json` records the commit each build was made from (#237), and is how
+# anyone answers "is this merge live?" now that deploys are manual and nothing
+# else writes that down. A cached copy would answer with an earlier deploy and
+# look just as authoritative doing it, so a stale stamp is worse than no stamp
+# at all. It is kept out of the service worker's precache for the same reason
+# (`globIgnores` in web/vite.config.ts); this header covers the other half,
+# which is the CDN edge and the browser's HTTP cache.
+
+[[headers]]
+  for = "/version.json"
+
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

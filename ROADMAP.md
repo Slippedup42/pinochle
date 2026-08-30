@@ -76,14 +76,27 @@ removed, in a different service. Deploys are manual from a locally built
 `web/dist` (`npx netlify deploy --prod` from the repo root; see
 `netlify.toml`). "Shipped" in this document means merged to `main`; a
 change reaches players only when someone deploys. The way to check is
-the asset hash: `curl -s https://pinochle-house-rulez.netlify.app/ |
-grep -o 'assets/[^"]*\.js'` against what is in `web/dist/assets`. As of
-2026-08-29 they do **not** match. What is live is the #208 build; `main`
-has since gained the dedupe refactors (#218, #229, #231, #6) and doc
-changes, none of which a player can see, so nothing is waiting to ship —
-but the mismatch had to be resolved by grepping a feature string out of
-both bundles, because neither the repo nor the build records which commit
-is deployed (#237).
+one command:
+
+```
+curl -s https://pinochle-house-rulez.netlify.app/version.json
+```
+
+Every build writes that file with the commit it was built from, plus a
+dirty flag and a timestamp (#237, the plugin in `web/vite.config.ts`).
+It is served uncached and deliberately kept out of the service worker's
+precache, so it reports the deploy rather than whatever the device last
+installed, and `git log <commit>` then says outright how far behind
+`main` the live site is. It is not shown anywhere in the UI. The recipe
+this replaces — diffing the served asset hash against `web/dist` —
+compared a live site to a gitignored directory that reflects whenever
+someone last ran `npm run build`, and it reported *that* two things
+differed without saying which was newer; one such mismatch took grepping
+a feature string out of both bundles to settle.
+
+As of **2026-08-30 the live site matches `main`** (assets
+`index-BzBvnRVS.js` / `index-CPj4Y7Hs.css`). The stamp itself only
+appears in deploys made after this change lands.
 
 **No CI, and no `.github/` directory — decided, not overlooked
 (2026-08-29, #234).** "GitHub is source control only" is meant literally:

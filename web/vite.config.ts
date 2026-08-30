@@ -1,7 +1,8 @@
 /// <reference types="vitest/config" />
+import { execFileSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -127,6 +128,83 @@ const suiteCompletenessReporter = {
   },
 }
 
+// -- Build stamp (#237) ------------------------------------------------------
+//
+// Nothing else in this repo records which commit is deployed. Deploys are
+// manual uploads of a locally built `web/dist` (see `netlify.toml`), so "did
+// this merge reach players?" used to be answered by comparing the served asset
+// hash against a local build — a comparison that reports *that* two things
+// differ without saying which is newer, and whose local half is `web/dist`, a
+// gitignored directory reflecting whenever someone last ran `npm run build`
+// rather than anything on `main`. Settling one such mismatch took grepping a
+// feature string out of both bundles and comparing byte sizes.
+//
+// So the build writes down what it was built from, and the deployed copy
+// answers the question directly:
+//
+//     curl -s https://pinochle-house-rulez.netlify.app/version.json
+//
+// Deliberately not surfaced in the UI. The consumer is a person or an agent
+// checking whether a merge is live, not a player.
+
+/**
+ * Every git call is allowed to fail into `null`. `git` may not be installed and
+ * this may not be a checkout at all — a source tarball, a container build
+ * context — and a build that refuses to run because it cannot describe itself
+ * would trade a real capability for a bookkeeping one.
+ */
+function git(...args: string[]): string | null {
+  try {
+    return execFileSync('git', args, {
+      cwd: fileURLToPath(new URL('.', import.meta.url)),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `dirty` is `null` rather than `false` when the commit is unknown: "the working
+ * tree was clean" is a claim a build outside a checkout cannot make, and a stamp
+ * that guesses is the failure mode this whole section exists to remove. `git
+ * status` reports the whole repository regardless of which directory it runs in,
+ * so a build taken with uncommitted Python changes is flagged too — the SHA on
+ * its own would otherwise describe a tree that was never built.
+ */
+function buildStamp(): { commit: string; dirty: boolean | null; builtAt: string } {
+  const commit = git('rev-parse', '--short', 'HEAD')
+  const status = commit === null ? null : git('status', '--porcelain')
+  return {
+    commit: commit ?? 'unknown',
+    dirty: status === null ? null : status.length > 0,
+    builtAt: new Date().toISOString(),
+  }
+}
+
+/**
+ * Emitted through rollup rather than written to `outDir` by hand, so it lands
+ * wherever the build is configured to land and shows up in the build output
+ * listing like any other asset. `generateBundle` also puts it on disk before
+ * `vite-plugin-pwa` globs the output directory in `closeBundle`, which is why
+ * keeping it out of the precache is a question of the globs below rather than
+ * of ordering.
+ */
+function buildVersionStamp(): Plugin {
+  return {
+    name: 'pinochle:build-version-stamp',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: `${JSON.stringify(buildStamp(), null, 2)}\n`,
+      })
+    },
+  }
+}
+
 // The app is served from Netlify at a domain root
 // (<https://pinochle-house-rulez.netlify.app>), which is why this is `/`; the
 // same value is what `npm run dev` / `npm run preview` want. Deploys are manual
@@ -146,6 +224,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    buildVersionStamp(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
@@ -191,6 +270,14 @@ export default defineConfig({
         // Offline shell caching: precache the built app shell so the game
         // loads (and can be reopened) without a network connection.
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // `version.json` must always come from the network. Precached, it
+        // would report whichever build the device last installed, which is a
+        // confident wrong answer to the one question it exists to answer
+        // (#237). The pattern list above already excludes `.json`, so this is
+        // the belt to that pair of braces: adding `json` there for some data
+        // file should not silently pull the stamp in with it. Workbox's own
+        // default ignore is restated because setting this option replaces it.
+        globIgnores: ['**/node_modules/**/*', 'version.json'],
       },
       devOptions: {
         enabled: false,
