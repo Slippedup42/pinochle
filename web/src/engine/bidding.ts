@@ -84,10 +84,11 @@ export const MAX_BID_MELD_THRESHOLD = 300
 
 // Minimum Base Bid to justify opening at all.
 export const OPENER_THRESHOLD = 320
-// Minimum ceiling to justify a defensive push against an opening bid (250
-// since #200, 300 before). Hands at or above this floor should almost always
-// raise an opener, since even moderate hands can contribute toward making it
-// with partner's help, and pushing deprives the opponent of a cheap contract.
+// Minimum ceiling to justify a defensive push against an opening bid (300
+// again since #257, 250 in between under #200). Hands at or above this floor
+// should almost always raise an opener, since even moderate hands can
+// contribute toward making it with partner's help, and pushing deprives the
+// opponent of a cheap contract.
 // "Truly hopeless" hands (no meld, no aces — ceiling ~130) fall below this
 // floor. It is a hand-strength threshold, not a bid level, so it did not move
 // with the opener.
@@ -608,11 +609,19 @@ export function chooseBid(
   // Bounded above by `ceiling`, so the walk cannot talk a seat past what its
   // cards are worth, and it steps by `minIncrement` so it cannot leave the
   // multiple-of-ten grid (#177). The static verdict keeps the cushion
-  // `OPENER_THRESHOLD` already implies over `OPENING_BID` — 70 points — so a
-  // static seat asked about level L wants a ceiling of L + 70, which at the
-  // opening rung is exactly `OPENER_THRESHOLD` and stays self-consistent as the
-  // level climbs. Without that the level-independent static verdict would walk
-  // every opener to its ceiling.
+  // `OPENER_THRESHOLD` already implies over `OPENING_BID` — **20 points** at
+  // today's 320/300 pair — so a static seat asked about level L wants a
+  // ceiling of L + 20, which at the opening rung is exactly `OPENER_THRESHOLD`
+  // and stays self-consistent as the level climbs. Without that the
+  // level-independent static verdict would walk every opener to its ceiling.
+  //
+  // The cushion is derived rather than written down precisely because it is
+  // not a fixed quantity: it was 20 before #200, 70 while the opener sat at
+  // 250, and is 20 again since #257 put the opener back to 300. A narrower
+  // cushion is a more permissive walk — a static seat now accepts a level only
+  // 20 under its ceiling — so `'walk'` climbs further per hand than it did
+  // last week. That arm measured negative and is queued for deletion (#221);
+  // nothing shipped selects it, so this is a note, not a regression.
   const openingLevelFor = (floor: number): number => {
     if (SKILL_PARAMS[skill].openingPolicy !== 'walk') return floor
     const cushion = OPENER_THRESHOLD - OPENING_BID
@@ -709,7 +718,11 @@ export function chooseBid(
   const nextBid = currentBid + minIncrement
 
   // Defensive push (#78): when opponent opened at the minimum (OPENING_BID —
-  // 250 since #200), respond unless the hand is truly hopeless. The static
+  // 300 again since #257), respond unless the hand is truly hopeless. The gate
+  // is `currentBid <= OPENING_BID`, so it follows the opening rung wherever it
+  // goes: it now fires on a bid of 300 and stops at 310, where last week it
+  // fired at 250 and stopped at 260. One rung later in absolute terms, the
+  // same rung relative to the auction. The static
   // rule is a ceiling floor (DEFENSIVE_PUSH_FLOOR) on the reasoning that the
   // opening rung is the absolute floor and is almost always raised — even a
   // moderate hand can contribute toward making it with partner's help, and

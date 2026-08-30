@@ -31,15 +31,21 @@ RANK_VALUE = {rank: i for i, rank in enumerate(RANKS)}
 
 GAME_WIN_SCORE = 1000
 GAME_LOSE_SCORE = -1000
-# Lowest rung the auction can open at. 250 since #200 (was 300): a house
-# preference, not a rules discovery. Only the opening rung moved - the minimum
-# raise (10), OPENER_THRESHOLD (320, the hand a bidder needs to open at all)
-# and PARTNER_PASSED_FLOOR (320) are unchanged, so the AI opens on the same set
-# of hands as before and simply commits to 250 rather than 300 when it does.
-OPENING_BID = 250
-# What the dealer is stuck with if everyone passes without ever bidding. Equal
-# to OPENING_BID since #200, so passing the auction out no longer discounts
-# anything - the dealer lands on the rung the first seat could have opened at.
+# Lowest rung the auction can open at. 300, restored by #257 after #200 had
+# moved it to 250: a house preference, not a rules discovery, and one decided
+# twice - the second time on the evidence of having played it. The rung on its
+# own was never the point; what it buys is the gap to FORCED_BID below. Only
+# the opening rung moves - the minimum raise (10), OPENER_THRESHOLD (320, the
+# hand a bidder needs to open at all) and PARTNER_PASSED_FLOOR (320) are
+# unchanged, so the AI opens on the same set of hands either way and simply
+# commits to 300 rather than 250 when it does.
+OPENING_BID = 300
+# What the dealer is stuck with if everyone passes without ever bidding. Sits
+# 50 below OPENING_BID on purpose: the dealer never chose this contract, so
+# they get it cheaper than anyone who bid for one. That discount is what #257
+# was restoring - with both numbers at 250 there was nothing left to discount,
+# and passing the auction out landed the dealer on the very rung the first
+# seat could have opened at.
 FORCED_BID = 250
 # The minimum raise, stated by pinochle_rules.md on the same line as the
 # opening rung. Passed to Player.choose_bid as its min_increment argument

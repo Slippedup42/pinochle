@@ -109,9 +109,10 @@ because nothing needs them yet (see Open questions).
 
 1. **Decisions** — done. Opening-bid mismatch resolved: the engine
    value was canonical and `pinochle_rules.md` was updated to match.
-   **Superseded by #200** — the auction now opens at 250 rather than
-   300, changed in both engines in the same commit. Stack locked
-   (above).
+   #200 then moved the opener to 250 and **#257 moved it back to 300**,
+   both times in both engines in the same commit; 300 is where it
+   stands, and `FORCED_BID` stays 250 so passing the auction out is a
+   discount again. Stack locked (above).
 2. **Rules engine port to TS** — done. `web/src/engine/` holds the core
    data model, deal, meld scoring, bidding, the 3-card pass,
    trick-taking, and round/game scoring, one file per concern with

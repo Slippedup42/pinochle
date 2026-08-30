@@ -639,12 +639,26 @@ describe('raising over a bid our own team already holds (#206)', () => {
   // Ceiling 320 — opens happily, but cannot support a 340 commitment.
   const modestHand = [...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)), new Card(Suit.Spades, 'A', 1)]
 
-  /** Seat 2 opened at OPENING_BID; its partner (seat 0) then bid `partnerBid`. */
+  /** Seat 2 opened one rung under `partnerBid`; its partner (seat 0) then bid
+   *  `partnerBid`.
+   *
+   *  Seat 2's own number is scaffolding. The branch under test fires on
+   *  `currentBid > myOwnBids.at(-1)` — all it needs is that the partner's bid
+   *  is above seat 2's — so the open is derived from the raise rather than
+   *  pinned to `OPENING_BID`. It was `OPENING_BID` until #257 moved that rung
+   *  back to 300, at which point every `partnerBid` below 300 described an
+   *  auction that ran *downhill*: seat 2 opened 300 and its partner "raised"
+   *  to 260, so `chooseBid` correctly answered null on the grounds that its
+   *  own bid still stood, and the test failed for a reason that had nothing to
+   *  do with PARTNER_RAISE_FLOOR. Deriving the open keeps the off-ladder
+   *  `partnerBid` values this block exists to exercise (see the note above)
+   *  and stops the fixture tracking an opening rung it does not care about.
+   */
   const afterPartnerRaise = (partnerBid: number): AuctionContext => ({
     everBid: true,
     passesSoFar: 0,
     bidHistory: [
-      { player: 2 as PlayerIndex, amount: OPENING_BID },
+      { player: 2 as PlayerIndex, amount: partnerBid - 10 },
       { player: 0 as PlayerIndex, amount: partnerBid },
     ],
     dealer: 1,

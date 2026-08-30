@@ -226,21 +226,24 @@ describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
     // This hand melds 190 under Hearts (Run 150 + Royal Marriage 40), so the
     // meld-only ceiling is 190 + 60 flat + noise in [-30, 30] = [220, 280].
     //
-    // The noise has to be pinned. Against the old 300 opener the whole range
-    // fell short and a bare `toBeNull()` was deterministic; #200's 250 opener
-    // sits *inside* it, so the same assertion became a coin flip that passed
-    // roughly half the time. Pinning it is also a sharper check than the old
-    // one: at minimum noise `easy` declines a hand the evaluator opens, which
-    // is the divergence this test is named for, and at maximum noise the
-    // decision follows meld + flat arithmetic rather than the model.
+    // The noise stays pinned even though it no longer has to be. #200's 250
+    // opener sat *inside* [220, 280], which turned a bare `toBeNull()` into a
+    // coin flip that passed roughly half the time; #257 put the opener back to
+    // 300 and the whole range falls short again, so the bare assertion would be
+    // deterministic once more. Pinning is kept because it asserts the
+    // arithmetic rather than the outcome: both extremes are named, and the
+    // upper one records that the miss is by 20 points, not by miles. If either
+    // MELD_ONLY_TRICK_ESTIMATE or the opening rung moves back toward the other,
+    // this fails on the specific number instead of going quietly random.
     const random = vi.spyOn(Math, 'random')
     try {
-      random.mockReturnValue(0) // noise -30 -> ceiling 220, under the opener
+      random.mockReturnValue(0) // noise -30 -> ceiling 220, 80 under the opener
       expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'easy')).toBeNull()
       expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
 
-      random.mockReturnValue(1) // noise +30 -> ceiling 280, over it
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'easy')).toBe(OPENING_BID)
+      random.mockReturnValue(1) // noise +30 -> ceiling 280, still 20 under it
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'easy')).toBeNull()
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
     } finally {
       random.mockRestore()
     }
