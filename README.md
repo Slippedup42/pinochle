@@ -33,8 +33,16 @@ relative to that file. To run the app locally instead, `npm run dev` in
 
 The badge above reports the last deploy Netlify processed. Since nothing
 builds on their servers it is a thin signal — it says an upload
-succeeded, not that `main` is live. Compare the deployed asset hash
-against a local build if you need to know what is actually out there.
+succeeded, not that `main` is live. To know what is actually out there,
+ask the deploy:
+
+```
+curl -s https://pinochle-house-rulez.netlify.app/version.json
+```
+
+Every build stamps that file with the commit it was built from (#237);
+it is served uncached and is not precached by the service worker, so it
+describes the deploy rather than the visitor's cache.
 
 The Python side has two live roles: it is the reference implementation
 the TypeScript port is checked against, *and* the harness all the AI

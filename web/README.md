@@ -1033,12 +1033,23 @@ Max), each with and without insets. Landscape is not a target — the manifest i
   — GitHub is source control only and `.github/` no longer exists. It now
   lives on Netlify at <https://pinochle-house-rulez.netlify.app>, deployed
   manually. **A merged PR is not live.** To check what is actually deployed,
-  compare the asset hash in the served `index.html` against a local build:
+  ask the deploy which commit it was built from:
 
   ```
-  curl -s https://pinochle-house-rulez.netlify.app/ | grep -o 'src="/assets/[^"]*"'
-  grep -o 'src="/assets/[^"]*"' dist/index.html
+  curl -s https://pinochle-house-rulez.netlify.app/version.json
   ```
+- **`version.json` is the build stamp (#237).** `vite.config.ts` emits it on
+  every `vite build` with `{ commit, dirty, builtAt }` — short SHA from `git
+  rev-parse`, whether the working tree had uncommitted changes, and an ISO
+  timestamp. Outside a git checkout the commit falls back to `"unknown"` and
+  `dirty` to `null` rather than the build failing, and `null` is used instead
+  of `false` because a build that cannot see a repository cannot honestly
+  claim the tree was clean. Two things keep it from going stale, and both
+  matter: `netlify.toml` serves it `max-age=0, must-revalidate`, and Workbox's
+  `globIgnores` keeps it out of the precache — precached, it would report
+  whichever build the device last installed. It is not rendered anywhere; the
+  reader is a person or an agent, not a player. There is no stamp under `npm
+  run dev`, which serves no `dist`; `npm run preview` has one.
 - **Deploying to Netlify (manual).** `netlify.toml` at the repo root sets
   `publish = "web/dist"` and nothing else build-related. The repo is
   deliberately **not** connected to Netlify's git integration — a
