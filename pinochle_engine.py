@@ -232,6 +232,69 @@ OPENER_THRESHOLD = 320  # minimum Base Bid to justify opening at all
 # hopeless" hands (no meld, no aces — ceiling ~130) fall below this floor.
 DEFENSIVE_PUSH_FLOOR = 200
 
+# -- Endgame protection (#256). The one bidding rule that is about the *game*
+# rather than about the hand: a team this close to 1000 banks its meld and
+# lets the contract go, because the contract is worth little to it - the
+# defending team scores its own meld either way - while being set costs the
+# whole bid and hands back a game that was one hand from over. Both thresholds
+# are derived from GAME_WIN_SCORE so they follow the target if it ever moves;
+# #243 records why moving it is expensive. 750 is "within 250 of going out",
+# which one ordinary meld plus a share of the tricks reaches. 450 is "more
+# than 550 away", more than the opponents can plausibly take off a single
+# hand, so there is a next hand to fight it out in.
+ENDGAME_SCORE_FLOOR = GAME_WIN_SCORE - 250
+ENDGAME_OPP_SCORE_CAP = GAME_WIN_SCORE - 550
+# The one hand check in the rule, and the only thing that puts a bid back on
+# the table while the trigger holds. This is the Max Bid *ceiling* (Base Bid
+# plus the competitive adjustment, capped), not the Base Bid: in the score
+# band this rule fires in `compute_competitive_adjustment` returns +100, so
+# the effective bar is a Base Bid a little over 100 and few hands fail it.
+# That is a deliberate choice rather than an oversight - if the rescue turns
+# out to fire on hands that cannot carry OPENING_BID, this is the number to
+# revisit, not the choice of measure.
+ENDGAME_RESCUE_CEILING = 200
+
+
+def endgame_protection_applies(my_score, opp_score):
+    """True when this team should be banking its meld rather than buying a
+    contract: within 250 of going out while the opponents are more than 550
+    away. It is a property of the *team*, so both its seats are covered, not
+    only the one holding a good hand."""
+    return my_score >= ENDGAME_SCORE_FLOOR and opp_score < ENDGAME_OPP_SCORE_CAP
+
+
+def endgame_protection_bid(context, opponents, partner_is_dealer, ceiling):
+    """
+    What a seat bids while `endgame_protection_applies` holds. The default is
+    None - pass, for the whole auction, on any hand, opening or over anyone.
+    If the dealer is an opponent the auction passes out and they are stuck at
+    FORCED_BID, which is the outcome this rule is happy to buy.
+
+    The single exception is a partner who is dealing: passing out would stick
+    *us* with a contract nobody chose, so this seat opens at OPENING_BID
+    instead - but only holding a hand worth more than ENDGAME_RESCUE_CEILING,
+    and only while no opponent has bid. An opponent who has bid has already
+    taken the contract off our hands, which is what we wanted.
+
+    Reading only one opponent is a seat-order fact rather than a
+    simplification. The auction opens left of the dealer and rotates
+    clockwise, so a partner-of-the-dealer seat speaks *second*: after exactly
+    one opponent, and before both the other opponent and the dealer. There is
+    no later turn at which this seat knows more, because to still be in the
+    auction it would have had to bid. `context` carries the auction record but
+    no seat indices (see `GeneralStrategy._auction_evidence`), so "the
+    opponent who spoke immediately before me has passed" is read here as "an
+    opponent has passed and none has bid" - at this seat, and only at this
+    seat, those are the same statement.
+    """
+    if not partner_is_dealer:
+        return None
+    if any(p in opponents for p, _ in context.get("bid_history", [])):
+        return None
+    if not any(p in opponents for p in context.get("passed_players", [])):
+        return None
+    return OPENING_BID if ceiling > ENDGAME_RESCUE_CEILING else None
+
 
 def compute_base_bid(hand, trump):
     """
@@ -1836,13 +1899,20 @@ class Player:
         is_dealer = (self is context["dealer"])
         partner_is_dealer = (partner is context["dealer"])
 
-        if not context["ever_bid"]:
-            # Dealer-protection: partner is dealer, score makes them a
-            # target for a "pass out and stick them with FORCED_BID" play -
-            # always open regardless of hand.
-            if partner_is_dealer and my_score >= 850 and opp_score < 500:
-                return OPENING_BID
+        # Endgame protection (#256) sits in front of every other bidding rule
+        # and in front of the valuation, because it is not a judgement about
+        # the hand at all - once the trigger holds, what the cards are worth
+        # stops being the question. It replaces the old dealer-protection
+        # tier outright (partner dealing, my_score >= 850, opp_score < 500,
+        # open on anything): the new rule supersedes it on thresholds, adds
+        # the hand floor whose absence was half of #255, and asks whether the
+        # opponent ahead of us has actually passed rather than assuming it.
+        if endgame_protection_applies(my_score, opp_score):
+            return endgame_protection_bid(
+                context, opp_team.players, partner_is_dealer, ceiling,
+            )
 
+        if not context["ever_bid"]:
             # 3rd bidder (2 passes already, no one's bid) - always open
             # to deny the last player a cheap contract, unless our score
             # is high enough (>800) that we'd rather play it safe.
@@ -2384,6 +2454,27 @@ class GeneralStrategy(Player):
         opp_team = next((t for t in context["teams"] if t is not self.team), None)
         opp_score = opp_team.score if opp_team is not None else 0
         trump, base_bid, _ = best_base_bid(self.hand, my_score, opp_score)
+
+        # Endgame protection (#256) is a hard rule in front of the simulation,
+        # not an input to it. `Player.choose_bid` applies it for the skill
+        # levels that route through the static path, but this one does not
+        # take its answer from `static_bid` above - it only consults it for
+        # the positional back-off - so the check is repeated here rather than
+        # left to leak through. A rollout that says "taking this contract has
+        # the higher EV" is answering a different question from the one the
+        # rule asks, which is whether to put a nearly-won game at risk at all.
+        if endgame_protection_applies(my_score, opp_score):
+            partner = None if self.team is None else next(
+                (p for p in self.team.players if p is not self), None
+            )
+            cap = max_bid(self.hand, trump)
+            ceiling = base_bid if cap is None else min(base_bid, cap)
+            return endgame_protection_bid(
+                context,
+                opp_team.players if opp_team is not None else [],
+                partner is not None and partner is context.get("dealer"),
+                ceiling,
+            )
 
         # Cheap hard floor, same "prune before the expensive simulation"
         # spirit as the Auto-SET guard elsewhere in this epic: a hand
