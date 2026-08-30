@@ -43,8 +43,12 @@ Cross-cutting technical structure, not any single feature:
   deliberately not git-connected (GitHub is source control only, decided
   2026-08-01). Do not re-add a deploy workflow or wire up continuous
   deployment without Paul asking; that is the coupling #141 removed.
-  When judging whether a change reached players, check the deployed
-  asset hash, not whether the PR merged.
+  When judging whether a change reached players, ask the deploy which
+  commit it was built from - `curl -s
+  https://pinochle-house-rulez.netlify.app/version.json` (#237) - not
+  whether the PR merged. The old asset-hash recipe compared the live site
+  against a gitignored `web/dist`, so it could say two things differed
+  without saying which was newer.
   Two things that must move together: `base` in `vite.config.ts` and the
   manifest's `id`/`start_url`/`scope` — #141 changed one and not the
   other, which left an installed app launching into a 404 and was
