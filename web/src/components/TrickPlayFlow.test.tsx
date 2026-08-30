@@ -1,11 +1,24 @@
+// TrickPlayFlow (#35) as a mounted component: the wiring between the reducer's
+// rules and what a player can see and click. The rules themselves belong to
+// `trickPlayReducer.test.ts` and `round.test.ts` and are not re-asserted here —
+// what this file defends is the part only a real mount exercises. Legal-move
+// highlighting on the human's own hand, the AI turns resolving on their timers,
+// the fold/auto-SET/claim notices holding `onComplete` back until the player
+// has been told why the hand ended, and (#217) the #54 resume path, where
+// `initialState` hands the component a state it did not build and every one of
+// those behaviours has to work off a history it never watched happen.
+
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { dealFromRng, makeRng } from '../ab/headlessGame'
 import { Card, Deck, Suit } from '../engine/card'
 import type { Hands } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { SKILL_PARAMS } from '../engine/skills'
-import { AI_PLAY_DELAY_MS, TrickPlayFlow } from './TrickPlayFlow'
+import { AI_PLAY_DELAY_MS, TRICK_SETTLE_MS, TrickPlayFlow } from './TrickPlayFlow'
+import { CLAIMABLE_TRUMP, claimableHands } from './claimablePosition.fixture'
+import { initTrickPlayState, type TrickPlayState } from './trickPlayReducer'
 import type { TrickPlayResult } from './trickPlayTypes'
 
 const SEAT_NAMES: Record<PlayerIndex, string> = { 0: 'You', 1: 'West', 2: 'Partner', 3: 'East' }
@@ -45,6 +58,58 @@ function disableAiFold() {
 /** Meld that keeps a 300 contract reachable, so auto-SET (#178) stays out of
  *  tests that are about something else. */
 const LIVE_MELD = 60
+
+/**
+ * A shuffled deal, pinned by seed so every run plays the same hand.
+ *
+ * `new Deck().deal()` is *unshuffled* — it hands each seat one whole suit — and
+ * since #208 that is a position where whoever was dealt trump claims the other
+ * eleven tricks at the first boundary. Legal, and fine for the tests above that
+ * only need 48 real cards; no use at all to a test that has to watch tricks go
+ * by, because only two of them ever get played. Same generator `round.test.ts`
+ * deals its 1500 hands from.
+ */
+function shuffledDeal(seed: number): Hands {
+  return dealFromRng(makeRng(seed))
+}
+
+/**
+ * Pushes a mounted hand forward by one step, the way a player sitting there
+ * would: click a legal card if it is the human's turn, dismiss a claim notice
+ * (#208) if that is what the hand is waiting on, otherwise let the pending AI
+ * delay or post-trick settle pause elapse.
+ *
+ * The same loop the full-round test below runs inline, extracted because the
+ * resume tests (#217) each need to drive a hand and none of them is about
+ * *how* it is driven. Plain attribute selector rather than
+ * `queryAllByRole('button', ...)` for the reason that test records: this runs
+ * ~60 times per hand and the role query costs ~30% of the runtime (#170).
+ */
+function step(): void {
+  const playable = document.querySelector<HTMLButtonElement>(
+    'button[aria-label^="Play "]:not([disabled])',
+  )
+  if (playable) {
+    fireEvent.click(playable)
+    return
+  }
+  if (screen.queryByRole('dialog', { name: /the rest are mine/i })) {
+    fireEvent.click(screen.getByRole('button', { name: 'See the score' }))
+    return
+  }
+  act(() => vi.advanceTimersByTime(TRICK_SETTLE_MS))
+}
+
+/** Steps until `done()`, and fails rather than hanging if the hand stalls —
+ *  a driver that gave up quietly would make every assertion after it vacuous. */
+function driveUntil(done: () => boolean, limit = 600): void {
+  let guard = 0
+  while (!done() && guard < limit) {
+    guard++
+    step()
+  }
+  expect(guard).toBeLessThan(limit)
+}
 
 afterEach(() => {
   SKILL_PARAMS[AI_TIER] = PRISTINE_TIER
@@ -438,5 +503,257 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
     })
     expect(onComplete).toHaveBeenCalledOnce()
     expect((onComplete.mock.calls[0][0] as TrickPlayResult).conceded).toBe(true)
+  })
+
+  // -- Resuming a #54 checkpoint (#217) -------------------------------------
+  //
+  // Everything above starts a hand from a fresh deal. The saved-game path does
+  // not: `initialState` drops the component into a hand already under way, and
+  // the notices, the fold window and the checkpoint writer all have to read a
+  // history they were handed rather than one they watched happen. That is a
+  // path a player only reaches by closing the tab and coming back, which is
+  // exactly the kind of path that breaks without anyone noticing.
+
+  it('re-shows the claim notice when the state it resumes into is already claimable', () => {
+    vi.useFakeTimers()
+
+    // A live save can never be claimable — #208 runs the check inside
+    // CLEAR_TRICK, so a checkpoint is always written *after* it. A checkpoint
+    // written before that rule existed can be, and the component re-runs the
+    // check on the way in for that reason. Resuming to a finished hand with no
+    // explanation is the failure this prevents.
+    const onComplete = vi.fn()
+    const onCheckpoint = vi.fn()
+    const resumed = initTrickPlayState(claimableHands(), CLAIMABLE_TRUMP, 0, SEAT_NAMES)
+
+    render(
+      <TrickPlayFlow
+        hands={resumed.hands}
+        trumpSuit={CLAIMABLE_TRUMP}
+        bidWinner={0}
+        bid={300}
+        meldPointsByTeam={{ 0: LIVE_MELD, 1: 0 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        initialState={resumed}
+        onCheckpoint={onCheckpoint}
+        onComplete={onComplete}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
+      />,
+    )
+
+    const notice = within(screen.getByRole('dialog', { name: /the rest are mine/i }))
+    // The human holds the unbeatable hand here, so the notice is addressed to
+    // them, and the two numbers are the ones the claim actually transferred:
+    // 8 counters at 10 plus the last-trick bonus, over the 2 tricks skipped.
+    expect(notice.getByText(/nothing that can be beaten/)).not.toBeNull()
+    expect(notice.getByText('2')).not.toBeNull()
+    expect(notice.getByText('90')).not.toBeNull()
+    // The claim reached the trick log too, so the hand does not just stop.
+    expect(screen.getByText(/took the last 2 tricks/)).not.toBeNull()
+
+    // Nothing moves on behind the notice, however long it stands: no card is
+    // played, the round does not hand off, and — the guard #217 is about — no
+    // checkpoint is written, because resuming from one would land the player
+    // on the round summary having silently eaten the last two tricks.
+    act(() => vi.advanceTimersByTime(AI_PLAY_DELAY_MS * 5))
+    expect(screen.queryByText(/played the /)).toBeNull()
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(onCheckpoint).not.toHaveBeenCalled()
+  })
+
+  it('carries the claimer and the claimed points out to onComplete once the resumed notice is dismissed', () => {
+    vi.useFakeTimers()
+
+    const onComplete = vi.fn()
+    const resumed = initTrickPlayState(claimableHands(), CLAIMABLE_TRUMP, 0, SEAT_NAMES)
+
+    render(
+      <TrickPlayFlow
+        hands={resumed.hands}
+        trumpSuit={CLAIMABLE_TRUMP}
+        bidWinner={0}
+        bid={300}
+        meldPointsByTeam={{ 0: LIVE_MELD, 1: 0 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        initialState={resumed}
+        onComplete={onComplete}
+      />,
+    )
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'See the score' }))
+    })
+
+    // `result.claim` is the only route the claim takes out of trick play — the
+    // round summary has no other way to say why four cards were never played —
+    // so the payload is checked, not just the fact that the round ended.
+    expect(onComplete).toHaveBeenCalledOnce()
+    const result = onComplete.mock.calls[0][0] as TrickPlayResult
+    expect(result.claim?.player).toBe(0)
+    expect(result.claim?.name).toBe('You')
+    expect(result.claim?.points).toBe(90)
+    expect(result.claim?.tricks).toBe(2)
+    // A claim is not a concession: the claiming team keeps the points.
+    expect(result.conceded).toBeUndefined()
+    expect(result.trickWinners).toEqual([0, 0])
+    expect(result.trickPointsByTeam).toEqual({ 0: 90, 1: 0 })
+  })
+
+  it('resumes a saved mid-hand checkpoint and still finishes at twelve tricks, not twelve more', () => {
+    vi.useFakeTimers()
+    disableAiFold()
+
+    const hands = shuffledDeal(217)
+    const onCheckpoint = vi.fn()
+
+    // The checkpoint is taken from a real run rather than hand-built, so this
+    // is the state #54 would actually have saved — if what the component emits
+    // and what it can be restarted from ever diverge, that is the bug here.
+    const first = render(
+      <TrickPlayFlow
+        hands={hands}
+        trumpSuit={Suit.Hearts}
+        bidWinner={0}
+        bid={300}
+        meldPointsByTeam={{ 0: LIVE_MELD, 1: 0 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        onCheckpoint={onCheckpoint}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
+      />,
+    )
+    driveUntil(() => onCheckpoint.mock.calls.length >= 3)
+    const snapshot = onCheckpoint.mock.calls.at(-1)![0] as TrickPlayState
+    expect(snapshot.trickNumber).toBe(2)
+    expect(snapshot.trickWinners).toHaveLength(2)
+    first.unmount()
+
+    const onComplete = vi.fn()
+    render(
+      <TrickPlayFlow
+        hands={hands}
+        trumpSuit={Suit.Hearts}
+        bidWinner={0}
+        bid={300}
+        meldPointsByTeam={{ 0: LIVE_MELD, 1: 0 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        initialState={snapshot}
+        onComplete={onComplete}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
+      />,
+    )
+
+    // The two tricks played before the save are still on the log, not replayed.
+    expect(screen.getAllByText(/won the trick/)).toHaveLength(2)
+    // The fold window (#83) closed the moment the human played a card, and it
+    // stays closed across a resume — the guard that reads `cardsPlayed` off the
+    // restored log rather than assuming a hand starts at zero.
+    expect(screen.queryByRole('button', { name: 'Concede hand' })).toBeNull()
+    expect(onComplete).not.toHaveBeenCalled()
+
+    driveUntil(() => onComplete.mock.calls.length > 0)
+
+    // A resumed hand is one hand: the restored tricks and the played-on ones
+    // add up to a whole round, with every trick point accounted for exactly
+    // once. Double-counting or dropping the restored half would show here.
+    expect(onComplete).toHaveBeenCalledOnce()
+    const result = onComplete.mock.calls[0][0] as TrickPlayResult
+    expect(result.trickWinners).toHaveLength(12)
+    expect(result.trickWinners.slice(0, 2)).toEqual(snapshot.trickWinners)
+    expect(result.trickPointsByTeam[0] + result.trickPointsByTeam[1]).toBe(250)
+  })
+
+  it('checkpoints once per trick boundary, never mid-trick and never during the settle pause', () => {
+    vi.useFakeTimers()
+    disableAiFold()
+
+    // gameSave.ts states the invariant this asserts: trickPlayCheckpoint is a
+    // snapshot taken after each completed trick, never mid-trick or
+    // mid-AI-delay. It is a promise about resumability — a snapshot holding a
+    // half-played trick would restore four hands and a table that disagree
+    // about whose turn it is — and until now nothing checked it.
+    const onCheckpoint = vi.fn()
+
+    render(
+      <TrickPlayFlow
+        hands={shuffledDeal(217)}
+        trumpSuit={Suit.Hearts}
+        bidWinner={0}
+        bid={300}
+        meldPointsByTeam={{ 0: LIVE_MELD, 1: 0 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        onCheckpoint={onCheckpoint}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
+      />,
+    )
+    driveUntil(() => onCheckpoint.mock.calls.length >= 4)
+
+    for (const [snapshot] of onCheckpoint.mock.calls as [TrickPlayState][]) {
+      expect(snapshot.currentTrick).toHaveLength(0)
+      // 'trick-complete' is the settle pause, where all four cards are still
+      // face up on the table waiting to be cleared.
+      expect(snapshot.phase).not.toBe('trick-complete')
+    }
+    // One per boundary and no more: a mid-trick write would repeat a trick
+    // number, and a missed one would skip it.
+    expect((onCheckpoint.mock.calls as [TrickPlayState][]).map(([s]) => s.trickNumber)).toEqual([
+      0, 1, 2, 3,
+    ])
+  })
+
+  it('never checkpoints a hand the auto-SET rule has already decided', () => {
+    vi.useFakeTimers()
+
+    // #178's guard, the twin of the claim one. The hand is over the instant the
+    // arithmetic runs, but the player has not been told; a checkpoint of that
+    // decided state would resume straight past the explanation into the round
+    // summary. Leaving it unwritten means a resume re-enters trick play, the
+    // rule fires again, and the notice is shown again.
+    const onCheckpoint = vi.fn()
+
+    render(
+      <TrickPlayFlow
+        hands={shuffledDeal(217)}
+        trumpSuit={Suit.Hearts}
+        bidWinner={0}
+        bid={400}
+        // 20 meld plus all 250 trick points is 270, short of 400.
+        meldPointsByTeam={{ 0: 20, 1: 100 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        onCheckpoint={onCheckpoint}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
+      />,
+    )
+
+    expect(screen.getByRole('dialog')).not.toBeNull()
+    act(() => vi.advanceTimersByTime(AI_PLAY_DELAY_MS * 5))
+
+    // Asserted as "nothing decided was ever saved" rather than "nothing was
+    // ever saved". The mount writes one checkpoint of the *undecided* opening
+    // state, in the same commit the rule fires in and before the flag it reads
+    // is set — and that one is harmless, because restoring it re-enters trick
+    // play from the top, which is what the guard is trying to achieve anyway.
+    // What must never be written is the conceded state behind the notice.
+    for (const [snapshot] of onCheckpoint.mock.calls as [TrickPlayState][]) {
+      expect(snapshot.phase).toBe('playing')
+      expect(snapshot.conceded).toBe(false)
+    }
   })
 })

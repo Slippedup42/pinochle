@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Card, type Rank, Suit } from '../engine/card'
 import type { PlayerIndex } from '../engine/trick'
+import { CLAIMABLE_TRUMP, claimableHands } from './claimablePosition.fixture'
 import { formatTrickPlayLogEntry } from './trickPlayTypes'
 import {
   applyClaimIfAvailable,
@@ -142,17 +143,11 @@ describe('buildTrick', () => {
 describe('"the rest are mine" (#208)', () => {
   const c = (suit: Suit, rank: Rank, copy: 1 | 2 = 1) => new Card(suit, rank, copy)
 
-  /** Trick 11 of 12: two cards each, seat 0 on lead holding only trump and
-   *  nobody else holding any. The position `findClaim` exists for. */
-  const claimableState = (): TrickPlayState => {
-    const hands = [
-      [c(Suit.Hearts, 'A'), c(Suit.Hearts, 'K')],
-      [c(Suit.Spades, 'A'), c(Suit.Spades, 'K')],
-      [c(Suit.Clubs, 'A'), c(Suit.Clubs, 'K')],
-      [c(Suit.Diamonds, 'A'), c(Suit.Diamonds, 'K')],
-    ] as [Card[], Card[], Card[], Card[]]
-    return initTrickPlayState(hands, Suit.Hearts, 0, SEAT_NAMES)
-  }
+  /** The claimable position, from the fixture `TrickPlayFlow.test.tsx` reads
+   *  too (#217) — one definition of what "seat 0 cannot be beaten" looks like,
+   *  rather than one per suite. */
+  const claimableState = (): TrickPlayState =>
+    initTrickPlayState(claimableHands(), CLAIMABLE_TRUMP, 0, SEAT_NAMES)
 
   it('ends the hand and awards every remaining trick point', () => {
     const state = applyClaimIfAvailable(claimableState())
