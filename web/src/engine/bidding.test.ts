@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SkillLevel } from '../persistence/options'
-import { Card, Deck, OPENING_BID, Suit } from './card'
+import { Card, Deck, GAME_WIN_SCORE, OPENING_BID, Suit } from './card'
 import {
   ACE_VALUE,
   type AuctionContext,
@@ -11,6 +11,9 @@ import {
   computeBaseBid,
   computeCompetitiveAdjustment,
   computeMaxBid,
+  ENDGAME_OPP_SCORE_CAP,
+  ENDGAME_RESCUE_CEILING,
+  ENDGAME_SCORE_FLOOR,
   maxBid,
   MAX_BID_DEFAULT,
   NEAR_DOUBLE_PINOCHLE_VALUE,
@@ -269,32 +272,18 @@ describe('chooseBid', () => {
       expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
     })
 
-    it('always opens (dealer-protection) when partner is dealer and my score is >= 850 with opponent under 500', () => {
-      // Player 0's partner is player 2 (0<->2 seating).
-      const context = baseContext({ dealer: 2, scores: { 0: 850, 1: 400 } })
-      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
-    })
-
-    it('does not open a hopeless first-bidder hand outside dealer-protection (#126)', () => {
+    it('does not open a hopeless first-bidder hand (#126)', () => {
       // The first seat to speak (passesSoFar 0) used to open at OPENING_BID
       // unconditionally, which made this the first thing that happened on every
       // deal and left OPENER_THRESHOLD unreachable. `Player.choose_bid` has no
-      // such tier: with dealer-protection not applicable, the hand decides.
-      // Pinned to a 'static' level so the assertion is about the threshold rule
-      // rather than about the evaluator (#114/#115).
-      // Dealer-protection scores, but the dealer is an opponent, so the tier
-      // does not apply and a hopeless hand stays out of the auction.
-      const context = baseContext({ dealer: 1, scores: { 0: 850, 1: 400 } })
+      // such tier: the hand decides. Pinned to a 'static' level so the
+      // assertion is about the threshold rule rather than about the evaluator
+      // (#114/#115), and to level scores so #256's endgame rule is not what is
+      // answering.
+      const context = baseContext({ dealer: 1 })
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
       // Same seat, a hand whose ceiling clears the threshold: it opens.
-      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, baseContext({ dealer: 1 }), 'medium')).toBe(OPENING_BID)
-    })
-
-    it('dealer-protection does not fire when my score is too low or the opponent too close', () => {
-      const scoreTooLow = baseContext({ dealer: 2, scores: { 0: 840, 1: 400 } })
-      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, scoreTooLow, 'medium')).toBeNull()
-      const oppTooClose = baseContext({ dealer: 2, scores: { 0: 850, 1: 500 } })
-      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, oppTooClose, 'medium')).toBeNull()
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, 'medium')).toBe(OPENING_BID)
     })
 
     it('passes for a weak-handed 4th bidder when partner has already had a turn', () => {
@@ -426,6 +415,163 @@ describe('chooseBid', () => {
 // disagree with the reference engine about what a hand even is - and silently
 // invalidates the distilled evaluator (#104), whose labels are computed under
 // Python's valuation.
+// Endgame protection (#256). Reported from live play at 910-110: a seat held a
+// good hand, bid 390, and needed 90 points it was already holding. The rule is
+// a hard one in front of both bid policies, so every assertion here is pinned
+// to a skill level only where the *contrast* case needs it — what the rule
+// itself does is policy-independent by construction.
+describe('endgame protection (#256)', () => {
+  // Seats 0 and 2 are partners; the auction opens left of the dealer and
+  // rotates clockwise, so with dealer 2 the order is 3, 0, 1, 2 — seat 0 is
+  // the partner-of-the-dealer seat, speaking second, after exactly one
+  // opponent (seat 3) and before both seat 1 and the dealer. That seat order
+  // is the whole reason the exception below reads one opponent and not two.
+  const OPP_BEFORE_ME: PlayerIndex = 3
+  const OTHER_OPP: PlayerIndex = 1
+
+  // Trump Run + a second Royal Marriage + the other three Aces. Base Bid 270,
+  // so its ceiling clears ENDGAME_RESCUE_CEILING, OPENER_THRESHOLD and
+  // PARTNER_RAISE_FLOOR alike at the +100 adjustment this score band carries.
+  // Nothing here should ever be mistaken for "the hand was not worth a bid".
+  const richHand = [
+    ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
+    new Card(Suit.Hearts, 'K', 2),
+    new Card(Suit.Hearts, 'Q', 2),
+    new Card(Suit.Spades, 'A', 1),
+    new Card(Suit.Diamonds, 'A', 1),
+    new Card(Suit.Clubs, 'A', 1),
+  ]
+  // One off-trump 9: no meld, no Aces, nothing near a Run. Its ceiling is the
+  // competitive adjustment and nothing else.
+  const poorHand = [new Card(Suit.Hearts, '9', 1)]
+
+  const ceilingOf = (hand: readonly Card[], ourScore: number, theirScore: number): number => {
+    const { trump: t, total } = bestBaseBid(hand, ourScore, theirScore)
+    const cap = maxBid(hand, t)
+    return cap === null ? total : Math.min(total, cap)
+  }
+
+  const ctx = (overrides: Partial<AuctionContext> = {}): AuctionContext => ({
+    everBid: false,
+    passesSoFar: 1,
+    bidHistory: [],
+    dealer: 2,
+    scores: { 0: 910, 1: 110 },
+    passedPlayers: [OPP_BEFORE_ME],
+    ...overrides,
+  })
+
+  it('derives both thresholds from the game target rather than restating them', () => {
+    expect(ENDGAME_SCORE_FLOOR).toBe(GAME_WIN_SCORE - 250)
+    expect(ENDGAME_OPP_SCORE_CAP).toBe(GAME_WIN_SCORE - 550)
+  })
+
+  it('has fixture hands either side of the rescue ceiling', () => {
+    expect(ceilingOf(richHand, 910, 110)).toBeGreaterThan(ENDGAME_RESCUE_CEILING)
+    expect(ceilingOf(poorHand, 910, 110)).toBeLessThanOrEqual(ENDGAME_RESCUE_CEILING)
+  })
+
+  describe('the trigger', () => {
+    // Dealer 3 puts an opponent in the chair and seat 0 first to speak, so the
+    // exception cannot apply and the only thing separating these calls is the
+    // trigger. 'medium' pins the contrast case to OPENER_THRESHOLD rather than
+    // to the evaluator.
+    const opening = (ours: number, theirs: number) =>
+      chooseBid(0, richHand, OPENING_BID - 10, 10,
+        ctx({ dealer: 3, passesSoFar: 0, passedPlayers: [], scores: { 0: ours, 1: theirs } }), 'medium')
+
+    it('fires at the score floor and not one point below', () => {
+      expect(opening(ENDGAME_SCORE_FLOOR, 100)).toBeNull()
+      expect(opening(ENDGAME_SCORE_FLOOR - 1, 100)).toBe(OPENING_BID)
+    })
+
+    it('fires under the opponent cap and not at it', () => {
+      expect(opening(ENDGAME_SCORE_FLOOR, ENDGAME_OPP_SCORE_CAP - 1)).toBeNull()
+      expect(opening(ENDGAME_SCORE_FLOOR, ENDGAME_OPP_SCORE_CAP)).toBe(OPENING_BID)
+    })
+  })
+
+  describe('the default is to pass the whole auction', () => {
+    it('declines to open however good the hand', () => {
+      const context = ctx({ dealer: 3, passesSoFar: 0, passedPlayers: [] })
+      expect(chooseBid(0, richHand, OPENING_BID - 10, 10, context)).toBeNull()
+    })
+
+    it('declines the defensive push against an opponent sitting on the opening rung', () => {
+      // The push is what makes this assertion worth making: at OPENING_BID with
+      // a ceiling over DEFENSIVE_PUSH_FLOOR, every other path in chooseBid
+      // answers 310. The contrast call, at level scores, is that answer.
+      const bid = { player: OTHER_OPP, amount: OPENING_BID }
+      const endgame = ctx({ dealer: 3, everBid: true, passesSoFar: 0, passedPlayers: [], bidHistory: [bid] })
+      expect(chooseBid(0, richHand, OPENING_BID, 10, endgame)).toBeNull()
+      expect(chooseBid(0, richHand, OPENING_BID, 10, { ...endgame, scores: { 0: 0, 1: 0 } })).toBe(OPENING_BID + 10)
+    })
+
+    it('declines to raise over its own partner', () => {
+      // A constructed state — this seat would not have bid 300 under the rule
+      // in the first place — but it is the one remaining branch that returns a
+      // bid rather than null, so it is the one worth pinning. Without the rule
+      // a partner raise over our own bid answers PARTNER_RAISE_FLOOR.
+      const history = [{ player: 0 as PlayerIndex, amount: OPENING_BID }, { player: 2 as PlayerIndex, amount: 320 }]
+      const endgame = ctx({ dealer: 3, everBid: true, passesSoFar: 0, passedPlayers: [], bidHistory: history })
+      expect(chooseBid(0, richHand, 320, 10, endgame)).toBeNull()
+      expect(chooseBid(0, richHand, 320, 10, { ...endgame, scores: { 0: 0, 1: 0 } })).toBe(PARTNER_RAISE_FLOOR)
+    })
+
+    it('applies to both seats of the team, not only the one holding the good hand', () => {
+      const context = ctx({ dealer: 3, passesSoFar: 0, passedPlayers: [] })
+      expect(chooseBid(0, richHand, OPENING_BID - 10, 10, context)).toBeNull()
+      expect(chooseBid(2, richHand, OPENING_BID - 10, 10, context)).toBeNull()
+    })
+  })
+
+  describe('the one exception: saving a partner who is dealing', () => {
+    it('opens at OPENING_BID when all three conditions hold', () => {
+      expect(chooseBid(0, richHand, OPENING_BID - 10, 10, ctx())).toBe(OPENING_BID)
+    })
+
+    it('is off when the dealer is an opponent', () => {
+      expect(chooseBid(0, richHand, OPENING_BID - 10, 10, ctx({ dealer: 3 }))).toBeNull()
+    })
+
+    it('is off when the opponent ahead of us has not passed', () => {
+      expect(chooseBid(0, richHand, OPENING_BID - 10, 10, ctx({ passesSoFar: 0, passedPlayers: [] }))).toBeNull()
+      // The *other* opponent passing is not the same fact and does not count:
+      // seat 1 speaks after this seat, so it cannot have passed yet anyway.
+      expect(chooseBid(0, richHand, OPENING_BID - 10, 10, ctx({ passedPlayers: [OTHER_OPP] }))).toBeNull()
+    })
+
+    it('is off on a hand under the rescue ceiling', () => {
+      expect(chooseBid(0, poorHand, OPENING_BID - 10, 10, ctx())).toBeNull()
+    })
+
+    it('is off once an opponent has bid', () => {
+      // "If the opponent bids 310, pass for both teammates with the high score."
+      const context = ctx({
+        everBid: true,
+        passesSoFar: 0,
+        passedPlayers: [],
+        bidHistory: [{ player: OPP_BEFORE_ME, amount: OPENING_BID + 10 }],
+      })
+      expect(chooseBid(0, richHand, OPENING_BID + 10, 10, context)).toBeNull()
+    })
+  })
+
+  it('retires the old dealer-protection rule rather than keeping both', () => {
+    // 850/400 with a partner dealing was an unconditional OPENING_BID before
+    // #256, on any hand at all — the missing hand check that is half of #255.
+    // Those scores are inside the new trigger, so the rescue's own floor now
+    // applies and this hand does not clear it.
+    const context = ctx({ scores: { 0: 850, 1: 400 } })
+    expect(chooseBid(0, poorHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+    // And outside the trigger the ordinary rules decide, where the old tier
+    // would have opened on this hand too.
+    const outside = ctx({ scores: { 0: 850, 1: 500 } })
+    expect(chooseBid(0, poorHand, OPENING_BID - 10, 10, outside, 'medium')).toBeNull()
+    expect(chooseBid(0, richHand, OPENING_BID - 10, 10, outside, 'medium')).toBe(OPENING_BID)
+  })
+})
+
 describe('parity with the Python reference engine (#118)', () => {
   it('matches pinochle_engine.py Base Bid constants exactly', () => {
     expect(NEAR_RUN_VALUE).toBe(120)

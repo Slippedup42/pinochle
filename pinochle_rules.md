@@ -248,9 +248,8 @@ Proficient tier landed. What they actually do:
 
 - `choose_bid` — Proficient bidding on the layered Base Bid valuation
   (`best_base_bid` → `compute_competitive_adjustment` → `max_bid`'s
-  cap), plus positional and score-context rules: the opener threshold,
-  a forced open as third bidder, dealer protection when a partner
-  dealing near 1000 is a target for a pass-out, the
+  cap), plus positional and score-context rules: endgame protection
+  (below), the opener threshold, a forced open as third bidder, the
   `DEFENSIVE_PUSH_FLOOR` response to a minimum opener, and backing off
   once a partner is carrying the auction.
 - `choose_trump` — the same per-suit Base Bid comparison, so trump
@@ -271,6 +270,66 @@ explicit fallbacks for when a method is called with no context
 (`context is None`, no `trump_suit`/`is_bid_winner`, no `trick`). They
 keep the methods usable in isolation and keep older tests working; a
 real `Round` never reaches them.
+
+### Endgame protection: when the AI stops bidding
+
+A strategy rule, not a rule of the game — nothing in Phase 1 forbids the
+bid it declines to make, and a human player is free to bid anyway. It
+lives in `Player.choose_bid` (`pinochle_engine.py`) and `chooseBid`
+(`web/src/engine/bidding.ts`), in front of every other bidding rule and
+in front of both bid policies: while it holds, the fitted evaluator is
+not consulted at all.
+
+**Trigger**, evaluated for the team it applies to:
+
+- `my_score >= ENDGAME_SCORE_FLOOR` — within 250 of going out, and
+- `opp_score < ENDGAME_OPP_SCORE_CAP` — more than 550 away from it.
+
+Both are derived from `GAME_WIN_SCORE`, so they follow the target rather
+than restating it: 750 and 450 at today's 1000.
+
+**Default: pass the whole auction.** Not merely decline to open — a seat
+under the trigger does not bid at all, on any hand, whether opening, over
+an opponent, or over its own partner. Both seats on the team do it. If
+the dealer is an opponent the auction passes out and they take the
+contract at the forced bid of 250.
+
+The reasoning is about how the game ends rather than about the hand. Meld
+alone routinely clears 250, and the defending team scores its own meld
+(see Contract Check), so at this score the contract is worth little and
+being set is worth the whole bid — a 390 that goes down drops the team
+from 910 to 520 and hands back a game that was one hand from over. The
+opponents at under 450 cannot make up the difference in one hand either
+way, so there is a next hand to fight it out in.
+
+**One exception — saving a partner who is dealing.** Passing out sticks
+*us* with a contract nobody chose, so a seat opens at `OPENING_BID` when
+all of:
+
+1. its partner is the dealer,
+2. the opponent who spoke immediately before it has passed, and
+3. its Max Bid ceiling is over `ENDGAME_RESCUE_CEILING` (200) — the
+   ceiling after the competitive adjustment, not the Base Bid.
+
+If any opponent has bid, the exception is off and the seat passes like
+the other: an opponent who has bid has already taken the contract off
+our hands.
+
+The exception reads only one opponent because only one has spoken. The
+auction opens left of the dealer and rotates clockwise, so a
+partner-of-the-dealer seat is `dealer + 2` and speaks second — after
+exactly one opponent, and before both the other opponent and the dealer.
+There is no later turn at which that seat knows more, because to still be
+in the auction it would have had to bid.
+
+This replaces an older dealer-protection rule (partner dealing,
+`my_score >= 850`, `opp_score < 500`, open at `OPENING_BID` on any hand
+whatsoever), which it supersedes on thresholds, on the hand floor it did
+not have, and on asking whether the opponent ahead actually passed.
+
+`EasyPlayer` and skill 1 have no endgame protection, the same way they
+have no other score awareness: their bidding is meld value plus noise by
+design.
 
 ### Tiers and the skill dial
 

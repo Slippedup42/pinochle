@@ -23,7 +23,7 @@
 // >300-meld-uncap rule (maxBid / cappedBid). bestBaseBid searches all 4
 // trump candidates and applies the cap to find the winning trump + ceiling.
 // Decision: chooseBid/chooseTrump wrap that valuation with the stateful
-// auction rules (dealer protection, 3rd-bidder-opens-cheap, when to raise
+// auction rules (endgame protection, 3rd-bidder-opens-cheap, when to raise
 // vs. pass) - ported from Player.choose_bid / Player.choose_trump. This
 // module only decides; it does not run an auction loop — that lives in
 // components/auctionReducer.ts (#34), under gameFlowReducer.ts (#47).
@@ -93,6 +93,35 @@ export const OPENER_THRESHOLD = 320
 // floor. It is a hand-strength threshold, not a bid level, so it did not move
 // with the opener.
 export const DEFENSIVE_PUSH_FLOOR = 200
+
+// -- Endgame protection (#256). The one bidding rule that is about the *game*
+// rather than about the hand: a team this close to 1000 banks its meld and
+// lets the contract go, because the contract is worth little to it - the
+// defending team scores its own meld either way (`pinochle_rules.md`, Contract
+// Check) - while being set costs the whole bid and hands back a game that was
+// one hand from over. Paul reported it from live play at 910-110, where a seat
+// bid 390 on a good hand and needed 90 points it already held.
+//
+// Both thresholds are derived from `GAME_WIN_SCORE` so they follow the target
+// if it ever moves; #243 records why moving it is expensive. 750 is "within
+// 250 of going out", which one ordinary meld plus a share of the tricks
+// reaches. 450 is "more than 550 away", more than the opponents can plausibly
+// take off a single hand, so there is a next hand to fight it out in.
+export const ENDGAME_SCORE_FLOOR = GAME_WIN_SCORE - 250
+export const ENDGAME_OPP_SCORE_CAP = GAME_WIN_SCORE - 550
+/**
+ * The one hand check in the rule, and the only thing that puts a bid back on
+ * the table while the trigger holds.
+ *
+ * This is the Max Bid **ceiling** — Base Bid plus the competitive adjustment,
+ * capped — and not the Base Bid. In the score band this rule fires in,
+ * `computeCompetitiveAdjustment` returns +100, so the effective bar is a Base
+ * Bid a little over 100 and few hands fail it. That is a deliberate choice
+ * rather than an oversight: Paul was shown the comparison and picked the
+ * ceiling. If the rescue turns out to fire on hands that cannot carry
+ * `OPENING_BID`, this number is what to revisit, not the choice of measure.
+ */
+export const ENDGAME_RESCUE_CEILING = 200
 
 /**
  * The bid a seat must commit to once its partner has passed (#93/#95).
@@ -491,7 +520,7 @@ export interface AuctionContext {
  * Meld-only bid valuation for skill 1 (easy). Mirrors EasyPlayer's
  * approach from Python: uses actual `scoreMelds` (not speculative Base
  * Bid), adds a flat trick-point constant plus uniform noise, then applies
- * the minimal positional filter. No dealer-protection, no partner-bid-count
+ * the minimal positional filter. No endgame protection, no partner-bid-count
  * tracking, no score-differential awareness — pure "meld value + guess".
  */
 function meldOnlyBid(
@@ -519,15 +548,16 @@ function meldOnlyBid(
  *   Defaults to 'hard' (base_bid, the current Proficient behavior).
  *
  * Decision tiers:
+ *   - Endgame protection (#256), ahead of everything else and of both bid
+ *     policies: my team is within 250 of going out and the opponents are
+ *     more than 550 away, so pass the whole auction and bank the meld. The
+ *     one exception opens at OPENING_BID to save a partner who is dealing.
  *   - No one has bid yet this auction:
- *     1. Dealer-protection: my partner is dealer and my score makes them
- *        a target for a "pass out and stick them with FORCED_BID" play -
- *        always open regardless of hand.
- *     2. 3rd bidder (2 passes already, no one's bid) - always open to
+ *     1. 3rd bidder (2 passes already, no one's bid) - always open to
  *        deny the last player a cheap contract, unless my score is high
  *        enough (>800) that I'd rather play it safe and only open if the
  *        hand is worth the contract.
- *     3. Otherwise, open only if the hand is worth the contract.
+ *     2. Otherwise, open only if the hand is worth the contract.
  *   - My team currently holds the bid:
  *     - Partner has already bid twice this auction - back off, they're
  *       carrying it.
@@ -566,8 +596,43 @@ export function chooseBid(
   const ceiling = cap === null ? baseBid : Math.min(baseBid, cap)
 
   const partner = partnerOf(player)
+  const partnerIsDealer = partner === context.dealer
   const partnerPassed = context.passedPlayers.includes(partner)
   const partnerHasBid = context.bidHistory.some((b) => b.player === partner)
+
+  // Endgame protection (#256) sits in front of every other bidding rule and in
+  // front of both bid policies: when the trigger holds, `shouldBid` is never
+  // consulted, because what the cards are worth has stopped being the
+  // question. The default is to pass the *entire* auction — not merely decline
+  // to open — on any hand, opening or over an opponent or over a partner, and
+  // both seats on the team do it. If the dealer is an opponent the auction
+  // passes out and they are stuck at `FORCED_BID`, which is the outcome this
+  // rule is happy to buy.
+  //
+  // The single exception is a partner who is dealing, because then passing out
+  // sticks *us* with a contract nobody chose. Reading only the one opponent is
+  // a seat-order fact and not a simplification: the auction opens left of the
+  // dealer and rotates clockwise (`initAuctionState`), so a partner-of-the-
+  // dealer seat is `dealer + 2` and speaks second — after exactly one opponent
+  // and before both the other opponent and the dealer. There is no later turn
+  // at which this seat knows more, because to still be in the auction it would
+  // have had to bid.
+  //
+  // This replaces the old dealer-protection tier outright — `partnerIsDealer
+  // && myScore >= 850 && oppScore < 500`, open on anything — which it
+  // supersedes on thresholds, adds the hand floor whose absence was half of
+  // #255, and asks whether the opponent ahead of us actually passed rather
+  // than assuming it.
+  if (myScore >= ENDGAME_SCORE_FLOOR && oppScore < ENDGAME_OPP_SCORE_CAP) {
+    const opponentHasBid = context.bidHistory.some((b) => teamOf(b.player) !== myTeam)
+    const seatBeforeMe = ((player + 3) % 4) as PlayerIndex
+    const rescueDealingPartner =
+      partnerIsDealer &&
+      !opponentHasBid &&
+      context.passedPlayers.includes(seatBeforeMe) &&
+      ceiling > ENDGAME_RESCUE_CEILING
+    return rescueDealingPartner ? OPENING_BID : null
+  }
 
   // When partner has already passed they cannot come back in (#93), so a bid
   // here is one this hand must carry alone — which means committing to
@@ -647,18 +712,6 @@ export function chooseBid(
   }
 
   if (!context.everBid) {
-    // Dealer-protection, restored from `Player.choose_bid` by the #126 audit.
-    // This tier was dropped in aeb97b3 — the same hand-port slip that took
-    // NEAR_RUN_VALUE/NEAR_DOUBLE_PINOCHLE_VALUE to 60/60 (#118) — and replaced
-    // with "the first two seats always open at 300 regardless of hand". Since
-    // the auction starts with nobody having passed, that rule fired on the very
-    // first seat of every deal, so the opener threshold below was effectively
-    // unreachable and no opening decision was ever a hand judgement.
-    const partnerIsDealer = partner === context.dealer
-    if (partnerIsDealer && myScore >= 850 && oppScore < 500) {
-      return OPENING_BID
-    }
-
     // One comparison, whether or not the partner has passed (#180). This read
     // `partnerPassed ? ceiling > OPENER_THRESHOLD : ceiling >= OPENER_THRESHOLD`
     // — the second place "a lone bidder must *clear* the threshold" was written
