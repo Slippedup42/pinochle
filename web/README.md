@@ -846,6 +846,19 @@ the contract for 250. On those deals the winner's ceiling ran median 310, p75
 
 `openingPolicy: 'walk'` is the fix, and it does not survive measurement.
 
+**The arm was deleted by #221 and this section is what is left of it.** It
+shipped wired-live and flag-off from #204, was never selected by a shipped
+`SKILL_PARAMS` row, and met all four of #215's retirement conditions — three
+seeds recorded, decisively negative, nothing selecting it, nothing baselined
+against it. Gone with it: `WALK_CONFIDENCE`, `openingLevelFor`, `shouldBid`'s
+confidence-threshold parameter, `OPENING_AB_POLICIES`, and the `opening` and
+`--policy walk` CLI commands, so the runs below are no longer reproducible from
+this tree — they are reproducible from `8048d4b..`, the commit range #204
+landed in. `OpeningPolicy` is now a one-member type. The numbers stay because
+retiring the code is not retracting the result: a reader who wonders whether
+this engine has ever tried naming a higher opening level should find the answer
+here rather than an absence.
+
 The dial is deliberately narrow. It is consulted only after `worthContract` has
 already returned true, so both arms open on an identical set of deals and pass on
 an identical set — `bidding.test.ts` asserts that directly. The only thing that
@@ -896,8 +909,10 @@ instead:
 That is the honest price of the distribution Paul asked for: symmetric, nobody
 disadvantaged, contracts going down about one extra time in every 24. Whether
 that is worse *play* or just a livelier game is a house-rules question and not a
-measurement one — which is why #204 is `ready-for-human` and why the dial ships
-wired-live and flag-off (#101) rather than being argued either way.
+measurement one — which is why #204 stayed `ready-for-human` and why the dial
+shipped wired-live and flag-off (#101) rather than being argued either way. It
+was never switched on, and #215 answered the house-rules question by retiring
+the arm rather than by leaving it disabled indefinitely.
 
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
