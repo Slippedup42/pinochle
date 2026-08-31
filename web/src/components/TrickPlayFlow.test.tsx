@@ -79,36 +79,46 @@ function shuffledDeal(seed: number): Hands {
  * (#208) if that is what the hand is waiting on, otherwise let the pending AI
  * delay or post-trick settle pause elapse.
  *
- * The same loop the full-round test below runs inline, extracted because the
- * resume tests (#217) each need to drive a hand and none of them is about
- * *how* it is driven. Plain attribute selector rather than
- * `queryAllByRole('button', ...)` for the reason that test records: this runs
- * ~60 times per hand and the role query costs ~30% of the runtime (#170).
+ * Every test here that needs a hand driven uses this one, including the
+ * full-round test — a second copy of the loop is how #261 stayed invisible,
+ * since the inline one could quietly stop after a single trick with nothing
+ * counting. Plain attribute selector rather than `queryAllByRole('button',
+ * ...)`: this runs ~60 times per hand and the role query costs ~30% of the
+ * runtime (#170).
+ *
+ * Reports what it did, because for the full-round test *which* steps happened
+ * is the assertion, not just that the hand ended.
  */
-function step(): void {
+type StepAction = 'play' | 'claim' | 'wait'
+
+function step(): StepAction {
   const playable = document.querySelector<HTMLButtonElement>(
     'button[aria-label^="Play "]:not([disabled])',
   )
   if (playable) {
     fireEvent.click(playable)
-    return
+    return 'play'
   }
   if (screen.queryByRole('dialog', { name: /the rest are mine/i })) {
     fireEvent.click(screen.getByRole('button', { name: 'See the score' }))
-    return
+    return 'claim'
   }
   act(() => vi.advanceTimersByTime(TRICK_SETTLE_MS))
+  return 'wait'
 }
 
 /** Steps until `done()`, and fails rather than hanging if the hand stalls —
- *  a driver that gave up quietly would make every assertion after it vacuous. */
-function driveUntil(done: () => boolean, limit = 600): void {
+ *  a driver that gave up quietly would make every assertion after it vacuous.
+ *  Returns the steps it took, oldest first. */
+function driveUntil(done: () => boolean, limit = 600): StepAction[] {
+  const actions: StepAction[] = []
   let guard = 0
   while (!done() && guard < limit) {
     guard++
-    step()
+    actions.push(step())
   }
   expect(guard).toBeLessThan(limit)
+  return actions
 }
 
 afterEach(() => {
@@ -244,12 +254,19 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
   it('plays a full round end-to-end, alternating human clicks with delayed AI auto-play, and reports the trick result', () => {
     vi.useFakeTimers()
 
-    // Full, real 48-card deck (unshuffled — order doesn't matter, only
-    // that it's a legitimate deal) so the round can run all 12 tricks to
-    // completion without either engine (real Trick.legalMoves) or AI
-    // (real chooseLeadCard/chooseFollowCard) ever seeing an empty hand
-    // mid-round.
-    const hands = new Deck().deal()
+    // Seeded, not `new Deck().deal()`, and that is what #261 is about. The
+    // unshuffled deal hands each seat one whole suit, and since #208 that is a
+    // position where whoever holds trump claims the other eleven tricks at the
+    // very first boundary — so from #208 until now this test played *one*
+    // trick under a name that promises twelve, and stayed green the whole
+    // time. Seed 217 is the same hand the resume tests below play out: twelve
+    // tricks, forty-eight cards, no claim available at any boundary.
+    //
+    // Seeded rather than randomly shuffled on purpose. A deal that only
+    // sometimes reaches trick twelve leaves the same hole open intermittently,
+    // which is worse than a hole you can see, because the run that skipped the
+    // coverage is indistinguishable from the run that got it.
+    const hands = shuffledDeal(217)
     const onComplete = vi.fn()
 
     render(
@@ -268,39 +285,26 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
       />,
     )
 
-    let guard = 0
-    while (onComplete.mock.calls.length === 0 && guard < 500) {
-      guard++
-      // Deliberately a plain attribute selector rather than
-      // `queryAllByRole('button', { name: /^Play / })`. This runs ~60 times per
-      // round, and the role query computes an accessible name for every
-      // candidate and a `getComputedStyle` visibility check for every node in
-      // the tree on each call — measured at ~30% of this test's total runtime
-      // (#170). Nothing is lost by dropping it: this loop is a *driver*, not an
-      // assertion, and the role/accessible-name contract on these buttons is
-      // what the two tests above actually assert.
-      const playable = document.querySelector<HTMLButtonElement>(
-        'button[aria-label^="Play "]:not([disabled])',
-      )
-      if (playable) {
-        fireEvent.click(playable)
-      } else if (screen.queryByRole('dialog', { name: /the rest are mine/i })) {
-        // A claim (#208) ended the hand early. The notice holds `onComplete`
-        // back until it is acknowledged, exactly as the auto-SET one does, so
-        // the driver has to dismiss it the way a player would.
-        fireEvent.click(screen.getByRole('button', { name: 'See the score' }))
-      } else {
-        // Either an AI turn or the post-trick settle pause is in flight —
-        // advancing past the longer of the two delays flushes whichever
-        // is pending.
-        act(() => vi.advanceTimersByTime(1200))
-      }
-    }
+    // `driveUntil` carries the stall guard, so a hand that stops making
+    // progress fails here rather than hanging.
+    const actions = driveUntil(() => onComplete.mock.calls.length > 0)
 
-    expect(guard).toBeLessThan(500) // sanity: the loop actually terminated, not just gave up
     expect(onComplete).toHaveBeenCalledOnce()
 
+    // The three assertions that make the title of this test true. None of the
+    // ones below them can: `trickWinners` reaches 12 and the points reach 250
+    // whether twelve tricks were played or one was played and eleven were
+    // claimed, because a claim *awards* the remainder rather than skipping it.
+    // That is exactly how a one-trick round passed for as long as it did, so
+    // what is checked here is what a claim cannot counterfeit — the human
+    // clicked a card twelve times, once per trick, no claim notice was ever
+    // put in front of them, and all 48 cards reached the table.
+    expect(actions.filter((action) => action === 'play')).toHaveLength(12)
+    expect(actions).not.toContain('claim')
+    expect(screen.getAllByText(/ (led|played) the /)).toHaveLength(48)
+
     const result = onComplete.mock.calls[0][0] as TrickPlayResult
+    expect(result.claim).toBeUndefined()
     expect(result.trickWinners).toHaveLength(12)
     // 24 point-cards (A/10/K x 4 suits x 2 copies) worth 10 each, plus the
     // +10 last-trick bonus — the full round's points always sum to this,
