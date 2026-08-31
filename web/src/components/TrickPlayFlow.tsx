@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Card, Suit } from '../engine/card'
 import { shouldConcede } from '../engine/evaluator'
-import { isAutoSet, partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
-import { SKILL_PARAMS } from '../engine/skills'
+import { isAutoSet, teamOf, type Hands, type TeamId } from '../engine/round'
+import { SHIPPED_SKILL, SKILL_PARAMS } from '../engine/skills'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from '../engine/tracker'
 import { newTrumpMemories } from '../engine/trumpMemory'
 import type { PlayerIndex } from '../engine/trick'
-import type { SkillLevel } from '../persistence/options'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
 import { DEFAULT_TEAM_NAMES } from './scoreTypes'
 import { Table } from './Table'
@@ -78,10 +77,12 @@ export interface TrickPlayFlowProps {
 export const AI_PLAY_DELAY_MS = 700
 export const TRICK_SETTLE_MS = 1200
 
-/** Returns the SkillLevel to use for a given AI player, based on options. */
-function skillForPlayer(player: PlayerIndex, humanPlayer: PlayerIndex, options: GameOptions): SkillLevel {
-  return partnerOf(player) === humanPlayer ? options.teammateSkill : options.opponentSkill
-}
+// Every seat at the table plays `SHIPPED_SKILL` since #222 removed the
+// difficulty setting — including, for `newTrumpMemories` below, the human's,
+// whose memory nothing reads. This file and `AuctionFlow` each carried a copy
+// of a `skillForPlayer` that mapped the seat to `options.teammateSkill` or
+// `options.opponentSkill`; #240 noticed the duplication and left it for this
+// change, which resolves it by deleting both rather than extracting a third.
 
 /**
  * Drives the trick-taking phase (#35): legal-move highlighting on the
@@ -141,9 +142,7 @@ export function TrickPlayFlow({
   // makes every seat *more* cautious than it would have been — the safe
   // direction, since an under-count can only ever read as "this card can still
   // be beaten" and never the other way round.
-  const trumpMemoriesRef = useRef(
-    newTrumpMemories(hands, trumpSuit, (seat) => skillForPlayer(seat, humanPlayer, options)),
-  )
+  const trumpMemoriesRef = useRef(newTrumpMemories(hands, trumpSuit))
   const completedRef = useRef(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   // Set when the auto-SET rule (#178) fires, cleared when the player
@@ -208,9 +207,7 @@ export function TrickPlayFlow({
     }
 
     if (bidWinner === humanPlayer) return
-
-    const skill = skillForPlayer(bidWinner, humanPlayer, options)
-    if (SKILL_PARAMS[skill].foldPolicy !== 'model') return
+    if (SKILL_PARAMS[SHIPPED_SKILL].foldPolicy !== 'model') return
 
     if (
       shouldConcede({
@@ -236,7 +233,6 @@ export function TrickPlayFlow({
       const trick = buildTrick(state.trumpSuit, state.currentTrick)
       const legal = trick.legalMoves(hand)
       const isBidderFirstLead = state.trickNumber === 0 && player === state.bidWinner && state.currentTrick.length === 0
-      const skill = skillForPlayer(player, humanPlayer, options)
       const isBiddingTeam = teamOf(player) === teamOf(state.bidWinner)
       const card =
         state.currentTrick.length === 0
@@ -245,7 +241,7 @@ export function TrickPlayFlow({
               state.trumpSuit,
               trackerRef.current,
               isBidderFirstLead,
-              skill,
+              SHIPPED_SKILL,
               isBiddingTeam,
               trumpMemoriesRef.current[player],
             )
@@ -256,7 +252,7 @@ export function TrickPlayFlow({
               state.trumpSuit,
               teammatesOf(player),
               trackerRef.current,
-              skill,
+              SHIPPED_SKILL,
               trumpMemoriesRef.current[player],
             )
       notePlayed(card)

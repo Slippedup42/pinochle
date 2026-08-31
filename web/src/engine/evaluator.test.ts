@@ -1,15 +1,16 @@
-// Behaviour of the distilled evaluator and of the skill dial that gates it
-// (#114). Numerical agreement with Python lives in `evaluatorParity.test.ts`;
-// this file is about the things parity cannot check — that the wiring is
-// hooked up, that the two models stay apart, and that the evaluator responds to
-// the bid level, which is the whole reason it replaces a fixed threshold.
+// Behaviour of the distilled evaluator and of the `bidPolicy` field that
+// selects it (#114). Numerical agreement with Python lives in
+// `evaluatorParity.test.ts`; this file is about the things parity cannot check
+// — that the wiring is hooked up, that the two models stay apart, and that the
+// evaluator responds to the bid level, which is the whole reason it replaces a
+// fixed threshold.
 
 import { describe, expect, it, vi } from 'vitest'
 import { type AuctionContext, chooseBid } from './bidding'
 import { Card, OPENING_BID, type Rank, Suit } from './card'
 import { evaluateBid, evaluateFold, modelLogit, shouldBid } from './evaluator'
 import { BID_MODEL, FOLD_MODEL, MODEL_PROVENANCE } from './evaluatorModel'
-import { SKILL_PARAMS } from './skills'
+import { SHIPPED_PARAMS, SHIPPED_SKILL, SKILL_LEVELS, SKILL_PARAMS, type SkillLevel, type SkillParams } from './skills'
 
 const RUN_RANKS: readonly Rank[] = ['A', '10', 'K', 'Q', 'J']
 
@@ -167,7 +168,32 @@ describe('the fold model', () => {
   })
 })
 
-describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
+/**
+ * `bidPolicy` selects the bid policy (#114, opened by #115).
+ *
+ * This described a dial until #222 removed it. The two policies both still
+ * exist and `chooseBid` still branches on the field, so the behaviour these
+ * tests are about is unchanged — what changed is how the `'static'` arm is
+ * reached, since no level selects it any more. `withPolicy` installs it onto a
+ * slot for the duration, which is the same save/restore `abRun.installPolicies`
+ * uses to seat two policies at one table.
+ */
+describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
+  /** A slot to park an arm on. Any level would do — after #222 they are
+   *  interchangeable carriers — but not `SHIPPED_SKILL`, so a leaked override
+   *  could not quietly change what the rest of the suite thinks ships. */
+  const AB_SLOT: SkillLevel = 'easy'
+
+  function withPolicy<T>(patch: Partial<SkillParams>, play: (level: SkillLevel) => T): T {
+    const saved = SKILL_PARAMS[AB_SLOT]
+    SKILL_PARAMS[AB_SLOT] = { ...saved, ...patch }
+    try {
+      return play(AB_SLOT)
+    } finally {
+      SKILL_PARAMS[AB_SLOT] = saved
+    }
+  }
+
   const context: AuctionContext = {
     everBid: false,
     passesSoFar: 3,
@@ -197,31 +223,32 @@ describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
     new Card(Suit.Hearts, 'Q', 2),
   ]
 
-  it('runs the evaluator on hard and above, and the thresholds below (#115)', () => {
+  it('runs the evaluator, on every seat the product deals (#115)', () => {
     // #114 pinned every level to 'static' so the model could not reach a player
     // by accident; #115 measured it and opened the gate for `hard` upward —
     // 211 deals swept to static's 50 over 1000 mirrored pairs, +227 score
-    // margin per deal with a 95% CI of +198 to +257 (see src/ab/).
+    // margin per deal with a 95% CI of +198 to +257 (see src/ab/). #222 then
+    // removed the levels below it, so what once read "which tiers are gated
+    // on" now reads "what ships", which is the same drift guard pointed at
+    // one row instead of five.
     //
-    // Still an assertion rather than a shrug, and still the place a drift shows
-    // up: `hard` is what DEFAULT_OPTIONS gives both AI seats, so a level moving
-    // in either direction here changes the default game on merge and should be
-    // a deliberate act with a measurement behind it.
-    expect(SKILL_PARAMS.easy.bidPolicy).toBe('static')
-    expect(SKILL_PARAMS.medium.bidPolicy).toBe('static')
-    for (const level of ['hard', 'proficient', 'expert'] as const) {
-      expect(SKILL_PARAMS[level].bidPolicy).toBe('distilled')
+    // Both halves matter. The first is the gate; the second is that no slot
+    // carries a stale copy of some older configuration, since `SKILL_PARAMS`
+    // is mutable and a leaked A/B override is the way that would happen.
+    expect(SHIPPED_PARAMS.bidPolicy).toBe('distilled')
+    for (const level of SKILL_LEVELS) {
+      expect(SKILL_PARAMS[level]).toEqual(SHIPPED_PARAMS)
     }
   })
 
-  it('separates the two policies on one hand the dial can be probed with', () => {
+  it('separates the two policies on one hand that can be probed with', () => {
     // Ceiling 290, under OPENER_THRESHOLD, so the static rule passes while the
-    // evaluator opens — one hand that reads the dial directly rather than
-    // asserting on SKILL_PARAMS a second time.
-    expect(chooseBid(0, belowThresholdHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
-    for (const level of ['hard', 'proficient', 'expert'] as const) {
-      expect(chooseBid(0, belowThresholdHand, OPENING_BID - 10, 10, context, level)).toBe(OPENING_BID)
-    }
+    // evaluator opens — one hand that reads the field's effect directly rather
+    // than asserting on SKILL_PARAMS a second time.
+    withPolicy({ bidPolicy: 'static' }, (level) => {
+      expect(chooseBid(0, belowThresholdHand, OPENING_BID - 10, 10, context, level)).toBeNull()
+    })
+    expect(chooseBid(0, belowThresholdHand, OPENING_BID - 10, 10, context, SHIPPED_SKILL)).toBe(OPENING_BID)
   })
 
   it('opens this hand when the evaluator is consulted directly', () => {
@@ -240,9 +267,11 @@ describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
     ).toBe(true)
   })
 
-  it('leaves easy on the meld-only path, which the evaluator never enters', () => {
-    // Skill 1 short-circuits before any Base Bid valuation happens, so its
-    // bidding is unchanged by #114 and MELD_ONLY_TRICK_ESTIMATE stays live.
+  it('keeps the meld-only path short-circuiting before the evaluator', () => {
+    // `handValuation: 'meld_only'` short-circuits before any Base Bid valuation
+    // happens, so that arm is unchanged by #114 and MELD_ONLY_TRICK_ESTIMATE
+    // stays live. `easy` selected it until #222 removed the dial; it is
+    // installed here for the same reason `'static'` is above.
     // This hand melds 190 under Hearts (Run 150 + Royal Marriage 40), so the
     // meld-only ceiling is 190 + 60 flat + noise in [-30, 30] = [220, 280].
     //
@@ -257,13 +286,15 @@ describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
     // this fails on the specific number instead of going quietly random.
     const random = vi.spyOn(Math, 'random')
     try {
-      random.mockReturnValue(0) // noise -30 -> ceiling 220, 80 under the opener
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'easy')).toBeNull()
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
+      withPolicy({ handValuation: 'meld_only' }, (meldOnly) => {
+        random.mockReturnValue(0) // noise -30 -> ceiling 220, 80 under the opener
+        expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, meldOnly)).toBeNull()
+        expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, SHIPPED_SKILL)).toBe(OPENING_BID)
 
-      random.mockReturnValue(1) // noise +30 -> ceiling 280, still 20 under it
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'easy')).toBeNull()
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
+        random.mockReturnValue(1) // noise +30 -> ceiling 280, still 20 under it
+        expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, meldOnly)).toBeNull()
+        expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, SHIPPED_SKILL)).toBe(OPENING_BID)
+      })
     } finally {
       random.mockRestore()
     }

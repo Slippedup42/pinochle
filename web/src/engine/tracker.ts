@@ -16,9 +16,9 @@
 // capacity-limited to `2 x skill level` trump. `seenCount` below routes each
 // question to whichever of the two owns it — the exact tracker for side suits,
 // the seat's memory for trump — and that split is the only thing in this file
-// that behaves differently at different skill levels.
+// whose answer depends on which `SKILL_PARAMS` slot the seat is on. Every seat
+// in a real game is `SHIPPED_SKILL` (#222), so in practice that is 10 of 12.
 
-import type { SkillLevel } from '../persistence/options'
 import {
   type Card,
   handCount,
@@ -32,7 +32,7 @@ import {
   TOTAL_TRUMP_COPIES,
 } from './card'
 import { POINT_RANKS, type PlayerIndex, type TrickPlay } from './trick'
-import { SKILL_PARAMS } from './skills'
+import { SHIPPED_SKILL, SKILL_PARAMS, type SkillLevel } from './skills'
 import type { TrumpMemory } from './trumpMemory'
 
 /** Tracks cards played so far this round, across all 4 hands. */
@@ -216,10 +216,11 @@ function defenderLead(
  * Tier 3 is the leading half of #158: *"a counter that is provably boss is safe
  * to lead; one that is not, is not."* That was already true of side suits, where
  * `PlayTracker` counts exactly. What #158 adds is that when the card in question
- * is **trump**, the count comes from this seat's `TrumpMemory` instead — so an
- * `easy` seat holding the trump 10 with both Aces long gone often does not know
- * it, and drops to the junk tier rather than cashing it. That is the skill dial
- * during trick play, and it is reached here only on an all-trump hand:
+ * is **trump**, the count comes from this seat's `TrumpMemory` instead — so a
+ * seat holding the trump 10 with both Aces long gone may not know it, and drops
+ * to the junk tier rather than cashing it. How often that happens is the one
+ * thing capacity decides during trick play (10 of 12 on every shipped seat),
+ * and it is reached here only on an all-trump hand:
  * `offenseTrumpLead` and `defenderLead` both filter trump out first whenever the
  * hand has anything else.
  */
@@ -283,13 +284,13 @@ function leadSafeCascade(
  *
  * @param isBidderFirstLead - When true (bidder opening the first trick of the
  *   round), forces a trump lead if the player has any trump cards remaining.
- * @param skill - Skill level, read for `playPolicy` (#153). Since #156 every
- *   shipped row is `'cascade'` — the full Proficient cascade — so this argument
- *   no longer varies the strategy in a real game — except through
- *   `safeCounterPolicy`, which does not change the rule but does change how well
- *   this seat can answer it (#158). `'simple'` (low non-trump non-counter)
- *   survives as an A/B arm, reachable only through an override. Defaults to
- *   'hard'.
+ * @param skill - Which `SKILL_PARAMS` slot to read `playPolicy` (#153) from.
+ *   The shipped configuration is `'cascade'` — the full Proficient cascade —
+ *   and has been on every level since #156, so this argument does not vary the
+ *   strategy in a real game, except through `safeCounterPolicy`, which does not
+ *   change the rule but does change how well this seat can answer it (#158).
+ *   `'simple'` (low non-trump non-counter) survives as an A/B arm, reachable
+ *   only through an override. Defaults to `SHIPPED_SKILL`.
  * @param isBiddingTeam - Which side this seat is on. Undefined = fallback.
  * @param trumpMemory - This seat's capacity-limited view of the trump seen so
  *   far (#157), consulted only when `safeCounterPolicy` is `'counted'`. Omit it
@@ -300,7 +301,7 @@ export function chooseLeadCard(
   trump: Suit,
   tracker: PlayTracker,
   isBidderFirstLead = false,
-  skill: SkillLevel = 'hard',
+  skill: SkillLevel = SHIPPED_SKILL,
   isBiddingTeam?: boolean,
   trumpMemory?: TrumpMemory,
 ): Card {
@@ -512,12 +513,13 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  * exact tracker as load-bearing for the parity fixtures, and degrading that one
  * is its own issue with its own measurement.
  *
- * @param skill Skill level, read for `playPolicy` (#153) and
- *   `safeCounterPolicy` (#158). Since #156 every shipped row is `'cascade'`, so
- *   the tiers themselves are the same at every level; what the level changes is
- *   how much of the trump this seat can still recall when tier 2 of
- *   `chooseForcedBeat` asks. `'simple'` (play the lowest legal card) survives as
- *   an A/B arm, reachable only through an override. Defaults to 'hard'.
+ * @param skill Which `SKILL_PARAMS` slot to read `playPolicy` (#153) and
+ *   `safeCounterPolicy` (#158) from. The shipped configuration is `'cascade'`
+ *   and `'counted'`, so the tiers are the same wherever this is called from;
+ *   what the *level* changes is how much of the trump this seat can still recall
+ *   when tier 2 of `chooseForcedBeat` asks. `'simple'` (play the lowest legal
+ *   card) survives as an A/B arm, reachable only through an override. Defaults
+ *   to `SHIPPED_SKILL`.
  * @param trumpMemory This seat's capacity-limited trump view (#157). Consulted
  *   only when `safeCounterPolicy` is `'counted'`; omitted, trump questions fall
  *   back to the exact `tracker`, which is the pre-#158 reading.
@@ -529,7 +531,7 @@ export function chooseFollowCard(
   trump: Suit,
   myTeamPlayers: readonly PlayerIndex[],
   tracker?: PlayTracker,
-  skill: SkillLevel = 'hard',
+  skill: SkillLevel = SHIPPED_SKILL,
   trumpMemory?: TrumpMemory,
 ): Card {
   if (legalMoves.length === 1) return legalMoves[0]

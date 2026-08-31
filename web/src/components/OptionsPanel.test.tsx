@@ -6,10 +6,10 @@ import { OptionsPanel } from './OptionsPanel'
 afterEach(cleanup)
 
 describe('OptionsPanel', () => {
-  it('reflects the current options in the checkboxes and selects', () => {
+  it('reflects the current options in the checkboxes', () => {
     render(
       <OptionsPanel
-        options={{ showBaseBidHint: false, opponentSkill: 'proficient', teammateSkill: 'hard', hideTrickLog: false }}
+        options={{ showBaseBidHint: false, hideTrickLog: false }}
         onChange={() => {}}
         onClose={() => {}}
       />,
@@ -17,8 +17,6 @@ describe('OptionsPanel', () => {
     expect((screen.getByLabelText('Show base-bid hint') as HTMLInputElement).checked).toBe(false)
     // The trick-log checkbox is phrased positively, so it reads the inverse of the field.
     expect((screen.getByLabelText('Show trick-play log') as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByLabelText('Opponents') as HTMLSelectElement).value).toBe('proficient')
-    expect((screen.getByLabelText('Teammate') as HTMLSelectElement).value).toBe('hard')
   })
 
   // #142 removed the "Hide opponent cards" toggle — opponents' fans are now
@@ -60,10 +58,17 @@ describe('OptionsPanel', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('has skill-level controls for Opponent and Teammate (#79)', () => {
+  // #79 put per-seat difficulty selects here and #194 renamed them; #222 took
+  // the setting out of the product, so the panel must not offer it again — the
+  // same shape of guard the two removals above carry. Asserting on the word as
+  // well as the labels, since the control could come back under any name.
+  it('has no difficulty control (#222)', () => {
     render(<OptionsPanel options={DEFAULT_OPTIONS} onChange={() => {}} onClose={() => {}} />)
-    expect(screen.getByLabelText('Opponents')).toBeTruthy()
-    expect(screen.getByLabelText('Teammate')).toBeTruthy()
+    expect(screen.queryByLabelText('Opponents')).toBeNull()
+    expect(screen.queryByLabelText('Teammate')).toBeNull()
+    expect(screen.queryByText(/skill/i)).toBeNull()
+    expect(screen.queryByText(/difficulty/i)).toBeNull()
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0)
   })
 
 

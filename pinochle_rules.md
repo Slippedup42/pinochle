@@ -371,13 +371,15 @@ scores against the Python model so the two sides cannot drift.
 On the TS side the decision entry points are `chooseBid` /
 `chooseTrump` (`bidding.ts`), `choosePassCards` (`passing.ts`),
 `chooseLeadCard` / `chooseFollowCard` (`tracker.ts`), and `shouldBid` /
-`shouldConcede` (`evaluator.ts`). `SKILL_PARAMS` in `skills.ts` is the
-dial: `hard` and above bid with the distilled evaluator, `easy` and
-`medium` keep the hand-tuned constants, and **all five levels fold with
-the model** — a fold costs the same as being set (`-bid`, meld
+`shouldConcede` (`evaluator.ts`). `SHIPPED_PARAMS` in `skills.ts` says
+what every seat plays: the distilled evaluator for bidding, and the
+model for folding — a fold costs the same as being set (`-bid`, meld
 forfeited either way) and denies the defenders their trick points, so
-it is strictly dominant and belongs to shared competence rather than to
-the difficulty dial.
+it is strictly dominant and was never a difficulty setting. There is no
+difficulty setting at all since #222; the five `SKILL_PARAMS` keys are
+slots `web/src/ab/` measures with. Python keeps its own 1-5 skill dial
+(`GENERAL_STRATEGY_SKILL_PARAMS`), which is research apparatus and not
+a shipped control.
 
 Any strategy change is judged on a paired A/B run over identical deals
 with the seats mirrored, not on impressions: `ab_harness.py` in Python,

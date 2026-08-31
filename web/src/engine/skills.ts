@@ -1,16 +1,62 @@
-import type { SkillLevel } from '../persistence/options'
+/**
+ * The five configurations the engine can be asked for, keyed 1-5 in this order
+ * — the same ladder as Python's `GENERAL_STRATEGY_SKILL_PARAMS`
+ * (`pinochle_engine.py`) and as `trumpMemory.ts`'s `TRUMP_MEMORY_CAPACITY`
+ * (`2 x level`).
+ *
+ * **These are not a difficulty setting.** #222 removed the dial: the product
+ * ships exactly one configuration, `SHIPPED_SKILL`, nothing a player can touch
+ * selects another, and `GameOptions` no longer carries a level at all. The type
+ * lived in `persistence/options.ts` while it was a stored preference; it lives
+ * here now that it is engine configuration and nothing else.
+ *
+ * What the other four keys are for is measurement, and only measurement. Two
+ * mechanisms need a level to be a thing you can name:
+ *
+ *   - `abRun.ts`'s `installPolicies` sits two rules at one table by overwriting
+ *     two entries of `SKILL_PARAMS` and seating one on each side. A comparison
+ *     needs two keys that differ in exactly one field, so a single-key map
+ *     would end paired A/B measurement outright.
+ *   - `TRUMP_MEMORY_CAPACITY` is keyed on the level itself and is deliberately
+ *     *not* a `SkillParams` field (#157), so the level a `'counted'` arm sits
+ *     on **is** the capacity under test (#158). Collapsing the keys would take
+ *     that ruler away as well as the dial.
+ *
+ * So a level name inside `src/ab/` is a slot, and a level name outside it
+ * should be `SHIPPED_SKILL`.
+ */
+export const SKILL_LEVELS = ['easy', 'medium', 'hard', 'proficient', 'expert'] as const
+export type SkillLevel = (typeof SKILL_LEVELS)[number]
 
-/** Ported from Python's GENERAL_STRATEGY_SKILL_PARAMS (pinochle_engine.py:1917).
- *  Controls which hand-valuation formula the AI uses in bidding. */
+/**
+ * Which hand-valuation formula the AI uses in bidding. Ported from Python's
+ * GENERAL_STRATEGY_SKILL_PARAMS (`pinochle_engine.py`).
+ *
+ *   `'base_bid'`   the layered valuation in `bidding.ts` — certain meld plus
+ *                  speculative meld plus a trick estimate off the hand's shape.
+ *                  What `SHIPPED_PARAMS` selects.
+ *   `'meld_only'`  `meldOnlyBid`: meld in the best suit plus a flat trick
+ *                  estimate and uniform noise, with the same shortcut applied
+ *                  to `chooseTrump` and `choosePassCards`.
+ *
+ * `'meld_only'` is unselected since #222 — it was `easy`'s valuation and there
+ * is no `easy` to select it any more. It is kept on the terms every other
+ * unselected arm in this file is kept on: `installPolicies` can still seat it,
+ * so "bid on meld alone" remains a baseline the distilled bidder can be
+ * measured against, and the arm has never been through the retirement rule.
+ */
 export type HandValuation = 'meld_only' | 'base_bid'
 
 /**
- * Which rule decides "is this hand worth a contract at this level" (#114).
+ * Which rule decides "is this hand worth a contract" (#114).
  *
  *   `'static'`    the hand-tuned constants — `OPENER_THRESHOLD`,
- *                 `DEFENSIVE_PUSH_FLOOR` — that shipped before epic #104. Still
- *                 live: `medium` runs them, and they still decide the auction's
- *                 raise ladder on every level (see `chooseBid`).
+ *                 `DEFENSIVE_PUSH_FLOOR` — that shipped before epic #104. No
+ *                 longer selected by anything the product runs (#222), but the
+ *                 constants themselves are *not* dead: they still decide the
+ *                 auction's raise ladder under both policies (see `chooseBid`),
+ *                 and this arm is the baseline #115 measured the evaluator
+ *                 against and that `BID_AB_POLICIES` still seats.
  *   `'distilled'` the evaluator fitted to 2000 measured rollout decisions
  *                 (`evaluator.ts`), which reads the bid level, the auction
  *                 state and the hand's shape rather than one number against
@@ -31,9 +77,9 @@ export type BidPolicy = 'static' | 'distilled'
  *   `'model'`  ask `shouldConcede` (`evaluator.ts`) in the same window the
  *              human's fold button gets: after meld, before the first lead.
  *
- * Unlike `bidPolicy` this is **deliberately uniform across all five levels**,
- * and the type exists to keep the alternative measurable rather than to give
- * the dial another notch. The reason is that folding is not a matter of taste:
+ * This was uniform across all five levels while the dial existed, and the type
+ * existed to keep the alternative measurable rather than to give the dial
+ * another notch. The reason is that folding is not a matter of taste:
  * conceding and being set cost the bidding team exactly the same (`-bid`, meld
  * forfeited either way), and the only thing a fold changes is that the
  * defenders are denied their trick points. So a fold can never beat making the
@@ -42,9 +88,9 @@ export type BidPolicy = 'static' | 'distilled'
  * it would read as a bug.
  *
  * `'never'` is retained because `abRun.ts` needs two levels differing in
- * exactly one field to measure this, and because the day someone wants a tier
- * that folds *badly* the honest way to build it is a third policy that folds
- * on the wrong hands - not a tier that cannot fold at all.
+ * exactly one field to measure this, and because the day someone wants an
+ * opponent that folds *badly* the honest way to build it is a third policy
+ * that folds on the wrong hands - not one that cannot fold at all.
  */
 export type FoldPolicy = 'never' | 'model'
 
@@ -123,43 +169,19 @@ export type AutoSetPolicy = 'forced' | 'off'
  *                back to the lowest counter when nothing qualifies. Side-suit
  *                safety comes from `PlayTracker` and is exact at every level;
  *                trump safety comes from #157's `TrumpMemory`, whose capacity
- *                is `2 x skill level`, so it is the one thing in trick play a
- *                weak seat is genuinely worse at.
+ *                is `2 x skill level`, so how well it is answered depends on
+ *                the level the seat sits on.
  *
- * This is the only field whose *effect* varies with the skill level rather than
- * with the row: `'counted'` is the same rule everywhere, but at `easy` it is
- * answered from 2 remembered trump and at `expert` from 10. That is deliberate
- * and it is #157's whole point — same reasoning, worse recall — so it does not
- * contradict #156's "identical rules at every level". A seat that cannot
- * remember does not play a different rule, it plays the same rule
- * conservatively, and conservative here means "assume the card can be beaten".
+ * This is the only field whose *effect* depends on the level as well as on the
+ * value: `'counted'` is the same rule everywhere, but on the `easy` slot it is
+ * answered from 2 remembered trump and on `expert` from 10. Every shipped seat
+ * is `expert` since #222, so in a real game this is 10 of 12 for all four
+ * players and the human. It still matters to `ab/`: `safeCounterAbPolicies`
+ * varies the level precisely to vary the recall behind an unchanged rule, which
+ * is the comparison #158 exists to make and the reason the level keys survive
+ * the dial's removal.
  */
 export type SafeCounterPolicy = 'off' | 'counted'
-
-/**
- * What number a seat that decides to open actually puts on the table (#204).
- *
- *   `'fixed'`  open at `OPENING_BID` — 300 since #257 — whatever the hand is
- *              worth. What every level has always done, and now the only arm.
- *
- * One member, because the other one was measured and lost. #204 split the two
- * questions `chooseBid` conflates — *should* I open, and *at what level* — on
- * the finding that 27.4% of all deals are an opener naming the rung on a hand
- * worth far more, and added `'walk'` to answer the second by stepping up while
- * the seat's own bid policy still said the next rung was worth it. Over 5000
- * pairs on each of three seeds it lost 52, 56 and 53 points per deal, p < 1e-4
- * throughout: it lifted the average bid 301 -> 322 and dropped its made rate
- * 73.2% -> 69.2%, buying the distribution with sets. #221 deleted the arm under
- * #215's retirement rule — three seeds, decisively negative, no shipped row
- * selecting it, nothing baselined against it — and `web/README.md`'s "What the
- * opener puts on the table" keeps the numbers, so the null result outlives the
- * code.
- *
- * The field is left in place rather than removed with the arm. Removing it
- * touches every row of `SKILL_PARAMS` and of the `*_AB_POLICIES` maps, which is
- * #222's diff, not this one.
- */
-export type OpeningPolicy = 'fixed'
 
 export interface SkillParams {
   readonly handValuation: HandValuation
@@ -168,169 +190,101 @@ export interface SkillParams {
   readonly playPolicy: PlayPolicy
   readonly autoSetPolicy: AutoSetPolicy
   readonly safeCounterPolicy: SafeCounterPolicy
-  readonly openingPolicy: OpeningPolicy
 }
 
 /**
- * The dial.
+ * **The one AI the product ships** (#222), and the single place to read which
+ * of this file's policy columns are live behaviour and which are A/B arms.
  *
- * #114 landed the evaluator wired but switched on for nobody. At the time a
- * push to `main` deployed straight to GitHub Pages, and `DEFAULT_OPTIONS` puts
- * both AI seats on `hard`, so enabling it there would have changed every seat
- * of the default game on merge — and #114 could describe the behaviour change
- * without judging it. #115 measured it, and the gate is now open for `hard`
- * and above. (The Pages deployment was removed on 2026-08-01; the reasoning
- * stands on its own, since merging is still what makes a change real.)
+ * | field               | shipped     | other arms, selectable only from `ab/` |
+ * | ---                 | ---         | ---                                    |
+ * | `handValuation`     | `base_bid`  | `meld_only`                            |
+ * | `bidPolicy`         | `distilled` | `static`                               |
+ * | `foldPolicy`        | `model`     | `never`                                |
+ * | `playPolicy`        | `cascade`   | `simple`                               |
+ * | `autoSetPolicy`     | `forced`    | `off`                                  |
+ * | `safeCounterPolicy` | `counted`   | `off`                                  |
  *
- * What #115 found, over 1000 paired deals played twice with the seats mirrored
- * (2000 headless games, `src/ab/`):
+ * Read as prose: distilled bidding, cascade card play, `model` folding,
+ * `forced` auto-SET, `counted` safe counters, and — since the shipped seat is
+ * `SHIPPED_SKILL` — trump memory of 10 of the 12 trump.
  *
- *   distilled swept 211 deals, static 50, 739 split. 95% CI on distilled's
- *   share of the 261 decisive deals: 75.6%–85.2%, exact two-sided binomial
- *   p < 1e-4. Score margin +227 per deal, 95% CI +198 to +257.
+ * Every one of those is the arm that measured better, and this configuration is
+ * what `hard`, `proficient` and `expert` all already were apart from recall.
+ * Epic #215 is where the dial went: three panel rows that were byte-identical
+ * except for `TRUMP_MEMORY_CAPACITY` are a control a player cannot feel, and
+ * the answer was to stop offering it rather than to manufacture a span. So the
+ * table below is one configuration written once and pointed at from every slot,
+ * not five rows that happen to agree — which is the state #215 objected to.
  *
- * The mechanism is the one #114 flagged and could not evaluate.
- * `DEFENSIVE_PUSH_FLOOR = 200` tells a seat to raise a 300 opener on almost any
- * hand — a ceiling of 200 is barely above the "no meld, no aces" floor — so the
- * static side buys a great many cheap contracts and is set on 45.4% of them.
- * The model declines most of those pushes: it takes a third fewer contracts and
- * makes 63.7% of them against static's 54.6%. Declining a contract you cannot
- * make is worth more than the contract.
+ * The right-hand column is the honest cost of the arrangement and is why it is
+ * tabulated here rather than left to six separate docstrings: each unselected
+ * arm keeps a branch of production code no player can reach. They are retained
+ * on purpose — `abRun.ts` compares two rules only by seating two levels that
+ * differ in exactly one field, so an arm deleted is a comparison that can no
+ * longer be made — and the standing rule for when one is nonetheless retired
+ * lives in `CODING_STANDARDS.md`. Each type above says why its own arm stays.
  *
- * That effect survives the harness's own control: the same policy against
- * itself splits every pair with a paired margin of exactly zero, so the
- * mirroring really is cancelling the seat advantage rather than hiding a bug.
- * It is also not a quirk of playing *against* the static rule — an all-
- * distilled table is set on 38.8% of its contracts where an all-static table is
- * set on 42.3%.
+ * The column that is *not* here is `openingPolicy`. #221 retired its `'walk'`
+ * arm under that rule and left the one-member field for this change to clear,
+ * since removing it touched every row of this table and of the `*_AB_POLICIES`
+ * maps. A field with one value is not a dial, so it is gone; the finding it
+ * carried is at `chooseBid`'s opening branch in `bidding.ts` and in
+ * `web/README.md`, which is where a retired arm's numbers are supposed to live.
  *
- * Cost, since a model that thinks visibly is a regression however well it
- * plays: +1.9 kB raw / +872 B gzipped on the shipped bundle (255.1 kB -> 253.2
- * kB with it removed), and p95 per-decision latency of 72us against static's
- * 41us in Node, 495us against 313us in Chrome at a 375x812 viewport. Even
- * multiplied by a 6x mobile-CPU emulation factor that is ~3 ms, against the
- * 600 ms `AI_BID_DELAY_MS` the auction already waits before each AI bid.
- *
- * Why the levels land where they do:
- *
- *   easy stays 'static' — its bidding never reaches the Base Bid path
- *   (`handValuation: 'meld_only'` short-circuits into `meldOnlyBid`), and the
- *   evaluator distils *skill 5*, so wiring it in would not make easy
- *   better-calibrated, it would make easy the strongest bidder and delete the
- *   tier.
- *
- *   medium stays 'static', unchanged from what it plays today. Before this
- *   change medium, hard, proficient and expert were byte-identical, so the dial
- *   had exactly two settings; leaving medium on the thresholds gives it a real
- *   third one — a bidder that opens on a rule of thumb and pushes every cheap
- *   contract is a fair description of a middling player.
- *
- *   proficient and expert take 'distilled' rather than staying on the
- *   thresholds. Epic #104's sketch was the other way round — evaluator for
- *   skills 1-3, real rollouts for 4-5 — but that mapping assumed 4-5 would
- *   *have* rollouts, and in the browser they do not and will not until the Web
- *   Worker work exists. Between the two policies that do exist here, distilled
- *   is the measurably stronger one, so leaving the top tiers on the weaker rule
- *   would rank them below `hard`. When real rollouts land they replace this on
- *   4-5; until then it is the floor, not the ceiling.
- *
- * `foldPolicy` reads `'model'` on every row on purpose (#123) and is not a
- * second dial — see `FoldPolicy` for why folding is shared competence rather
- * than a difficulty setting. The dial this table exists to express is
- * `bidPolicy`; a level's strength is meant to come from what it is willing to
- * bid, not from whether it is allowed to notice a dead contract.
- *
- * `playPolicy` (#153) reads `'cascade'` on every row, and that column is the
- * one place the table deliberately does *not* express a difficulty setting
- * (#156). Paul's reasoning, which is about what a player can see rather than
- * about strength: *"humans get really mad if you play this last part wrong,
- * but bidding they never know what you have."* A weak bid is invisible — the
- * other three seats never see the hand it was made on — while a weak card is
- * face up on the table, and it does not read as an easy opponent, it reads as
- * a partner who is broken. So trick play is shared competence, like
- * `foldPolicy`, and a level's strength comes from what it is willing to bid.
- *
- * `easy` was the one row on `'simple'`, inherited from the
- * `handValuation === 'meld_only'` card-play gate that used to live in
- * `tracker.ts`. That shortcut cost **+121 points per deal** measured against
- * the cascade on identical deals (#153, confirmed at 5000 pairs in #156) — the
- * largest effect epic #152 has found, and far too large to be a difficulty
- * notch even if it were an invisible one.
- *
- * Note what did *not* change: `easy` keeps `handValuation: 'meld_only'`, so it
- * still bids on meld alone. Easy bids like easy and plays cards like everyone
- * else, and that separation is precisely what #153 split the two fields apart
- * to allow — while one flag carried both, this change was not expressible
- * without also rewriting how easy bids.
- *
- * `'simple'` itself survives as an A/B arm and must not be deleted as dead
- * code — see `PlayPolicy` for why.
- *
- * `autoSetPolicy` (#178) reads `'forced'` on every row for a stronger reason
- * than either of those: it is not a policy at all in a real game, it is a rule
- * of arithmetic that the human bid winner gets too. See `AutoSetPolicy`.
- *
- * `safeCounterPolicy` (#158) reads `'counted'` on every row, and is the one
- * column where a uniform value still produces different play at different
- * levels — the rule is identical everywhere and only the trump recall behind it
- * scales (#157's `2 x skill level`). So it does not reopen #156: nobody plays a
- * worse rule, a weak seat just answers the same question off less information.
- * It ships enabled because it measured positive at every capacity; the rows
- * grew a line each here rather than staying on one, because five fields no
- * longer fit one readable line. See `SafeCounterPolicy` and `web/README.md`.
+ * On the numbers behind `bidPolicy`: #115 measured distilled against static
+ * over 1000 paired deals at +227 per deal (95% CI +198 to +257, p < 1e-4),
+ * with the mechanism being that the model declines the cheap contracts
+ * `DEFENSIVE_PUSH_FLOOR` tells the static rule to buy. #255 re-ran the same
+ * comparison on 2026-08-30 and got +18 per deal (CI -3 to +39) with clean
+ * self-tests on both arms. That gap is unexplained and open on #227, so treat
+ * the magnitude as provisional; the direction has never reversed, and nothing
+ * in the record argues for shipping the static rule.
  */
-export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = {
-  easy: {
-    handValuation: 'meld_only',
-    bidPolicy: 'static',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
-  },
-  medium: {
-    handValuation: 'base_bid',
-    bidPolicy: 'static',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
-  },
-  hard: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
-  },
-  proficient: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
-  },
-  expert: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
-  },
+export const SHIPPED_PARAMS: SkillParams = {
+  handValuation: 'base_bid',
+  bidPolicy: 'distilled',
+  foldPolicy: 'model',
+  playPolicy: 'cascade',
+  autoSetPolicy: 'forced',
+  safeCounterPolicy: 'counted',
 }
 
-/** Flat trick-point estimate for meld-only bidding (skill 1), matching
- *  Python's `MELD_ONLY_TRICK_ESTIMATE` / `EASY_FLAT_TRICK_ESTIMATE`. Survives
- *  #114: it belongs to `meldOnlyBid`, the deliberately-weak skill-1 path the
- *  evaluator does not replace (see `SKILL_PARAMS` above). */
+/**
+ * The level every seat in a real game plays at, and the default for every
+ * engine entry point that takes one.
+ *
+ * `expert` rather than an arbitrary pick: the level decides
+ * `TRUMP_MEMORY_CAPACITY` (#157), which `SkillParams` deliberately does not
+ * carry, so this constant is the one remaining thing a level name still means
+ * outside `ab/` — 10 of 12 trump remembered, the top of the capacity ladder and
+ * the arm #158 measured best.
+ */
+export const SHIPPED_SKILL: SkillLevel = 'expert'
+
+/**
+ * What each level slot is currently configured to play.
+ *
+ * Every slot holds `SHIPPED_PARAMS`, because the product has one AI and the
+ * slots are not tiers — see `SkillLevel`. Nothing outside `src/ab/` should
+ * index this with anything but `SHIPPED_SKILL`.
+ *
+ * Mutable on purpose, and the only mutable export in `src/engine/`.
+ * `abRun.ts`'s `installPolicies` overwrites two entries for the duration of a
+ * run and restores them in a `finally`; that seam is what lets two policies
+ * live in one process, which a mirrored A/B needs because both arms sit at the
+ * same table. It survives the dial's removal deliberately (#215's explicit
+ * boundary) — collapsing this to a single frozen object would end paired A/B
+ * measurement, which is how `CLAUDE.md` says strategy changes are judged.
+ */
+export const SKILL_PARAMS: Record<SkillLevel, SkillParams> = Object.fromEntries(
+  SKILL_LEVELS.map((level) => [level, SHIPPED_PARAMS]),
+) as Record<SkillLevel, SkillParams>
+
+/** Flat trick-point estimate for meld-only bidding, matching Python's
+ *  `MELD_ONLY_TRICK_ESTIMATE` / `EASY_FLAT_TRICK_ESTIMATE`. Belongs to
+ *  `meldOnlyBid`, which since #222 is reachable only through
+ *  `installPolicies` — see `HandValuation` for why the arm stays. */
 export const MELD_ONLY_TRICK_ESTIMATE = 60
 
 /** Uniform noise range +/- for meld-only bidding ceiling. */

@@ -319,19 +319,30 @@ that note alive if you add another such rule.
   If you touch a file whose header describes a state of the world that
   has since changed, fix the header in the same PR.
 
-## AI behaviour goes on a dial, not behind a constant
+## AI behaviour goes on a policy field, not behind a constant
 
 New AI behaviour that could plausibly be measured becomes a field on
 `SkillParams` (`web/src/engine/skills.ts`) with a string-union type —
 not a boolean, not a bare constant. `abRun.ts` can only compare two
-rules by sitting two skill levels at one table that differ in exactly
-one field, so a rule with no field is a rule that cannot be measured.
+rules by sitting two policies at one table that differ in exactly one
+field, so a rule with no field is a rule that cannot be measured.
 
-Each policy type carries a docstring stating every arm, which arm each
-shipped row selects, and — when no shipped row selects an arm — why that
-arm still exists. `PlayPolicy`, `FoldPolicy` and `AutoSetPolicy` all
-do this. (`OpeningPolicy` stood here until #221 retired its losing arm
-and left it a one-member type; #223 is writing down when that is the
-right move.) A dial whose losing arm is retained for measurement is normal
-here (see `ROADMAP.md` on null results being recorded and shipped
-disabled); a dial with no such note is drift.
+This is a measuring instrument and not a difficulty dial, which it was
+also called until #222 removed the difficulty setting from the product.
+`SHIPPED_PARAMS` is the one configuration a player ever meets;
+`SKILL_PARAMS`' five level keys are slots `installPolicies` writes into,
+and `TRUMP_MEMORY_CAPACITY` is keyed on them. Nothing outside
+`web/src/ab/` should name a level other than `SHIPPED_SKILL`.
+
+Each policy type carries a docstring stating every arm, which arm
+`SHIPPED_PARAMS` selects, and — when the shipped configuration does not
+select an arm — why that arm still exists. `PlayPolicy`, `FoldPolicy`
+and `AutoSetPolicy` all do this, and `SHIPPED_PARAMS`' own docstring
+tabulates the answer for every field at once, so which columns are live
+is one read rather than six. A losing arm retained for measurement is
+normal here (see `ROADMAP.md` on null results being recorded and shipped
+disabled); an arm with no such note is drift. A field left with one
+member is neither — `OpeningPolicy` was that after #221 retired its
+losing arm, and #222 removed the field, because a field nothing can vary
+measures nothing. #223 is writing down when retiring an arm is the right
+move.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SkillLevel } from '../persistence/options'
+import type { SkillLevel } from './skills'
 import { type CopyId, Card, RANKS, Suit, TOTAL_TRUMP_COPIES } from './card'
 import { TRUMP_MEMORY_CAPACITY, TrumpMemory, newTrumpMemories } from './trumpMemory'
 

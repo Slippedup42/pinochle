@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import type { SkillLevel } from '../persistence/options'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { SHIPPED_SKILL, SKILL_LEVELS, SKILL_PARAMS, type SkillLevel, type SkillParams } from './skills'
 import { Card, Deck, GAME_WIN_SCORE, OPENING_BID, Suit } from './card'
 import {
   ACE_VALUE,
@@ -29,6 +29,41 @@ import type { PlayerIndex } from './trick'
 
 const trump = Suit.Spades
 const RUN_RANKS = ['A', '10', 'K', 'Q', 'J'] as const
+
+/**
+ * Two level slots carrying the arms this file needs, installed for its lifetime.
+ *
+ * Most of what is tested below is the *static* rules — `OPENER_THRESHOLD`,
+ * `PARTNER_PASSED_FLOOR`, `THIRD_BIDDER_FLOOR`, the endgame bands. They only
+ * decide an opening when the seat is on `bidPolicy: 'static'`; on the distilled
+ * one the evaluator answers first and the threshold is never asked. `'medium'`
+ * was that seat, and `'easy'` was the `handValuation: 'meld_only'` seat.
+ *
+ * #222 collapsed the dial, so both names became the shipped configuration and
+ * every one of these tests would have gone on passing while quietly asserting
+ * something else — the failure mode #261 and #263 are about. Installing the two
+ * arms explicitly says which rule each test is aimed at, and the save/restore is
+ * the same shape `abRun.installPolicies` uses.
+ *
+ * Everything not named here runs `SHIPPED_SKILL`, which is what a player meets.
+ */
+const STATIC_LEVEL: SkillLevel = 'medium'
+const MELD_ONLY_LEVEL: SkillLevel = 'easy'
+const pristine: Partial<Record<SkillLevel, SkillParams>> = {}
+beforeAll(() => {
+  pristine[STATIC_LEVEL] = SKILL_PARAMS[STATIC_LEVEL]
+  pristine[MELD_ONLY_LEVEL] = SKILL_PARAMS[MELD_ONLY_LEVEL]
+  SKILL_PARAMS[STATIC_LEVEL] = { ...SKILL_PARAMS[STATIC_LEVEL], bidPolicy: 'static' }
+  SKILL_PARAMS[MELD_ONLY_LEVEL] = {
+    ...SKILL_PARAMS[MELD_ONLY_LEVEL],
+    handValuation: 'meld_only',
+    bidPolicy: 'static',
+  }
+})
+afterAll(() => {
+  SKILL_PARAMS[STATIC_LEVEL] = pristine[STATIC_LEVEL] as SkillParams
+  SKILL_PARAMS[MELD_ONLY_LEVEL] = pristine[MELD_ONLY_LEVEL] as SkillParams
+})
 
 describe('computeBaseBid', () => {
   it('scores a full trump Run at 150, its Royal Marriage at 40, and its aces', () => {
@@ -355,11 +390,10 @@ describe('chooseBid', () => {
     it('passes when the ceiling does not clear OPENER_THRESHOLD and partner has already had a turn', () => {
       // 4th bidder (passesSoFar=3, dealer): partner (player 2) has already had
       // their turn, so the "partner hasn't bid" rule doesn't apply.
-      // Pinned to a 'static' skill level (#114): this is the OPENER_THRESHOLD
-      // rule specifically, and since #115 opened the gate only `easy` and
-      // `medium` still run it.
+      // Pinned to STATIC_LEVEL (#114): this is the OPENER_THRESHOLD rule
+      // specifically, and the distilled evaluator answers ahead of it.
       const context = baseContext({ dealer: 0, passesSoFar: 3 })
-      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBeNull()
     })
 
     it('takes this hand on a distilled level and passes it on a static one (#114/#115)', () => {
@@ -367,25 +401,25 @@ describe('chooseBid', () => {
       // rule passes. The distilled evaluator takes it — it sees 80 guaranteed
       // meld and four fifths of a run, offered the contract at the 300 minimum.
       // That divergence is the clearest single illustration of what #114
-      // changes, and #115's A/B is why `hard` now follows the evaluator rather
-      // than the threshold.
+      // changes, and #115's A/B is why every shipped seat follows the evaluator
+      // rather than the threshold.
       const context = baseContext({ dealer: 0, passesSoFar: 3 })
-      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
-      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
+      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBeNull()
+      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, SHIPPED_SKILL)).toBe(OPENING_BID)
     })
 
     it('does not open a hopeless first-bidder hand (#126)', () => {
       // The first seat to speak (passesSoFar 0) used to open at OPENING_BID
       // unconditionally, which made this the first thing that happened on every
       // deal and left OPENER_THRESHOLD unreachable. `Player.choose_bid` has no
-      // such tier: the hand decides. Pinned to a 'static' level so the
+      // such tier: the hand decides. Pinned to STATIC_LEVEL so the
       // assertion is about the threshold rule rather than about the evaluator
       // (#114/#115), and to level scores so #256's endgame rule is not what is
       // answering.
       const context = baseContext({ dealer: 1 })
-      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBeNull()
       // Same seat, a hand whose ceiling clears the threshold: it opens.
-      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, 'medium')).toBe(OPENING_BID)
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBe(OPENING_BID)
     })
 
     it('passes for a weak-handed 4th bidder when partner has already had a turn', () => {
@@ -414,7 +448,7 @@ describe('chooseBid', () => {
       // The other half of the same rule: the floor is a floor, not a repeal.
       const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
       expect(ceilingOf(strongHand)).toBeGreaterThanOrEqual(THIRD_BIDDER_FLOOR)
-      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, 'medium')).toBe(OPENING_BID)
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBe(OPENING_BID)
     })
 
     it('the floor is 200, not OPENER_THRESHOLD, and that is what the rule is (#255)', () => {
@@ -434,8 +468,8 @@ describe('chooseBid', () => {
       // THIRD_BIDDER_FLOOR for both A/B runs.
       const third = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
       const first = baseContext({ dealer: 1, passesSoFar: 0, scores: { 0: 0, 1: 0 } })
-      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, third, 'medium')).toBe(OPENING_BID)
-      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, first, 'medium')).toBeNull()
+      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, third, STATIC_LEVEL)).toBe(OPENING_BID)
+      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, first, STATIC_LEVEL)).toBeNull()
     })
 
     it('3rd bidder falls back to the normal threshold once my score is above 800', () => {
@@ -614,11 +648,11 @@ describe('endgame protection (#256)', () => {
   describe('the trigger', () => {
     // Dealer 3 puts an opponent in the chair and seat 0 first to speak, so the
     // exception cannot apply and the only thing separating these calls is the
-    // trigger. 'medium' pins the contrast case to OPENER_THRESHOLD rather than
+    // trigger. STATIC_LEVEL pins the contrast case to OPENER_THRESHOLD rather than
     // to the evaluator.
     const opening = (ours: number, theirs: number) =>
       chooseBid(0, richHand, OPENING_BID - 10, 10,
-        ctx({ dealer: 3, passesSoFar: 0, passedPlayers: [], scores: { 0: ours, 1: theirs } }), 'medium')
+        ctx({ dealer: 3, passesSoFar: 0, passedPlayers: [], scores: { 0: ours, 1: theirs } }), STATIC_LEVEL)
 
     it('fires at the score floor and not one point below', () => {
       expect(opening(ENDGAME_SCORE_FLOOR, 100)).toBeNull()
@@ -703,12 +737,12 @@ describe('endgame protection (#256)', () => {
     // Those scores are inside the new trigger, so the rescue's own floor now
     // applies and this hand does not clear it.
     const context = ctx({ scores: { 0: 850, 1: 400 } })
-    expect(chooseBid(0, poorHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+    expect(chooseBid(0, poorHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBeNull()
     // And outside the trigger the ordinary rules decide, where the old tier
     // would have opened on this hand too.
     const outside = ctx({ scores: { 0: 850, 1: 500 } })
-    expect(chooseBid(0, poorHand, OPENING_BID - 10, 10, outside, 'medium')).toBeNull()
-    expect(chooseBid(0, richHand, OPENING_BID - 10, 10, outside, 'medium')).toBe(OPENING_BID)
+    expect(chooseBid(0, poorHand, OPENING_BID - 10, 10, outside, STATIC_LEVEL)).toBeNull()
+    expect(chooseBid(0, richHand, OPENING_BID - 10, 10, outside, STATIC_LEVEL)).toBe(OPENING_BID)
   })
 })
 
@@ -741,7 +775,6 @@ describe('parity with the Python reference engine (#118)', () => {
 // Hence a property rather than another case: sweep the decision surface and
 // assert the shape of every answer. The next off-grid constant fails here
 // instead of reaching a player, wherever in `chooseBid` someone puts it.
-const SKILL_LEVELS: readonly SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
 const SEATS: readonly PlayerIndex[] = [0, 1, 2, 3]
 
 /** mulberry32, the generator `src/ab/headlessGame.ts` uses. Inlined rather than
@@ -914,7 +947,7 @@ describe('every bid chooseBid can return is legal (#177)', () => {
       scores: { 0: 0, 1: 0 },
       passedPlayers: [2],
     }
-    expect(chooseBid(0, ceiling320Hand, OPENING_BID - 10, 10, context, 'medium')).toBe(PARTNER_PASSED_FLOOR)
+    expect(chooseBid(0, ceiling320Hand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBe(PARTNER_PASSED_FLOOR)
   })
 })
 
@@ -983,7 +1016,7 @@ describe('raising over a bid our own team already holds (#206)', () => {
     // Every one of these used to answer `partnerBid + 10` — 270 over a 260 —
     // while requiring a 340-worthy hand to say it.
     for (const partnerBid of [260, 270, 280, 290, 300, 310, 320, 330]) {
-      expect(chooseBid(2, strongHand, partnerBid, 10, afterPartnerRaise(partnerBid), 'hard')).toBe(
+      expect(chooseBid(2, strongHand, partnerBid, 10, afterPartnerRaise(partnerBid), SHIPPED_SKILL)).toBe(
         PARTNER_RAISE_FLOOR,
       )
     }
@@ -991,13 +1024,13 @@ describe('raising over a bid our own team already holds (#206)', () => {
 
   it('still takes the ordinary next rung once the partner is already past the floor', () => {
     // The floor is a floor, not a fixed bid: above it the normal ladder applies.
-    expect(chooseBid(2, strongHand, 350, 10, afterPartnerRaise(350), 'hard')).toBe(360)
+    expect(chooseBid(2, strongHand, 350, 10, afterPartnerRaise(350), SHIPPED_SKILL)).toBe(360)
   })
 
   it('backs off instead of being talked into a commitment it cannot make', () => {
     expect(bestBaseBid(modestHand, 0, 0).total).toBeLessThan(PARTNER_RAISE_FLOOR)
     for (const partnerBid of [260, 300, 330]) {
-      expect(chooseBid(2, modestHand, partnerBid, 10, afterPartnerRaise(partnerBid), 'hard')).toBeNull()
+      expect(chooseBid(2, modestHand, partnerBid, 10, afterPartnerRaise(partnerBid), SHIPPED_SKILL)).toBeNull()
     }
   })
 
@@ -1010,12 +1043,12 @@ describe('raising over a bid our own team already holds (#206)', () => {
         deck.shuffle()
         const hands = deck.deal()
         for (const partnerBid of [260, 275, 290, 305, 330]) {
-          // `easy` is excluded on purpose, not because it fails: `meldOnlyBid`
-          // is the deliberately-weak skill-1 path with no partner tracking of
-          // any kind (see its docstring), so it never reaches this branch and
-          // answers the plain next rung. Sweeping it here would assert that
-          // skill 1 has partner logic, which is the opposite of what it is for.
-          for (const level of SKILL_LEVELS.filter((l) => l !== 'easy')) {
+          // MELD_ONLY_LEVEL is excluded on purpose, not because it fails:
+          // `meldOnlyBid` has no partner tracking of any kind (see its
+          // docstring), so it never reaches this branch and answers the plain
+          // next rung. Sweeping it here would assert that the meld-only arm has
+          // partner logic, which is the opposite of what it is for.
+          for (const level of SKILL_LEVELS.filter((l) => l !== MELD_ONLY_LEVEL)) {
             const out = chooseBid(2, hands[2], partnerBid, 10, afterPartnerRaise(partnerBid), level)
             if (out === null) continue
             expect(out).toBeGreaterThanOrEqual(PARTNER_RAISE_FLOOR)
@@ -1050,7 +1083,7 @@ describe('raising over a bid our own team already holds (#206)', () => {
         scores: { 0: 0, 1: 0 },
         passedPlayers: [],
       }
-      expect(chooseBid(2, weakHand, oppBid, 10, context, 'hard')).toBe(oppBid + 10)
+      expect(chooseBid(2, weakHand, oppBid, 10, context, SHIPPED_SKILL)).toBe(oppBid + 10)
     }
   })
 })

@@ -2,9 +2,14 @@
 // have been seen this round, in meld and in play.
 //
 // Trick-play *rules* are identical at every skill level (#156): every seat runs
-// the same cascade in `tracker.ts`. This module is the one thing the skill dial
-// still changes during trick play — not the decision, the information the
-// decision is made on. Same reasoning, worse recall.
+// the same cascade in `tracker.ts`. This module changes not the decision but the
+// information the decision is made on — same reasoning, worse recall.
+//
+// It was the one thing the difficulty setting still varied in trick play, and
+// #222 removed that setting: every seat in a shipped game is `SHIPPED_SKILL` and
+// remembers 10 of the 12 trump. The capacity ladder below survives as a ruler
+// rather than a dial — `safeCounterAbPolicies` varies the level to vary the
+// recall behind an unchanged rule, which is the comparison #158 exists to make.
 //
 // Why this is a sibling of `PlayTracker` rather than a subclass or a wrapper:
 // `PlayTracker` stores counts, not order, and order is exactly what a capacity
@@ -29,18 +34,22 @@
 // only from its own test, on purpose — #114 and #153's pattern of landing the
 // machinery inert so the behaviour change can be measured on its own.
 
-import type { SkillLevel } from '../persistence/options'
+import { SHIPPED_SKILL, type SkillLevel } from './skills'
 import type { Card, CopyId, Rank, Suit } from './card'
 import { extractMeldCards } from './melds'
 import type { PlayerIndex } from './trick'
 
 /**
  * How many of the 12 trump a seat can hold in mind at once: **2 x skill level**,
- * skill 1 (`easy`) through skill 5 (`expert`).
+ * slot 1 (`easy`) through slot 5 (`expert`).
  *
- * `expert` at 10 of 12 is deliberately imperfect. A tier that never forgets a
- * card is not a strong player, it is a different kind of thing to play against,
- * and the top of the dial is meant to still be beatable.
+ * Every shipped seat reads `expert`, so 10 of 12 is the number a player meets;
+ * the other four rungs are what `ab/` varies to measure recall (see
+ * `SkillLevel` in `skills.ts`).
+ *
+ * 10 of 12 is deliberately imperfect. An AI that never forgets a card is not a
+ * strong player, it is a different kind of thing to play against, and the AI
+ * this game ships is meant to still be beatable.
  *
  * The 12-copy total is `TOTAL_TRUMP_COPIES`, exported from `card.ts` and
  * derived there from the deck (#241). This module deliberately does **not**
@@ -97,7 +106,7 @@ export class TrumpMemory {
   readonly skill: SkillLevel
   readonly capacity: number
 
-  constructor(trump: Suit, skill: SkillLevel = 'hard') {
+  constructor(trump: Suit, skill: SkillLevel = SHIPPED_SKILL) {
     this.trump = trump
     this.skill = skill
     this.capacity = TRUMP_MEMORY_CAPACITY[skill]
@@ -174,11 +183,13 @@ export class TrumpMemory {
  * @param hands - Hands as of the start of trick play, i.e. after the 3-card
  *   pass and the meld reveal. Melds are derived from these.
  * @param skillOf - The level each seat plays at, which fixes its capacity.
+ *   Defaults to `SHIPPED_SKILL` for every seat, which is what a real game
+ *   wants since #222; `ab/` passes a real per-seat lookup.
  */
 export function newTrumpMemories(
   hands: readonly (readonly Card[])[],
   trump: Suit,
-  skillOf: (seat: PlayerIndex) => SkillLevel,
+  skillOf: (seat: PlayerIndex) => SkillLevel = () => SHIPPED_SKILL,
 ): Record<PlayerIndex, TrumpMemory> {
   const seats: readonly PlayerIndex[] = [0, 1, 2, 3]
   const meldBySeat = seats.map((seat) => extractMeldCards(hands[seat] ?? [], trump).meldCards)

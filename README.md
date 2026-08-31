@@ -12,8 +12,9 @@ measurement harness.
 
 The PWA in [`web/`](web/) is the product — a complete game against three
 AI opponents: deal, misdeal, auction, trump, 3-card pass, meld, trick
-play, round scoring, and multi-round games to ±1000, across five
-difficulty levels, with local autosave across a page reload. On a phone
+play, round scoring, and multi-round games to ±1000, with local
+autosave across a page reload. There is no difficulty setting: every
+seat plays the strongest AI the project has built (#222). On a phone
 it installs to the home screen and launches full-screen.
 
 **Deploys are manual, and merging does not ship.** GitHub is source
@@ -85,10 +86,11 @@ is where the next round of strategy work will run. See
     The distilled bid/fold model that `export_evaluator.py` generates
     from the Python rollouts, alongside `evaluatorParity.fixture.ts` /
     `evaluatorParity.test.ts`, which fail the TS suite if the two sides
-    ever compute different features. `skills.ts`'s `SKILL_PARAMS` is the
-    difficulty dial (`easy` through `expert`): `hard` and above bid with
-    the distilled evaluator, and all five levels fold with it and play
-    trick cards the same way (#156).
+    ever compute different features. `skills.ts`'s `SHIPPED_PARAMS` is
+    the one configuration every seat plays: distilled bidding, cascade
+    card play, model folding, forced auto-SET, counted safe counters,
+    and trump memory of 10 of 12. `SKILL_PARAMS` still keys five slots,
+    which is what `src/ab/` seats two differing policies on.
   - `src/components/` — the UI and the reducers behind it.
     `gameFlowReducer.ts` drives a round end to end; `auctionReducer.ts`
     and `trickPlayReducer.ts` own the auction and trick phases. The
@@ -345,18 +347,24 @@ tuning baseline for a rule the shipped game already follows. See
   UI-layer state here rather than in the engine.
 - **The shipped AI is a distilled model, not a rollout.** `evaluator.ts`
   consults `evaluatorModel.ts`'s weights instead of thresholds like
-  `OPENER_THRESHOLD`. `skills.ts`'s `SKILL_PARAMS` is the dial: `hard`
-  and above bid with the model, `easy` and `medium` keep the hand-tuned
-  constants on purpose (the model distils *skill 5*, so wiring it into
-  `easy` would delete the tier rather than calibrate it), and **all five
-  levels fold with it** — conceding and being set cost the bidding team
-  the same (`-bid`, meld forfeited either way) while a fold denies the
-  defenders their trick points, so folding well is shared competence
-  rather than part of the difficulty dial. **All five also play trick
-  cards identically** (`playPolicy: 'cascade'`, #156): a weak bid is
-  invisible to the other seats, a weak card is face up on the table and
-  reads as a broken partner rather than an easy opponent. The dial is
-  what a level is willing to *bid*.
+  `OPENER_THRESHOLD`. `skills.ts`'s `SHIPPED_PARAMS` names the one
+  configuration every seat plays, and its docstring is the single place
+  that says which policy arms are live and which exist only for `ab/`.
+- **There is no difficulty setting** (#222). There were five engine
+  levels and three panel rows, and the rows were byte-identical apart
+  from how much trump each seat could remember — a control worth about
+  four points a deal, which is to say one a player cannot feel. Epic
+  #215's answer was to stop offering it rather than to manufacture a
+  span, so the strongest configuration became the only one. Most of the
+  ladder was already gone before that: folding is shared competence
+  (conceding and being set cost the bidding team the same, `-bid` with
+  meld forfeited either way, while a fold denies the defenders their
+  trick points), and trick play has been identical everywhere since
+  #156, because a weak bid is invisible to the other seats while a weak
+  card is face up on the table and reads as a broken partner rather than
+  an easy opponent. `SkillLevel` survives as five *slots*, not tiers:
+  `src/ab/` seats two differing policies on them to measure a rule, and
+  `TRUMP_MEMORY_CAPACITY` is keyed on them.
 - **A contract the arithmetic has already killed never gets played**
   (auto-SET, #178). When the bidding team's meld plus every trick point
   in the round — `MAX_TRICK_POINTS`, derived in `round.ts`, 250 today —

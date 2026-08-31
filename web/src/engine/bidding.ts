@@ -28,10 +28,15 @@
 // module only decides; it does not run an auction loop — that lives in
 // components/auctionReducer.ts (#34), under gameFlowReducer.ts (#47).
 
-import type { SkillLevel } from '../persistence/options'
 import { type Card, GAME_WIN_SCORE, handCount, OPENING_BID, type Rank, Suit, SUITS } from './card'
 import { shouldBid } from './evaluator'
-import { MELD_ONLY_BID_NOISE, MELD_ONLY_TRICK_ESTIMATE, SKILL_PARAMS } from './skills'
+import {
+  MELD_ONLY_BID_NOISE,
+  MELD_ONLY_TRICK_ESTIMATE,
+  SHIPPED_SKILL,
+  SKILL_PARAMS,
+  type SkillLevel,
+} from './skills'
 import {
   AROUND_DOUBLE_MULTIPLIER,
   AROUND_VALUES,
@@ -76,11 +81,12 @@ export const MAX_BID_DEFAULT = 400
 export const MAX_BID_MELD_THRESHOLD = 300
 
 // -- The two static bidding thresholds. Both are guesses, and both are
-// superseded by the fitted evaluator on every skill level whose `bidPolicy` is
-// `'distilled'` (see skills.ts). They are NOT dead: `'static'` is still what
-// proficient and expert run, until #115's A/B says which policy wins. Anything
-// that reads them outside `chooseBid`'s static branch is reading a rule that
-// half the dial no longer follows. ---------------------------------------
+// superseded by the fitted evaluator wherever `bidPolicy` reads `'distilled'`
+// (see skills.ts), which since #222 is every seat a player meets. They are NOT
+// dead: they still decide the raise ladder under both policies, and `'static'`
+// is the baseline `BID_AB_POLICIES` seats. But anything that reads them outside
+// `chooseBid`'s static branch is reading a rule the shipped opener does not
+// follow. -----------------------------------------------------------------
 
 // Minimum Base Bid to justify opening at all.
 export const OPENER_THRESHOLD = 320
@@ -561,7 +567,9 @@ function meldOnlyBid(
  * score-context rules. Falls back to the old coin-flip placeholder if
  * called without a context (keeps old call sites/tests working).
  *
- * @param skill Skill level from options — controls hand-valuation formula.
+ * @param skill Which `SKILL_PARAMS` slot to read `handValuation` and
+ *   `bidPolicy` from. Defaults to `SHIPPED_SKILL`, which is what every seat in
+ *   a real game plays; only `src/ab/` passes anything else.
  *   Defaults to 'hard' (base_bid, the current Proficient behavior).
  *
  * Decision tiers:
@@ -594,7 +602,7 @@ export function chooseBid(
   currentBid: number,
   minIncrement: number,
   context?: AuctionContext,
-  skill: SkillLevel = 'hard',
+  skill: SkillLevel = SHIPPED_SKILL,
 ): number | null {
   if (context === undefined) {
     return Math.random() < 0.6 ? null : currentBid + minIncrement
@@ -814,10 +822,11 @@ export function chooseBid(
  * selection reflects real speculative hand strength rather than raw card
  * count. For skill 1 (easy), picks the suit with the highest actual meld.
  *
- * @param skill Skill level — controls trump selection formula. Defaults
- *   to 'hard' (base_bid, current Proficient behavior).
+ * @param skill Which `SKILL_PARAMS` slot to read `handValuation` from —
+ *   `'meld_only'` picks the highest-melding suit instead. Defaults to
+ *   `SHIPPED_SKILL`.
  */
-export function chooseTrump(hand: readonly Card[], skill: SkillLevel = 'hard'): Suit {
+export function chooseTrump(hand: readonly Card[], skill: SkillLevel = SHIPPED_SKILL): Suit {
   if (SKILL_PARAMS[skill].handValuation === 'meld_only') {
     let best: Suit = Suit.Spades
     let bestValue = -1

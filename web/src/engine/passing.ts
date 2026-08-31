@@ -8,10 +8,9 @@
 // is the entry point; bidderPassSelection / partnerPassSelection hold
 // the tiered priority logic for each role.
 
-import type { SkillLevel } from '../persistence/options'
 import { type Card, type Rank, Suit, SUITS } from './card'
 import { scoreMelds } from './melds'
-import { SKILL_PARAMS } from './skills'
+import { SHIPPED_SKILL, SKILL_PARAMS, type SkillLevel } from './skills'
 
 export type PassCategory = 'DS' | 'HC'
 
@@ -280,15 +279,17 @@ function easyCardWorth(card: Card, trump: Suit): number {
  * back to random selection if trumpSuit/isBidWinner aren't supplied
  * (keeps the function usable in isolation / old call sites).
  *
- * @param skill Skill level — skill 1 (easy) uses simplified
- *   meld-only passing logic; 2-5 use the full Proficient tiers.
+ * @param skill Which `SKILL_PARAMS` slot to read `handValuation` from:
+ *   `'meld_only'` uses the simplified passing logic, `'base_bid'` the full
+ *   Proficient tiers. Defaults to `SHIPPED_SKILL`, which is `'base_bid'`; the
+ *   simplified arm is reachable only through an override (see `HandValuation`).
  */
 export function choosePassCards(
   hand: readonly Card[],
   count: number,
   trumpSuit?: Suit,
   isBidWinner?: boolean,
-  skill: SkillLevel = 'hard',
+  skill: SkillLevel = SHIPPED_SKILL,
 ): Card[] {
   if (trumpSuit === undefined || isBidWinner === undefined) {
     return sampleRandom(hand, count)
