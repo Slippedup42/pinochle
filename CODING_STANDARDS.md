@@ -329,7 +329,9 @@ one field, so a rule with no field is a rule that cannot be measured.
 
 Each policy type carries a docstring stating every arm, which arm each
 shipped row selects, and — when no shipped row selects an arm — why that
-arm still exists. `OpeningPolicy`, `FoldPolicy` and `AutoSetPolicy` all
-do this. A dial whose losing arm is retained for measurement is normal
+arm still exists. `PlayPolicy`, `FoldPolicy` and `AutoSetPolicy` all
+do this. (`OpeningPolicy` stood here until #221 retired its losing arm
+and left it a one-member type; #223 is writing down when that is the
+right move.) A dial whose losing arm is retained for measurement is normal
 here (see `ROADMAP.md` on null results being recorded and shipped
 disabled); a dial with no such note is drift.

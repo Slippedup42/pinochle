@@ -140,33 +140,26 @@ export type SafeCounterPolicy = 'off' | 'counted'
  * What number a seat that decides to open actually puts on the table (#204).
  *
  *   `'fixed'`  open at `OPENING_BID` — 300 since #257 — whatever the hand is
- *              worth. What every level has always done.
- *   `'walk'`   open at the highest rung the seat's own bid policy still says
- *              the hand is worth, starting from `OPENING_BID` and stepping by
- *              the auction's minimum increment.
+ *              worth. What every level has always done, and now the only arm.
  *
- * The distinction exists because `chooseBid` asks two separable questions and
- * has only ever acted on the first: *should* I open, and *at what level*. The
- * opening branch answers the first with `worthContract(OPENING_BID, ...)` and
- * then hard-codes the second to `OPENING_BID`, so a seat holding a 400-ceiling
- * hand opens at the rung and, if the other three pass, buys the contract there.
- * Measured over 4000 AI-vs-AI auctions on `hard`, that is 27.4% of all deals,
- * and 44.5% of those hands were worth 320 or more. Those figures were taken
- * while `OPENING_BID` was 250 (#200) and have not been re-run since #257 put
- * it back to 300 — the shape of the finding survives the move, the exact
- * percentages are not claimed to.
+ * One member, because the other one was measured and lost. #204 split the two
+ * questions `chooseBid` conflates — *should* I open, and *at what level* — on
+ * the finding that 27.4% of all deals are an opener naming the rung on a hand
+ * worth far more, and added `'walk'` to answer the second by stepping up while
+ * the seat's own bid policy still said the next rung was worth it. Over 5000
+ * pairs on each of three seeds it lost 52, 56 and 53 points per deal, p < 1e-4
+ * throughout: it lifted the average bid 301 -> 322 and dropped its made rate
+ * 73.2% -> 69.2%, buying the distribution with sets. #221 deleted the arm under
+ * #215's retirement rule — three seeds, decisively negative, no shipped row
+ * selecting it, nothing baselined against it — and `web/README.md`'s "What the
+ * opener puts on the table" keeps the numbers, so the null result outlives the
+ * code.
  *
- * `'walk'` does not make a seat open on hands it would have passed: the loop
- * only runs once `opens` is already true, and it is bounded above by the
- * hand's own capped ceiling. It changes the *price*, not the *appetite*.
- *
- * This is a `SkillParams` field rather than a constant for the reason
- * `FoldPolicy` and `PlayPolicy` are: `abRun.ts` can only sit two rules at one
- * table by running two levels that differ in exactly one field, so a rule with
- * no field is a rule that cannot be measured. No shipped row selects `'walk'`
- * until #204's A/B says it should.
+ * The field is left in place rather than removed with the arm. Removing it
+ * touches every row of `SKILL_PARAMS` and of the `*_AB_POLICIES` maps, which is
+ * #222's diff, not this one.
  */
-export type OpeningPolicy = 'fixed' | 'walk'
+export type OpeningPolicy = 'fixed'
 
 export interface SkillParams {
   readonly handValuation: HandValuation
