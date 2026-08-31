@@ -249,9 +249,13 @@ Proficient tier landed. What they actually do:
 - `choose_bid` — Proficient bidding on the layered Base Bid valuation
   (`best_base_bid` → `compute_competitive_adjustment` → `max_bid`'s
   cap), plus positional and score-context rules: endgame protection
-  (below), the opener threshold, a forced open as third bidder, the
-  `DEFENSIVE_PUSH_FLOOR` response to a minimum opener, and backing off
-  once a partner is carrying the auction.
+  (below), the opener threshold, the `DEFENSIVE_PUSH_FLOOR` response to
+  a minimum opener, and backing off once a partner is carrying the
+  auction. The third bidder — two passes in, nobody having bid — used to
+  be a *forced* open, on any hand at all, to deny the last seat a cheap
+  contract. It is held to the opener threshold like every other seat now
+  (#255): the house rule is that a bid asserts a hand worth 320, so a
+  seat under that lets the auction pass out instead.
 - `choose_trump` — the same per-suit Base Bid comparison, so trump
   follows real speculative hand strength rather than raw card count.
 - `choose_pass_cards` — role-aware (bidder vs. partner) and split by

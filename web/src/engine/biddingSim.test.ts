@@ -68,4 +68,51 @@ describe('AI-vs-AI auction simulation', () => {
     }
     expect(offGrid.slice(0, 10)).toEqual([])
   })
+
+  it('a 3rd bidder always has a partner who has already passed (#255)', () => {
+    // `chooseBid`'s third-bidder tier carries a positional arm for "partner
+    // still to speak", and #255 put a hand floor on it. This records why that
+    // floor guards nothing a player ever meets, so the next reader does not
+    // take the arm for live behaviour.
+    //
+    // `passes` counts every pass of the auction and never resets, so
+    // `!everBid && passes === 2` means exactly two seats have spoken and both
+    // passed. The auction opens left of the dealer and advances one seat at a
+    // time, so those two are dealer+1 and dealer+2, the seat on turn is
+    // dealer+3, and its partner is dealer+1 — already out. Asserted over real
+    // auctions rather than by arithmetic, because the claim is about what
+    // `auctionReducer`'s rotation produces.
+    let seen = 0
+    const partnerStillToSpeak: PlayerIndex[] = []
+    for (let i = 0; i < 400; i++) {
+      const deck = new Deck()
+      deck.shuffle()
+      let state: AuctionState = initAuctionState(deck.deal(), (i % 4) as PlayerIndex, SEAT_NAMES, SCORES)
+      let guard = 0
+      while (state.phase === 'bidding' && guard++ < 60) {
+        const turn = state.bidding.turn
+        const passedPlayers = passedPlayersOf(state.bidding.active)
+        if (!state.bidding.everBid && state.bidding.passes === 2) {
+          seen++
+          const partner = ((turn + 2) % 4) as PlayerIndex
+          if (!passedPlayers.includes(partner)) partnerStillToSpeak.push(turn)
+        }
+        const context: AuctionContext = {
+          everBid: state.bidding.everBid,
+          passesSoFar: state.bidding.passes,
+          bidHistory: state.bidding.bidHistory,
+          dealer: state.dealer,
+          scores: state.scoresByTeam,
+          passedPlayers,
+        }
+        const decision = chooseBid(turn, state.hands[turn], state.bidding.currentBid, 10, context, 'hard')
+        state =
+          decision === null
+            ? auctionReducer(state, { type: 'PASS_BID', player: turn })
+            : auctionReducer(state, { type: 'BID', player: turn, amount: decision })
+      }
+    }
+    expect(seen).toBeGreaterThan(0)
+    expect(partnerStillToSpeak).toEqual([])
+  })
 })

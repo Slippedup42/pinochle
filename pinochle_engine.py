@@ -1921,13 +1921,23 @@ class Player:
             )
 
         if not context["ever_bid"]:
-            # 3rd bidder (2 passes already, no one's bid) - always open
-            # to deny the last player a cheap contract, unless our score
-            # is high enough (>800) that we'd rather play it safe.
+            # 3rd bidder (2 passes already, no one's bid). This opened on *any*
+            # hand to deny the last player a cheap contract, and #255 puts the
+            # house floor on it: a bid asserts a hand worth OPENER_THRESHOLD
+            # ("assume anyone bidding has 320 or they should not bid"), so a
+            # seat under that passes and lets the auction pass out rather than
+            # buying a contract it cannot make. The >800 sub-case is gone
+            # because it applied exactly this floor and it now applies always.
+            #
+            # What that leaves is the finding rather than an oversight: with
+            # the floor on, the positional rule says precisely what the normal
+            # opener below says. The rule was only ever the gap between the
+            # two, so putting a hand check on it is the same act as retiring
+            # it. The branch is kept so the decision has somewhere to live -
+            # and so the two engines' third-bidder tiers stay in the same
+            # shape - not because it can still answer differently.
             if context["passes_so_far"] == 2:
-                if my_score > 800:
-                    return OPENING_BID if ceiling >= OPENER_THRESHOLD else None
-                return OPENING_BID
+                return OPENING_BID if ceiling >= OPENER_THRESHOLD else None
 
             # Normal opener threshold
             return OPENING_BID if ceiling >= OPENER_THRESHOLD else None

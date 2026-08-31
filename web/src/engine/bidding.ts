@@ -561,10 +561,10 @@ function meldOnlyBid(
  *     more than 550 away, so pass the whole auction and bank the meld. The
  *     one exception opens at OPENING_BID to save a partner who is dealing.
  *   - No one has bid yet this auction:
- *     1. 3rd bidder (2 passes already, no one's bid) - always open to
- *        deny the last player a cheap contract, unless my score is high
- *        enough (>800) that I'd rather play it safe and only open if the
- *        hand is worth the contract.
+ *     1. 3rd bidder (2 passes already, no one's bid) - open to deny the
+ *        last player a cheap contract, but only on a hand that reaches
+ *        OPENER_THRESHOLD (#255). This used to open on anything at all
+ *        below a score of 800.
  *     2. Otherwise, open only if the hand is worth the contract.
  *   - My team currently holds the bid:
  *     - Partner has already bid twice this auction - back off, they're
@@ -731,15 +731,38 @@ export function chooseBid(
     const opens = worthContract(floorLevel, ceiling >= OPENER_THRESHOLD)
     const openingLevel = opens ? openingLevelFor(floorLevel) : floorLevel
 
-    // 3rd bidder opens cheap.
+    // 3rd bidder opens cheap — with the house floor on it (#255).
     if (context.passesSoFar === 2) {
       if (myScore > 800) {
         return opens ? openingLevel : null
       }
-      // Positional, not a hand judgement: with partner still to speak this
-      // seat opens on anything to deny the last player a cheap contract, so
-      // neither policy is consulted.
-      return partnerPassed ? (opens ? openingLevel : null) : opens ? openingLevel : OPENING_BID
+      if (opens) return openingLevel
+      // The positional arm: the seat's own policy has said the hand is not
+      // worth a contract, and this used to put `OPENING_BID` on the table
+      // anyway to deny the last player a cheap one. Paul's house rule from
+      // live play is that a bid asserts a hand — "assume anyone bidding has
+      // 320 or they should not bid" — so the ceiling has to reach
+      // `OPENER_THRESHOLD` before position alone can talk this seat in.
+      //
+      // Two things a reader should know before treating that as the fix #255
+      // was after, because they are what the measurement found:
+      //
+      // The `!partnerPassed` half of this arm cannot be reached. `passesSoFar`
+      // counts every pass of the auction and never resets, so `!everBid &&
+      // passesSoFar === 2` means exactly two seats have spoken and both
+      // passed. `auctionReducer` opens left of the dealer and advances one
+      // seat at a time, so those two are `dealer + 1` and `dealer + 2`, this
+      // seat is `dealer + 3`, and its partner is `dealer + 1` — already
+      // passed, every time. Confirmed over 1162 arrivals at this tier in
+      // headless games across `medium`/`hard`/`expert`: `partnerPassed` was
+      // true on all 1162. So this floor guards a state the auction cannot
+      // produce, and it changes no decision either engine makes.
+      //
+      // The live instance of #255's third path is Python's, where
+      // `Player.choose_bid` has this tier with no hand check on either arm and
+      // no partner condition, and it fires. That one moves in this commit too.
+      if (partnerPassed) return null
+      return ceiling >= OPENER_THRESHOLD ? OPENING_BID : null
     }
 
     // Normal opener threshold (4th bidder / dealer — partner has already

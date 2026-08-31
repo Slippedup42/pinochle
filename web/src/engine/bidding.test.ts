@@ -384,9 +384,29 @@ describe('chooseBid', () => {
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
     })
 
-    it('3rd bidder (2 passes so far) always opens cheap when my score is not above 800', () => {
+    it('3rd bidder does not open a hand that cannot reach OPENER_THRESHOLD (#255)', () => {
+      // This used to assert `toBe(OPENING_BID)` on `weakHand` — a lone off-trump
+      // 9 — because the positional rule opened on anything at all to deny the
+      // last seat a cheap contract. Paul's house rule from live play is that a
+      // bid asserts a hand: "assume anyone bidding has 320 or they should not
+      // bid", so the ceiling now has to reach OPENER_THRESHOLD.
+      //
+      // Note the context: `passesSoFar: 2` with an empty `passedPlayers`, i.e.
+      // partner still to speak. That is the arm the floor guards and it is a
+      // state no real auction reaches — `biddingSim.test.ts` pins why — so this
+      // is a unit assertion about the rule, not about a position players meet.
       const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
-      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
+    })
+
+    it('3rd bidder still opens positionally once the hand clears the floor (#255)', () => {
+      // The other half of the same rule: the floor is a floor, not a repeal.
+      // `strongHand`'s ceiling is 340, over OPENER_THRESHOLD, and this seat
+      // still opens to deny the last player a cheap contract. Pinned on a
+      // static level so the assertion is about the threshold rather than about
+      // the evaluator (#114/#115).
+      const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, 'medium')).toBe(OPENING_BID)
     })
 
     it('3rd bidder falls back to the normal threshold once my score is above 800', () => {
