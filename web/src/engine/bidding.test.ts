@@ -384,29 +384,38 @@ describe('chooseBid', () => {
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
     })
 
-    it('3rd bidder does not open a hand that cannot reach OPENER_THRESHOLD (#255)', () => {
+    it('3rd bidder does not open a hand under THIRD_BIDDER_FLOOR (#255)', () => {
       // This used to assert `toBe(OPENING_BID)` on `weakHand` — a lone off-trump
-      // 9 — because the positional rule opened on anything at all to deny the
-      // last seat a cheap contract. Paul's house rule from live play is that a
-      // bid asserts a hand: "assume anyone bidding has 320 or they should not
-      // bid", so the ceiling now has to reach OPENER_THRESHOLD.
+      // 9, ceiling 130 — because the positional rule opened on anything at all
+      // to deny the last seat a cheap contract. There is a floor under it now.
       //
       // Note the context: `passesSoFar: 2` with an empty `passedPlayers`, i.e.
       // partner still to speak. That is the arm the floor guards and it is a
-      // state no real auction reaches — `biddingSim.test.ts` pins why — so this
-      // is a unit assertion about the rule, not about a position players meet.
+      // state no real auction reaches — `biddingSim.test.ts` pins why, and why
+      // the arm is kept anyway — so this is a unit assertion about the rule,
+      // not about a position players meet.
       const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
     })
 
-    it('3rd bidder still opens positionally once the hand clears the floor (#255)', () => {
+    it('3rd bidder still opens positionally over THIRD_BIDDER_FLOOR (#255)', () => {
       // The other half of the same rule: the floor is a floor, not a repeal.
-      // `strongHand`'s ceiling is 340, over OPENER_THRESHOLD, and this seat
-      // still opens to deny the last player a cheap contract. Pinned on a
-      // static level so the assertion is about the threshold rather than about
-      // the evaluator (#114/#115).
       const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
       expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, 'medium')).toBe(OPENING_BID)
+    })
+
+    it('the floor is 200, not OPENER_THRESHOLD, and that is what the rule is (#255)', () => {
+      // `runOnlyHand`'s ceiling is 300: over THIRD_BIDDER_FLOOR and under
+      // OPENER_THRESHOLD, so it is exactly the hand the choice of floor is
+      // about. As third bidder this seat opens on it; as first bidder, on the
+      // same hand and the same static policy, it passes. That gap *is* the
+      // positional rule, and a floor at OPENER_THRESHOLD would have closed it
+      // — measured at -57 score margin per deal, which is why the constant
+      // reads 200. See THIRD_BIDDER_FLOOR for both A/B runs.
+      const third = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
+      const first = baseContext({ dealer: 1, passesSoFar: 0, scores: { 0: 0, 1: 0 } })
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, third, 'medium')).toBe(OPENING_BID)
+      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, first, 'medium')).toBeNull()
     })
 
     it('3rd bidder falls back to the normal threshold once my score is above 800', () => {

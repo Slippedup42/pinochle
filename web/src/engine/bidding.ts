@@ -124,6 +124,46 @@ export const ENDGAME_OPP_SCORE_CAP = GAME_WIN_SCORE - 550
 export const ENDGAME_RESCUE_CEILING = 200
 
 /**
+ * The hand floor under the third bidder's positional open (#255).
+ *
+ * The seat that speaks after two passes with nobody having bid opens to deny
+ * the last player a cheap contract. That used to happen on *any* hand at all,
+ * which is what #255 was filed about: Paul's house rule from live play is that
+ * a bid asserts a hand — "assume anyone bidding has 320 or they should not
+ * bid."
+ *
+ * **This is 200 and not `OPENER_THRESHOLD`, and the difference was measured.**
+ * A paired A/B on identical deals with the seats mirrored (`ab_harness.py`,
+ * 800 pairs / 1600 games, run on the Python engine because that is the one
+ * where this path fires — see `chooseBid`) put the floor at 320 and at 200
+ * against the unfloored rule it replaces:
+ *
+ *   320: **−57 score margin per deal**, 95% CI −76 to −37, exact two-sided
+ *        binomial p < 1e-4, sign test 34 sweeps to 83. Replicated on a second
+ *        seed at −28/deal, CI −46 to −11, p = 0.0023.
+ *   200: −7/deal, 95% CI −17 to +1, **not significant** (7 sweeps to 16,
+ *        p = 0.09).
+ *
+ * So the positional open really is worth something, and all of what it is
+ * worth lives in the 200–320 band — precisely the hands the house rule would
+ * forbid. Paying 57 points a deal to enforce 320 here is not a trade worth
+ * making; 200 still stops the seat opening on a hand with no meld and no aces,
+ * which is what was actually seen at the table.
+ *
+ * The two numbers express different ideas and are deliberately not linked.
+ * `OPENER_THRESHOLD` is "worth a contract". This is "not literally worthless".
+ * Setting this to `OPENER_THRESHOLD` — or deriving it from it — would relink
+ * two values that have just been measured apart, and the measurement above is
+ * what the next person tempted to tidy it up should read first.
+ *
+ * Like `ENDGAME_RESCUE_CEILING` (which independently landed on 200 by
+ * judgement rather than by measurement) this is the Max Bid **ceiling**, not
+ * the Base Bid, and the comparison is `>=` — reached, not cleared — which is
+ * the form that was measured.
+ */
+export const THIRD_BIDDER_FLOOR = 200
+
+/**
  * The bid a seat must commit to once its partner has passed (#93/#95).
  *
  * Not a ceiling like the two above — it is an actual bid, placed on the table,
@@ -563,8 +603,9 @@ function meldOnlyBid(
  *   - No one has bid yet this auction:
  *     1. 3rd bidder (2 passes already, no one's bid) - open to deny the
  *        last player a cheap contract, but only on a hand that reaches
- *        OPENER_THRESHOLD (#255). This used to open on anything at all
- *        below a score of 800.
+ *        THIRD_BIDDER_FLOOR (#255). This used to open on anything at all
+ *        below a score of 800. The floor is 200, not OPENER_THRESHOLD, and
+ *        the constant carries the A/B that says why.
  *     2. Otherwise, open only if the hand is worth the contract.
  *   - My team currently holds the bid:
  *     - Partner has already bid twice this auction - back off, they're
@@ -731,7 +772,7 @@ export function chooseBid(
     const opens = worthContract(floorLevel, ceiling >= OPENER_THRESHOLD)
     const openingLevel = opens ? openingLevelFor(floorLevel) : floorLevel
 
-    // 3rd bidder opens cheap — with the house floor on it (#255).
+    // 3rd bidder opens cheap — with a hand floor under it (#255).
     if (context.passesSoFar === 2) {
       if (myScore > 800) {
         return opens ? openingLevel : null
@@ -739,13 +780,16 @@ export function chooseBid(
       if (opens) return openingLevel
       // The positional arm: the seat's own policy has said the hand is not
       // worth a contract, and this used to put `OPENING_BID` on the table
-      // anyway to deny the last player a cheap one. Paul's house rule from
-      // live play is that a bid asserts a hand — "assume anyone bidding has
-      // 320 or they should not bid" — so the ceiling has to reach
-      // `OPENER_THRESHOLD` before position alone can talk this seat in.
+      // anyway to deny the last player a cheap one. It still does — but only
+      // on a hand that reaches `THIRD_BIDDER_FLOOR`, not on a lone 9.
       //
-      // Two things a reader should know before treating that as the fix #255
-      // was after, because they are what the measurement found:
+      // The floor is 200 rather than the house rule's 320 because the two were
+      // measured against each other and 320 cost 57 points a deal; the reason
+      // lives on `THIRD_BIDDER_FLOOR` and should be read before it is tidied
+      // up to `OPENER_THRESHOLD`.
+      //
+      // Two things a reader should know before treating this as the whole of
+      // #255's third path, because they are what the measurement found:
       //
       // The `!partnerPassed` half of this arm cannot be reached. `passesSoFar`
       // counts every pass of the auction and never resets, so `!everBid &&
@@ -756,13 +800,21 @@ export function chooseBid(
       // passed, every time. Confirmed over 1162 arrivals at this tier in
       // headless games across `medium`/`hard`/`expert`: `partnerPassed` was
       // true on all 1162. So this floor guards a state the auction cannot
-      // produce, and it changes no decision either engine makes.
+      // produce, and it changes no decision this engine makes today.
+      //
+      // It is kept rather than deleted as dead code, deliberately. The
+      // seat-order argument above is a fact about `auctionReducer`'s rotation,
+      // not about `chooseBid`, and if that rotation ever changes — a seat
+      // allowed back into the auction, a different opening seat — deleting
+      // this arm would silently reinstate opening-on-anything. The floored
+      // branch is the cheap net; `biddingSim.test.ts`'s seat-order test is
+      // what keeps the two in step.
       //
       // The live instance of #255's third path is Python's, where
       // `Player.choose_bid` has this tier with no hand check on either arm and
       // no partner condition, and it fires. That one moves in this commit too.
       if (partnerPassed) return null
-      return ceiling >= OPENER_THRESHOLD ? OPENING_BID : null
+      return ceiling >= THIRD_BIDDER_FLOOR ? OPENING_BID : null
     }
 
     // Normal opener threshold (4th bidder / dealer — partner has already

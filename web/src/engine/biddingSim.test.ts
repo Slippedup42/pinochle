@@ -70,10 +70,17 @@ describe('AI-vs-AI auction simulation', () => {
   })
 
   it('a 3rd bidder always has a partner who has already passed (#255)', () => {
+    // This is an invariant another rule leans on, not a curiosity.
+    //
     // `chooseBid`'s third-bidder tier carries a positional arm for "partner
-    // still to speak", and #255 put a hand floor on it. This records why that
-    // floor guards nothing a player ever meets, so the next reader does not
-    // take the arm for live behaviour.
+    // still to speak". #255 put a hand floor on it and the arm was kept rather
+    // than deleted as dead code, on the grounds that if the rotation ever
+    // changes — a seat allowed back into the auction, a different opening seat
+    // — a deleted arm would silently reinstate opening-on-anything while a
+    // floored one would not. That trade is only sound while the arm really is
+    // unreachable *today*, which is what this test asserts. If it ever goes
+    // red, the branch in `chooseBid` has become live behaviour and its floor
+    // (`THIRD_BIDDER_FLOOR`) has never been measured in that position.
     //
     // `passes` counts every pass of the auction and never resets, so
     // `!everBid && passes === 2` means exactly two seats have spoken and both

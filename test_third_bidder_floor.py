@@ -2,20 +2,24 @@
 Tests for issue #255 - the third-bidder positional open gets a hand floor.
 
 The rule under test: the seat that speaks after two passes with nobody having
-bid used to open at OPENING_BID on *any* hand, to deny the last player a cheap
-contract. Paul's house rule from live play is that a bid asserts a hand -
-"assume anyone bidding has 320 or they should not bid" - so the hand's Max Bid
-ceiling now has to reach OPENER_THRESHOLD before this seat opens.
+bid opens at OPENING_BID to deny the last player a cheap contract. It used to
+do that on *any* hand at all. It now needs a Max Bid ceiling that reaches
+THIRD_BIDDER_FLOOR.
+
+The floor is 200, not the house rule's 320, and that is a measured choice
+rather than a compromise - see the constant's own comment for the two A/B
+runs. These tests pin the consequences of that choice, because the number
+looks like a candidate for tidying up to OPENER_THRESHOLD and is not one.
 
 What is covered here:
 
   1. A hand under the floor passes where it used to open, and a hand over it
      still opens - the floor is a floor, not a repeal of the rule.
-  2. The floor is the ceiling against OPENER_THRESHOLD, asserted at the
-     boundary rather than against a hand that is merely far from it.
-  3. The consequence, recorded so it is not rediscovered as a bug: with the
-     floor on, this tier gives the same answer as the normal opener for every
-     hand. The positional rule was only ever the gap between the two.
+  2. The comparison is `>=` against the ceiling, checked at the tightest pair
+     of hands the Base Bid grid actually reaches either side of 200.
+  3. The rule still has content: a hand in the 200-320 band opens as third
+     bidder and passes as first bidder. That difference *is* the positional
+     rule, and it is what a 320 floor would have deleted.
 """
 
 from pinochle_engine import (
@@ -24,14 +28,14 @@ from pinochle_engine import (
     OPENING_BID,
     Player,
     Suit,
+    THIRD_BIDDER_FLOOR,
     Team,
     best_base_bid,
     max_bid,
 )
 
 
-# A trump Run plus a second Royal Marriage and an off-suit Ace: comfortably
-# over OPENER_THRESHOLD.
+# A trump Run plus a second Royal Marriage and an off-suit Ace: ceiling 360.
 STRONG_HAND = [
     Card(Suit.HEARTS, "A", 1),
     Card(Suit.HEARTS, "10", 1),
@@ -43,7 +47,8 @@ STRONG_HAND = [
     Card(Suit.SPADES, "A", 1),
 ]
 
-# No meld, no Aces, nothing near a Run - the hand the old rule opened on.
+# No meld, no Aces, nothing near a Run - ceiling 140, the hand the old rule
+# opened on and the one Paul saw at the table.
 JUNK_HAND = [
     Card(Suit.SPADES, "9", 1),
     Card(Suit.SPADES, "J", 1),
@@ -51,6 +56,24 @@ JUNK_HAND = [
     Card(Suit.DIAMONDS, "J", 2),
     Card(Suit.CLUBS, "9", 2),
     Card(Suit.HEARTS, "9", 1),
+]
+
+# A Royal Marriage and two off-suit Aces: ceiling 210. Over THIRD_BIDDER_FLOOR
+# and well under OPENER_THRESHOLD, so it is the hand the whole disagreement
+# between 200 and 320 is about.
+MIDDLING_HAND = [
+    Card(Suit.HEARTS, "K", 1),
+    Card(Suit.HEARTS, "Q", 1),
+    Card(Suit.SPADES, "A", 1),
+    Card(Suit.CLUBS, "A", 1),
+]
+
+# The same Royal Marriage with one Ace instead of two: ceiling 190, the
+# nearest hand *below* the floor that the Base Bid grid reaches.
+JUST_UNDER_HAND = [
+    Card(Suit.HEARTS, "K", 1),
+    Card(Suit.HEARTS, "Q", 1),
+    Card(Suit.SPADES, "A", 1),
 ]
 
 
@@ -61,8 +84,8 @@ def _ceiling(hand, my_score=0, opp_score=0):
 
 
 def _seat(hand, my_score=0, opp_score=0):
-    """Four seats, two teams, level scores so #256's endgame rule is not what
-    answers. Returns (me, dealer_seat)."""
+    """Four seats, two teams, level scores by default so #256's endgame rule
+    is not what answers. Returns (me, dealer_seat, the two seats that pass)."""
     me = Player("Me", None)
     partner = Player("Partner", None)
     opp_a = Player("OppA", None)
@@ -95,8 +118,7 @@ def _bid_as_third(hand, my_score=0, opp_score=0):
 
 
 def _bid_as_opener(hand, my_score=0, opp_score=0):
-    """The same seat and hand as the first to speak, for the comparison in
-    test 3."""
+    """The same seat and hand as the first to speak."""
     me, dealer, _ = _seat(hand, my_score, opp_score)
     context = {
         "ever_bid": False,
@@ -111,12 +133,13 @@ def _bid_as_opener(hand, my_score=0, opp_score=0):
 
 
 # ---------------------------------------------------------------------------
-# 0. The fixtures sit either side of the floor.
+# 0. The fixtures are where the rest of the file says they are.
 # ---------------------------------------------------------------------------
 
-def test_fixture_hands_sit_either_side_of_the_opener_threshold():
+def test_fixture_hands_sit_where_the_tests_assume():
+    assert _ceiling(JUNK_HAND) < THIRD_BIDDER_FLOOR
+    assert THIRD_BIDDER_FLOOR < _ceiling(MIDDLING_HAND) < OPENER_THRESHOLD
     assert _ceiling(STRONG_HAND) >= OPENER_THRESHOLD
-    assert _ceiling(JUNK_HAND) < OPENER_THRESHOLD
 
 
 # ---------------------------------------------------------------------------
@@ -130,40 +153,56 @@ def test_third_bidder_passes_a_hand_under_the_floor():
 
 def test_third_bidder_still_opens_positionally_over_the_floor():
     assert _bid_as_third(STRONG_HAND) == OPENING_BID
+    assert _bid_as_third(MIDDLING_HAND) == OPENING_BID
 
 
-def test_the_high_score_arm_is_the_same_rule_now():
-    # The tier used to apply the floor only when my_score > 800. It applies it
-    # always, so the two arms have stopped differing - which is why the sub-case
-    # was removed rather than left sitting there agreeing with itself.
+def test_the_high_score_arm_is_gone():
+    # The tier used to fall back to OPENER_THRESHOLD when my_score > 800. That
+    # sub-case is removed: OPENER_THRESHOLD is not this rule's floor any more,
+    # and a seat near the end of the game has #256's endgame protection in
+    # front of it doing that job with thresholds chosen for it. So a middling
+    # hand that opens at 0-0 also opens at 810, where it used to pass.
+    # (810/600 is outside the endgame trigger - the opponents are not under
+    # ENDGAME_OPP_SCORE_CAP - so this really is the third-bidder rule
+    # answering.)
+    assert _bid_as_third(MIDDLING_HAND, my_score=810, opp_score=600) == OPENING_BID
     assert _bid_as_third(JUNK_HAND, my_score=810, opp_score=600) is None
-    assert _bid_as_third(STRONG_HAND, my_score=810, opp_score=600) == OPENING_BID
 
 
 # ---------------------------------------------------------------------------
-# 2. The floor is the ceiling against OPENER_THRESHOLD, at the boundary.
+# 2. The comparison is `>=` on the ceiling, at the grid's tightest pair.
 # ---------------------------------------------------------------------------
 
 def test_the_floor_is_reached_not_cleared():
-    # A trump Run and one off-suit Ace: ceiling exactly OPENER_THRESHOLD at
-    # level scores. It opens, so the comparison is `>=` — matching the normal
-    # opener and PARTNER_PASSED_FLOOR's "reach it, do not clear it" (#180).
-    # One card less is a bare Run at 300, twenty under, and it passes.
-    run = [Card(Suit.HEARTS, r, 1) for r in ("A", "10", "K", "Q", "J")]
-    on_the_line = run + [Card(Suit.SPADES, "A", 1)]
-    assert _ceiling(on_the_line) == OPENER_THRESHOLD
-    assert _bid_as_third(on_the_line) == OPENING_BID
-    assert _ceiling(run) < OPENER_THRESHOLD
-    assert _bid_as_third(run) is None
+    # The Base Bid grid does not land on 200 exactly with any small hand - it
+    # steps 190 -> 210 through this region - so the boundary is pinned with the
+    # nearest hand either side rather than with an equality case that does not
+    # exist. Reach-it-do-not-clear-it still matters as intent: it is the form
+    # that was measured, and it matches the normal opener and #180's
+    # PARTNER_PASSED_FLOOR.
+    assert _ceiling(JUST_UNDER_HAND) < THIRD_BIDDER_FLOOR
+    assert _bid_as_third(JUST_UNDER_HAND) is None
+    assert _ceiling(MIDDLING_HAND) >= THIRD_BIDDER_FLOOR
+    assert _bid_as_third(MIDDLING_HAND) == OPENING_BID
 
 
 # ---------------------------------------------------------------------------
-# 3. The finding: floored, the tier says what the normal opener says.
+# 3. The rule still has content - which a 320 floor would have removed.
 # ---------------------------------------------------------------------------
 
-def test_the_positional_tier_now_agrees_with_the_normal_opener():
-    # Recorded rather than left implicit. If a future change wants the third
-    # bidder to behave differently from a first bidder, it has to reintroduce a
-    # difference on purpose - and this test is what will say so.
-    for hand in (STRONG_HAND, JUNK_HAND):
-        assert _bid_as_third(hand) == _bid_as_opener(hand)
+def test_the_positional_open_still_differs_from_the_normal_opener():
+    # This is the whole rule, and the reason the floor is 200. In the
+    # 200-320 band the third bidder opens and a first bidder does not: the
+    # positional argument (deny the last seat a cheap contract, and keep the
+    # auction off an opponent dealer at FORCED_BID) is doing the work.
+    #
+    # A floor at OPENER_THRESHOLD would make these two equal for every hand,
+    # which is to say it would retire the rule - and the A/B on the constant
+    # measured that at -57 points per deal.
+    assert _bid_as_third(MIDDLING_HAND) == OPENING_BID
+    assert _bid_as_opener(MIDDLING_HAND) is None
+    # Either side of the band the two agree, as they should.
+    assert _bid_as_third(JUNK_HAND) is None
+    assert _bid_as_opener(JUNK_HAND) is None
+    assert _bid_as_third(STRONG_HAND) == OPENING_BID
+    assert _bid_as_opener(STRONG_HAND) == OPENING_BID
