@@ -160,6 +160,11 @@ export const ENDGAME_RESCUE_CEILING = 200
  * judgement rather than by measurement) this is the Max Bid **ceiling**, not
  * the Base Bid, and the comparison is `>=` — reached, not cleared — which is
  * the form that was measured.
+ *
+ * Both runs predate #242, which raised every hand holding a trump Run by 40.
+ * The two mechanisms are independent and the gap between the arms is far
+ * larger than that shift, so the direction stands; the exact figures are of
+ * the valuation as it was that day.
  */
 export const THIRD_BIDDER_FLOOR = 200
 

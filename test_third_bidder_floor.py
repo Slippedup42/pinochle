@@ -35,7 +35,12 @@ from pinochle_engine import (
 )
 
 
-# A trump Run plus a second Royal Marriage and an off-suit Ace: ceiling 360.
+# A trump Run plus a second Royal Marriage and an off-suit Ace: ceiling 400,
+# which is the MAX_BID_DEFAULT cap. It was 360 until #242 stopped the Run
+# absorbing the Royal Marriage inside it; every hand holding a trump Run gained
+# 40 there, which is why the fixture comments in this file are checked against
+# the engine by test_fixture_hands_sit_where_the_tests_assume rather than
+# trusted.
 STRONG_HAND = [
     Card(Suit.HEARTS, "A", 1),
     Card(Suit.HEARTS, "10", 1),
@@ -137,8 +142,12 @@ def _bid_as_opener(hand, my_score=0, opp_score=0):
 # ---------------------------------------------------------------------------
 
 def test_fixture_hands_sit_where_the_tests_assume():
+    # Derived, not asserted against literals, and checked before anything else
+    # in the file leans on them. #242 moved every hand holding a trump Run up
+    # by 40 and would have quietly taken a band fixture out of its band.
     assert _ceiling(JUNK_HAND) < THIRD_BIDDER_FLOOR
-    assert THIRD_BIDDER_FLOOR < _ceiling(MIDDLING_HAND) < OPENER_THRESHOLD
+    assert _ceiling(JUST_UNDER_HAND) < THIRD_BIDDER_FLOOR
+    assert THIRD_BIDDER_FLOOR <= _ceiling(MIDDLING_HAND) < OPENER_THRESHOLD
     assert _ceiling(STRONG_HAND) >= OPENER_THRESHOLD
 
 
