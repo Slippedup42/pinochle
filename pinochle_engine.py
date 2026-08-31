@@ -254,6 +254,46 @@ ENDGAME_OPP_SCORE_CAP = GAME_WIN_SCORE - 550
 # revisit, not the choice of measure.
 ENDGAME_RESCUE_CEILING = 200
 
+# -- The hand floor under the third bidder's positional open (#255).
+#
+# The seat that speaks after two passes with nobody having bid opens to deny
+# the last player a cheap contract. That used to happen on *any* hand at all,
+# which is what #255 was filed about: Paul's house rule from live play is that
+# a bid asserts a hand - "assume anyone bidding has 320 or they should not
+# bid."
+#
+# This is 200 and NOT OPENER_THRESHOLD, and the difference was measured. A
+# paired A/B on identical deals with the seats mirrored (ab_harness.run_ab,
+# 800 pairs / 1600 games) put each candidate floor against the unfloored rule
+# it replaces:
+#
+#   320: -57 score margin per deal, 95% CI -76 to -37, exact two-sided
+#        binomial p < 1e-4, sign test 34 sweeps to 83. Replicated on a second
+#        seed at -28/deal, CI -46 to -11, p = 0.0023.
+#   200: -7/deal, 95% CI -17 to +1, NOT significant (7 sweeps to 16, p = 0.09).
+#
+# So the positional open really is worth something, and all of what it is
+# worth lives in the 200-320 band - precisely the hands the house rule would
+# forbid. Paying 57 points a deal to enforce 320 here is not a trade worth
+# making; 200 still stops the seat opening on a hand with no meld and no aces,
+# which is what was actually seen at the table.
+#
+# The two numbers express different ideas and are deliberately not linked.
+# OPENER_THRESHOLD is "worth a contract". This is "not literally worthless".
+# Setting this to OPENER_THRESHOLD, or deriving it from it, would relink two
+# values that have just been measured apart.
+#
+# Like ENDGAME_RESCUE_CEILING (which independently landed on 200 by judgement
+# rather than by measurement) this is the Max Bid *ceiling*, not the Base Bid,
+# and the comparison is `>=` - reached, not cleared - which is the form that
+# was measured.
+#
+# Both runs predate #242, which raised every hand holding a trump Run by 40.
+# The two mechanisms are independent and the gap between the arms is far larger
+# than that shift, so the direction stands; the exact figures are of the
+# valuation as it was that day.
+THIRD_BIDDER_FLOOR = 200
+
 
 def endgame_protection_applies(my_score, opp_score):
     """True when this team should be banking its meld rather than buying a
@@ -1921,13 +1961,25 @@ class Player:
             )
 
         if not context["ever_bid"]:
-            # 3rd bidder (2 passes already, no one's bid) - always open
-            # to deny the last player a cheap contract, unless our score
-            # is high enough (>800) that we'd rather play it safe.
+            # 3rd bidder (2 passes already, no one's bid). This opened on *any*
+            # hand at all to deny the last player a cheap contract, which is
+            # the path #255 was filed about. It still opens on position rather
+            # than on hand strength - that is what the tier is for, and the A/B
+            # on THIRD_BIDDER_FLOOR says the position is genuinely worth
+            # something - but there is a floor under it now, so a seat with no
+            # meld and no aces lets the auction pass out instead.
+            #
+            # The floor is deliberately well below OPENER_THRESHOLD. Paul's
+            # house rule is 320; measured against this rule, 320 cost 57 points
+            # a deal and 200 costs nothing detectable. The constant carries the
+            # numbers.
+            #
+            # The >800 sub-case is gone: it applied OPENER_THRESHOLD, which is
+            # no longer this rule's floor, and a seat near the end of the game
+            # has #256's endgame protection in front of it doing that job with
+            # thresholds chosen for it.
             if context["passes_so_far"] == 2:
-                if my_score > 800:
-                    return OPENING_BID if ceiling >= OPENER_THRESHOLD else None
-                return OPENING_BID
+                return OPENING_BID if ceiling >= THIRD_BIDDER_FLOOR else None
 
             # Normal opener threshold
             return OPENING_BID if ceiling >= OPENER_THRESHOLD else None
