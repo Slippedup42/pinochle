@@ -8,7 +8,8 @@ import { AI_BID_DELAY_MS, AuctionFlow } from './AuctionFlow'
 import type { AuctionState } from './auctionReducer'
 import { auctionReducer, initAuctionState, passedPlayersOf } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
-import { DEFAULT_OPTIONS, type GameOptions, type SkillLevel } from '../persistence/options'
+import { SKILL_LEVELS, type SkillLevel } from '../engine/skills'
+import { DEFAULT_OPTIONS } from '../persistence/options'
 
 const SEAT_NAMES: Record<PlayerIndex, string> = { 0: 'You', 1: 'West', 2: 'Partner', 3: 'East' }
 const SCORES = { 0: 0, 1: 0 }
@@ -365,21 +366,28 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
   })
 
   /**
-   * The pass is three cards at every skill level, end to end (#196).
+   * The pass is three cards, end to end (#196).
    *
    * Paul's dad reported that changing the AI skill let him pass **4** cards.
    * `passing.test.ts` fixes the count in the engine; this fixes it where he
-   * actually saw it — the wiring from `GameOptions` through `AuctionFlow` into
-   * the selector's `count` prop, and the selector's own refusal of a fourth.
+   * actually saw it — the wiring from `AuctionFlow` into the selector's `count`
+   * prop, and the selector's own refusal of a fourth.
    *
    * `PassSelector.test.tsx` already proves the component honours whatever
    * `count` it is handed, and that is exactly the gap: a component that
    * faithfully enforces the wrong number passes its own suite. The number has to
    * be checked where it is chosen.
+   *
+   * This ran five times, once per skill the panel could store, because the
+   * report named that setting. #222 removed it: `GameOptions` no longer carries
+   * a level, so the five cases became five identical renders of one option
+   * blob. What the report was actually about — that nothing outside
+   * `PASS_COUNT` decides how many cards leave a hand — is pinned across every
+   * configuration the engine still has, in `passing.test.ts`.
    */
-  it.each(['easy', 'medium', 'hard', 'proficient', 'expert'] as const)(
-    'asks the human for exactly 3 cards, and refuses a 4th, at skill %s',
-    (skill) => {
+  it(
+    'asks the human for exactly 3 cards, and refuses a 4th',
+    () => {
       vi.useFakeTimers()
       const hands = buildTestHands()
 
@@ -390,7 +398,7 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
           humanPlayer={0}
           dealer={3}
           scoresByTeam={SCORES}
-          options={{ ...DEFAULT_OPTIONS, opponentSkill: skill, teammateSkill: skill } as GameOptions}
+          options={DEFAULT_OPTIONS}
           onComplete={vi.fn()}
         />,
       )
@@ -428,12 +436,19 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
  * leave a seat holding 11 or 13 and satisfy every test above — and "my hand has
  * the wrong number of cards" is precisely the shape of the original report.
  *
- * So this runs the real exchange over real deals at every skill and asserts the
- * two properties that make it a *pass* rather than a rewrite: every seat still
- * holds twelve, and the 48 distinct cards of the deck are all still somewhere.
+ * So this runs the real exchange over real deals across every level slot and
+ * asserts the two properties that make it a *pass* rather than a rewrite: every
+ * seat still holds twelve, and the 48 distinct cards of the deck are all still
+ * somewhere.
+ *
+ * Since #222 the five slots all hold one configuration, so the sweep varies the
+ * deal, the trump and the bidder seat rather than the policy — which is what
+ * this test was ever about, since conservation is a property of the reducer and
+ * not of how the cards were chosen. `passing.test.ts` is where both valuation
+ * paths are still covered.
  */
 describe('the pass exchange conserves the deck (#196)', () => {
-  const SKILLS: readonly SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
+  const SKILLS: readonly SkillLevel[] = SKILL_LEVELS
   const TRUMPS = [Suit.Spades, Suit.Diamonds, Suit.Clubs, Suit.Hearts] as const
 
   it('leaves every seat on 12 cards and all 48 cards in play', () => {

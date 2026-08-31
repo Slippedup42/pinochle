@@ -1,4 +1,4 @@
-import { SELECTABLE_SKILLS, type GameOptions, type SelectableSkill } from '../persistence/options'
+import type { GameOptions } from '../persistence/options'
 
 export interface OptionsPanelProps {
   options: GameOptions
@@ -7,23 +7,19 @@ export interface OptionsPanelProps {
 }
 
 /**
- * Plain Easy/Medium/Hard (#194), replacing the five-rung Novice ... Master
- * ladder. Paul's dad tried the old settings and could not tell what they meant,
- * which is fair: "Journeyman" against "Expert" is not a difficulty, it is a
- * guild rank, and two of the five rungs are gone now anyway.
+ * Two display toggles, and no difficulty control (#222).
  *
- * The keys are engine tier names and the values are what a player reads. That
- * split is not new — this panel already showed `proficient` as "Expert" and
- * `expert` as "Master". `SELECTABLE_SKILLS` is the single source of truth for
- * which tiers are offered and in what order; see `options.ts` for why the engine
- * still defines five while only three are reachable.
+ * The panel offered Easy/Medium/Hard for opponents and teammate separately
+ * (#79, renamed by #194). Those three rows selected engine levels that were
+ * byte-identical apart from how much trump each seat could remember, which
+ * epic #215 measured at roughly four points a deal — a setting a player cannot
+ * feel is worse than no setting, because it invites them to blame it. So the
+ * control is gone rather than defaulted or hidden, and every seat plays
+ * `SHIPPED_SKILL` (`engine/skills.ts`).
+ *
+ * Nothing replaces it here. If a difficulty setting comes back it should be a
+ * span someone has measured first, not three names over one configuration.
  */
-const SKILL_LABELS: Record<SelectableSkill, string> = {
-  hard: 'Easy',
-  proficient: 'Medium',
-  expert: 'Hard',
-}
-
 export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) {
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/70 p-4">
@@ -46,34 +42,6 @@ export function OptionsPanel({ options, onChange, onClose }: OptionsPanelProps) 
               onChange={(e) => onChange({ ...options, hideTrickLog: !e.target.checked })}
             />
             Show trick-play log
-          </label>
-
-          <hr className="my-1 border-neutral-200" />
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Skill Level</h3>
-
-          <label className="flex items-center justify-between gap-2">
-            <span>Opponents</span>
-            <select
-              className="rounded border border-neutral-300 px-2 py-1 text-sm"
-              value={options.opponentSkill}
-              onChange={(e) => onChange({ ...options, opponentSkill: e.target.value as SelectableSkill })}
-            >
-              {SELECTABLE_SKILLS.map((s) => (
-                <option key={s} value={s}>{SKILL_LABELS[s]}</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center justify-between gap-2">
-            <span>Teammate</span>
-            <select
-              className="rounded border border-neutral-300 px-2 py-1 text-sm"
-              value={options.teammateSkill}
-              onChange={(e) => onChange({ ...options, teammateSkill: e.target.value as SelectableSkill })}
-            >
-              {SELECTABLE_SKILLS.map((s) => (
-                <option key={s} value={s}>{SKILL_LABELS[s]}</option>
-              ))}
-            </select>
           </label>
         </div>
 

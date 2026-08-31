@@ -13,9 +13,8 @@
 
 import { describe, expect, it } from 'vitest'
 import type { TeamId } from '../engine/round'
-import { SKILL_PARAMS } from '../engine/skills'
+import { SKILL_PARAMS, type SkillLevel } from '../engine/skills'
 import type { PlayerIndex } from '../engine/trick'
-import type { SkillLevel } from '../persistence/options'
 import {
   AUTO_SET_AB_POLICIES,
   BID_AB_POLICIES,

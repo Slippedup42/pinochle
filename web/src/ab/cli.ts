@@ -32,8 +32,7 @@
 // the rest of the engine, and paying for that with one cast is the cheaper
 // trade than a second tsconfig project.
 
-import type { SkillParams } from '../engine/skills'
-import type { SkillLevel } from '../persistence/options'
+import type { SkillLevel, SkillParams } from '../engine/skills'
 import {
   AUTO_SET_AB_POLICIES,
   BID_AB_POLICIES,

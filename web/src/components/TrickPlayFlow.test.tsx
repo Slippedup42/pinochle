@@ -15,7 +15,7 @@ import { Card, Deck, Suit } from '../engine/card'
 import type { Hands } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
-import { SKILL_PARAMS } from '../engine/skills'
+import { SHIPPED_SKILL, SKILL_PARAMS } from '../engine/skills'
 import { AI_PLAY_DELAY_MS, TRICK_SETTLE_MS, TrickPlayFlow } from './TrickPlayFlow'
 import { CLAIMABLE_TRUMP, claimableHands } from './claimablePosition.fixture'
 import { initTrickPlayState, type TrickPlayState } from './trickPlayReducer'
@@ -34,12 +34,13 @@ const SCORES = { 0: 0, 1: 0 }
  * Those tests are about legal-move highlighting, not folding, so they pin the
  * fold off rather than contriving meld to talk the model out of it. Save and
  * restore of a `SKILL_PARAMS` entry is the same shape `abRun.installPolicies`
- * uses, and the entry that matters is whichever one `DEFAULT_OPTIONS` puts the
- * AI seats on — **read from it, not named**. #194 changed that default from
- * `hard` to `proficient`, and while this file hardcoded `hard` the patch landed
- * on a tier nobody was playing: the fold stayed on, the bid winner conceded
- * before the first lead, and tests about which cards are clickable failed with
- * no cards on the table.
+ * uses, and the entry that matters is the one every seat plays — **read from
+ * `SHIPPED_SKILL`, not named**. This file used to hardcode `hard` while #194
+ * had moved the default to `proficient`, so the patch landed on a tier nobody
+ * was playing: the fold stayed on, the bid winner conceded before the first
+ * lead, and tests about which cards are clickable failed with no cards on the
+ * table. #222 left one configuration, which removes the way to get that wrong
+ * rather than the need to read it from the source.
  *
  * This is *not* enough on its own since #178. Auto-SET is arithmetic, not a
  * policy, so it fires whatever the dial says — and the minimum bid is 300
@@ -49,7 +50,7 @@ const SCORES = { 0: 0, 1: 0 }
  * team enough meld to clear the floor. `LIVE_MELD` is that floor with room to
  * spare; see `MAX_TRICK_POINTS` in `round.ts`.
  */
-const AI_TIER = DEFAULT_OPTIONS.opponentSkill
+const AI_TIER = SHIPPED_SKILL
 const PRISTINE_TIER = SKILL_PARAMS[AI_TIER]
 function disableAiFold() {
   SKILL_PARAMS[AI_TIER] = { ...PRISTINE_TIER, foldPolicy: 'never' }

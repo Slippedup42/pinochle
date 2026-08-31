@@ -36,11 +36,10 @@ import { checkGameOutcome } from '../engine/game'
 import { isMisdealEligible } from '../engine/misdeal'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import { type Hands, isAutoSet, playTrickTakingPhase, scoreRound, teamOf, type TeamId } from '../engine/round'
-import { SKILL_PARAMS } from '../engine/skills'
+import { SKILL_PARAMS, type SkillLevel } from '../engine/skills'
 import { PlayTracker, chooseFollowCard, chooseLeadCard } from '../engine/tracker'
 import { newTrumpMemories } from '../engine/trumpMemory'
 import type { PlayerIndex } from '../engine/trick'
-import type { SkillLevel } from '../persistence/options'
 
 const SEATS: readonly PlayerIndex[] = [0, 1, 2, 3]
 const SEAT_NAMES: Record<PlayerIndex, string> = { 0: 'S0', 1: 'S1', 2: 'S2', 3: 'S3' }

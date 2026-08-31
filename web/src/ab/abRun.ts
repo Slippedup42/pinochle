@@ -48,10 +48,9 @@
 // only thing differing between them is which rule answers "is this hand worth a
 // contract here".
 
-import { SKILL_PARAMS, type SkillParams } from '../engine/skills'
+import { SKILL_PARAMS, type SkillLevel, type SkillParams } from '../engine/skills'
 import type { TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
-import type { SkillLevel } from '../persistence/options'
 import { type SideStats, makeRng, newSideStats, playHeadlessGame } from './headlessGame'
 import { binomialTwoSidedP, bootstrapMeanCi, wilsonInterval } from './stats'
 
@@ -70,7 +69,6 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -79,7 +77,6 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   },
 }
 
@@ -100,7 +97,6 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -109,7 +105,6 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   },
 }
 
@@ -138,7 +133,6 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'off',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -147,7 +141,6 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   },
 }
 
@@ -182,7 +175,6 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'simple',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -191,7 +183,6 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   },
 }
 
@@ -239,7 +230,6 @@ export function safeCounterAbPolicies(
       playPolicy: 'cascade',
       autoSetPolicy: 'forced',
       safeCounterPolicy: 'counted',
-      openingPolicy: 'fixed',
     },
     [offLevel]: {
       handValuation: 'base_bid',
@@ -248,7 +238,6 @@ export function safeCounterAbPolicies(
       playPolicy: 'cascade',
       autoSetPolicy: 'forced',
       safeCounterPolicy: 'off',
-      openingPolicy: 'fixed',
     },
   }
 }
@@ -293,7 +282,6 @@ export function safeCounterCapacityPolicies(
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
-    openingPolicy: 'fixed',
   }
   return { [highLevel]: counted, [lowLevel]: counted }
 }

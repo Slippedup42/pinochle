@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SkillLevel } from '../persistence/options'
+import type { SkillLevel } from './skills'
 import { Card, Suit } from './card'
 import { SKILL_PARAMS } from './skills'
 import { Trick, type TrickPlay } from './trick'

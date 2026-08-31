@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import type { SkillLevel } from '../persistence/options'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { SKILL_LEVELS, SKILL_PARAMS, type SkillLevel, type SkillParams } from './skills'
 import { Card, Deck, Suit } from './card'
 import { PASS_COUNT, bidderPassSelection, choosePassCards, partnerPassSelection } from './passing'
 
@@ -150,7 +150,7 @@ describe('choosePassCards', () => {
 })
 
 /**
- * The 3-card pass, pinned against the skill dial (#196).
+ * The 3-card pass, pinned against every configuration the engine has (#196).
  *
  * Paul's dad reported that changing the AI skill level let him pass **4** cards
  * instead of 3. It was not reproducible — he was on a stale deployed build whose
@@ -159,19 +159,37 @@ describe('choosePassCards', () => {
  * report named a dial that nothing should connect to the pass at all.
  *
  * So this fixes the count as a property rather than trusting that no future
- * skill row grows a `passCount` field. Every combination that a real game can
- * produce — five levels x both roles x four trumps, over real dealt hands —
+ * policy row grows a `passCount` field. Every combination the engine can
+ * produce — five level slots x both roles x four trumps, over real dealt hands —
  * must return exactly three distinct cards that the hand actually held.
+ *
+ * #222 removed the setting the report named, and would have quietly gutted this
+ * sweep with it: `choosePassCards` branches on `handValuation`, and with one
+ * configuration on all five slots the loop would run the same branch five times.
+ * So `meld_only` — the arm `easy` used to select, now reachable only through an
+ * override — is installed onto one slot for the duration, using the same
+ * save/restore `abRun.installPolicies` and `tracker.test.ts` use. The sweep
+ * covers what it always covered.
  *
  * `pinochle_rules.md` is the authority: the pass is three cards, always. The
  * existing "returns exactly `count`" tests above take `count` as a parameter and
  * so cannot catch a caller passing the wrong one; these fix the number itself.
  */
 describe('the 3-card pass is invariant across skill levels (#196)', () => {
-  const SKILLS: readonly SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
+  const SKILLS: readonly SkillLevel[] = SKILL_LEVELS
   const TRUMPS = [Suit.Spades, Suit.Diamonds, Suit.Clubs, Suit.Hearts] as const
 
-  it('is three cards, and no skill level is wired to change it', () => {
+  const MELD_ONLY_LEVEL: SkillLevel = 'easy'
+  let pristine: SkillParams
+  beforeAll(() => {
+    pristine = SKILL_PARAMS[MELD_ONLY_LEVEL]
+    SKILL_PARAMS[MELD_ONLY_LEVEL] = { ...pristine, handValuation: 'meld_only' }
+  })
+  afterAll(() => {
+    SKILL_PARAMS[MELD_ONLY_LEVEL] = pristine
+  })
+
+  it('is three cards, and no configuration is wired to change it', () => {
     expect(PASS_COUNT).toBe(3)
   })
 

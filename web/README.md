@@ -31,8 +31,10 @@ npm test        # vitest
   `round.ts`, `game.ts`, `misdeal.ts`, and `names.ts`/`teamNames.ts`. Those
   tests cover the same edge cases as the Python `__main__` self-checks (Double
   Run vs. Run, Double Pinochle vs. Pinochle, etc.) plus additional coverage.
-  Alongside them: `skills.ts` (`SKILL_PARAMS`, the five-level difficulty
-  dial), the shipped AI (`evaluator.ts`), and two generated fixture pairs that
+  Alongside them: `skills.ts` (`SHIPPED_PARAMS`, the one AI configuration the
+  product plays, and the five `SKILL_PARAMS` slots `src/ab/` measures with —
+  there is no difficulty setting since #222), the shipped AI (`evaluator.ts`),
+  and two generated fixture pairs that
   check this engine against the Python reference and are never hand-edited —
   `evaluatorModel.ts` + `evaluatorParity.*` from `../export_evaluator.py`, and
   `engineParity.*` from `../export_parity_scenarios.py` (described below).
@@ -92,8 +94,8 @@ TS failure.
 
 ## Measuring the AI (`src/ab/`)
 
-`chooseBid` runs one of two policies per skill level (`SKILL_PARAMS.bidPolicy`
-in `src/engine/skills.ts`): the hand-tuned thresholds that predate epic #104, or
+`chooseBid` runs one of two policies, selected by `SKILL_PARAMS.bidPolicy`
+(`src/engine/skills.ts`): the hand-tuned thresholds that predate epic #104, or
 the evaluator distilled from the Python rollout AI. Issue #115 had to decide
 whether the second is worth switching on, which `ab_harness.py` cannot answer
 because both sides are TypeScript.

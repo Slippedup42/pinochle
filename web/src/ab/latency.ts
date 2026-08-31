@@ -24,7 +24,7 @@
 import { type AuctionContext, chooseBid } from '../engine/bidding'
 import { MIN_BID_INCREMENT, type Card } from '../engine/card'
 import type { PlayerIndex } from '../engine/trick'
-import type { SkillLevel } from '../persistence/options'
+import type { SkillLevel } from '../engine/skills'
 import { type BidSituationSample, makeRng, playHeadlessGame } from './headlessGame'
 import { DISTILLED_LEVEL, STATIC_LEVEL, installPolicies } from './abRun'
 import { percentile } from './stats'
