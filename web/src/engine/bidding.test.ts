@@ -22,6 +22,7 @@ import {
   PARTNER_PASSED_FLOOR,
   PARTNER_RAISE_FLOOR,
 } from './bidding'
+import { ROYAL_MARRIAGE_VALUE, scoreMelds } from './melds'
 import { partnerOf } from './round'
 import { SKILL_PARAMS } from './skills'
 import type { PlayerIndex } from './trick'
@@ -30,12 +31,17 @@ const trump = Suit.Spades
 const RUN_RANKS = ['A', '10', 'K', 'Q', 'J'] as const
 
 describe('computeBaseBid', () => {
-  it('scores a full trump Run at 150 plus its aces', () => {
+  it('scores a full trump Run at 150, its Royal Marriage at 40, and its aces', () => {
+    // The Run does not absorb the Royal Marriage (#242). Both are paid,
+    // because the King and Queen of trump are in two *different* melds at
+    // once and `pinochle_rules.md` says so in as many words. This line used
+    // to read 170 and the Royal Marriage line used to be absent.
     const hand = RUN_RANKS.map((r) => new Card(trump, r, 1))
     const { total, breakdown } = computeBaseBid(hand, trump)
     expect(breakdown['Run/near-run']).toBe(150)
+    expect(breakdown['Royal Marriage']).toBe(ROYAL_MARRIAGE_VALUE)
     expect(breakdown['Aces (flat, 20/ea)']).toBe(ACE_VALUE)
-    expect(total).toBe(150 + ACE_VALUE)
+    expect(total).toBe(150 + ROYAL_MARRIAGE_VALUE + ACE_VALUE)
   })
 
   it('credits a near-run (missing exactly one rank) at 120', () => {
@@ -57,8 +63,10 @@ describe('computeBaseBid', () => {
     expect(pool).toHaveLength(0)
   })
 
-  it('only credits the extra Royal Marriage once a Run/near-run is already counted', () => {
-    // Full run + a spare K/Q pair (2nd marriage) -> +40 on top of the run.
+  it('credits both Royal Marriages when a Run and a spare K/Q are both held', () => {
+    // Full run + a spare K/Q pair. Two Royal Marriages are held and two are
+    // paid; this asserted 40 before #242, on the reading that the run had
+    // already consumed the first one.
     const hand = [
       ...RUN_RANKS.map((r) => new Card(trump, r, 1)),
       new Card(trump, 'K', 2),
@@ -66,7 +74,7 @@ describe('computeBaseBid', () => {
     ]
     const { breakdown } = computeBaseBid(hand, trump)
     expect(breakdown['Run/near-run']).toBe(150)
-    expect(breakdown['Royal Marriage']).toBe(40)
+    expect(breakdown['Royal Marriage']).toBe(2 * ROYAL_MARRIAGE_VALUE)
   })
 
   it('credits the Royal Marriage at full value when there is no run at all', () => {
@@ -74,6 +82,75 @@ describe('computeBaseBid', () => {
     const { breakdown } = computeBaseBid(hand, trump)
     expect(breakdown['Royal Marriage']).toBe(40)
     expect(breakdown['Run/near-run']).toBeUndefined()
+  })
+
+  // -- #242: the valuation must not price meld the scorer will actually pay --
+  //
+  // The bug was one judgement made twice, in `compute_base_bid` and here, and
+  // the number was always wrong by exactly 40 per Royal Marriage held inside a
+  // run. Pinning the new number alone would not stop that happening again, so
+  // what these check is *agreement with `scoreMelds`* — the two are supposed to
+  // describe the same cards, and the moment they stop doing so is the moment
+  // the AI is bidding against a hand it does not have.
+  describe('agrees with scoreMelds about certain meld (#242)', () => {
+    // Sum of the Base Bid lines that describe *held* meld. `Aces (flat)` and
+    // the 3-different-aces bonus are trick-taking estimates, not meld, and the
+    // near-run / near-double-pinochle lines are speculative — so these cases
+    // are all built to hold neither.
+    const MELD_LINES = [
+      'Run/near-run',
+      'Royal Marriage',
+      'Common Marriage',
+      'Dix',
+      'Pinochle/near-double',
+      'Arounds',
+    ]
+    const meldPortion = (breakdown: Record<string, number>): number =>
+      MELD_LINES.reduce((sum, key) => sum + (breakdown[key] ?? 0), 0)
+
+    const cases: ReadonlyArray<[string, Card[], number]> = [
+      ['a bare trump Run', RUN_RANKS.map((r) => new Card(trump, r, 1)), 150 + 40],
+      [
+        'a Run plus a second Royal Marriage',
+        [
+          ...RUN_RANKS.map((r) => new Card(trump, r, 1)),
+          new Card(trump, 'K', 2),
+          new Card(trump, 'Q', 2),
+        ],
+        150 + 80,
+      ],
+      [
+        'a Double Run',
+        RUN_RANKS.flatMap((r) => [new Card(trump, r, 1), new Card(trump, r, 2)]),
+        1500 + 80,
+      ],
+    ]
+
+    for (const [name, hand, expected] of cases) {
+      it(`values ${name} at what the scorer pays for it`, () => {
+        const { breakdown } = computeBaseBid(hand, trump)
+        const { total: melded } = scoreMelds(hand, trump)
+        expect(meldPortion(breakdown)).toBe(melded)
+        expect(melded).toBe(expected)
+      })
+    }
+
+    it('leaves the near-run branch alone, which is a separate call site', () => {
+      // Explicitly out of #242's scope and not an oversight. NEAR_RUN_VALUE is
+      // a guess at a run that is *not* in hand, so what it does or does not
+      // already price in is a different question from what the scorer pays for
+      // cards that are. Four run ranks and two K/Q pairs: the valuation credits
+      // 120 + one marriage, the scorer pays two marriages and no run.
+      const hand = [
+        ...RUN_RANKS.filter((r) => r !== 'A').map((r) => new Card(trump, r, 1)),
+        new Card(trump, 'K', 2),
+        new Card(trump, 'Q', 2),
+      ]
+      const { breakdown } = computeBaseBid(hand, trump)
+      expect(breakdown['Run/near-run']).toBe(NEAR_RUN_VALUE)
+      expect(breakdown['Royal Marriage']).toBe(ROYAL_MARRIAGE_VALUE)
+      expect(scoreMelds(hand, trump).total).toBe(2 * ROYAL_MARRIAGE_VALUE)
+    })
   })
 
   it('credits near-double-pinochle at 225 for 3 of the 4 pieces', () => {
@@ -204,12 +281,26 @@ describe('chooseBid', () => {
   // OPENER_THRESHOLD no matter which suit bestBaseBid picks as trump.
   const weakHand = [new Card(Suit.Hearts, '9', 1)]
 
-  // Base Bid 170 (Run 150 + 1 Ace worth 20) -> ceiling 300 at the default
-  // 0/0 score adjustment (+130 baseline). Below OPENER_THRESHOLD (320).
-  const runOnlyHand = RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1))
+  // The "good but not good enough" fixture: Base Bid 160 (near-run 120 + the
+  // extra Royal Marriage 40) -> ceiling 290 at the default 0/0 score
+  // adjustment (+130 baseline). Below OPENER_THRESHOLD (320), and below the
+  // 330 the competitive branch relaxes to once a partner has bid.
+  //
+  // This was a bare trump Run until #242, which is the whole point: paying the
+  // Royal Marriage inside a run moved that hand from 300 to 340 and put it
+  // *over* the threshold, so it stopped being able to play this part. Four run
+  // ranks and a second K/Q keeps a hand the valuation likes without one it
+  // will open on. It sits in the near-run branch, which #242 deliberately left
+  // alone — so if that branch is ever settled the same way, this fixture moves
+  // again and these tests are where it shows up.
+  const nearRunHand = [
+    ...RUN_RANKS.filter((r) => r !== 'A').map((r) => new Card(Suit.Hearts, r, 1)),
+    new Card(Suit.Hearts, 'K', 2),
+    new Card(Suit.Hearts, 'Q', 2),
+  ]
 
-  // Base Bid 210 (Run 150 + extra Royal Marriage 40 + Ace 20) -> ceiling
-  // 340 at the default 0/0 adjustment (+130 baseline). Clears both
+  // Base Bid 250 (Run 150 + two Royal Marriages 80 + Ace 20) -> ceiling
+  // 380 at the default 0/0 adjustment (+130 baseline). Clears both
   // OPENER_THRESHOLD (320) and the 340 raise-support gate.
   const strongHand = [
     ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
@@ -257,19 +348,19 @@ describe('chooseBid', () => {
       // rule specifically, and since #115 opened the gate only `easy` and
       // `medium` still run it.
       const context = baseContext({ dealer: 0, passesSoFar: 3 })
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
     })
 
     it('takes this hand on a distilled level and passes it on a static one (#114/#115)', () => {
-      // runOnlyHand's ceiling is 300, under OPENER_THRESHOLD, so the static
-      // rule passes. The distilled evaluator takes it — it sees a full trump
-      // Run, 150 guaranteed meld before a trick is played, offered the contract
-      // at the 300 minimum. That divergence is the clearest single illustration
-      // of what #114 changes, and #115's A/B is why `hard` now follows the
-      // evaluator rather than the threshold.
+      // nearRunHand's ceiling is 290, under OPENER_THRESHOLD, so the static
+      // rule passes. The distilled evaluator takes it — it sees 80 guaranteed
+      // meld and four fifths of a run, offered the contract at the 300 minimum.
+      // That divergence is the clearest single illustration of what #114
+      // changes, and #115's A/B is why `hard` now follows the evaluator rather
+      // than the threshold.
       const context = baseContext({ dealer: 0, passesSoFar: 3 })
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
+      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+      expect(chooseBid(0, nearRunHand, OPENING_BID - 10, 10, context, 'hard')).toBe(OPENING_BID)
     })
 
     it('does not open a hopeless first-bidder hand (#126)', () => {
@@ -373,9 +464,9 @@ describe('chooseBid', () => {
       // that is no longer an opener, so `currentBid <= OPENING_BID` went false
       // and the push it exists to check stopped firing at all.
       const opener = { player: 1 as PlayerIndex, amount: OPENING_BID }
-      // runOnlyHand has ceiling 300 (Run 150 + Ace 20 + baseline adj 130) >= DEFENSIVE_PUSH_FLOOR (200)
+      // nearRunHand has ceiling 290 (near-run 120 + Royal Marriage 40 + baseline adj 130) >= DEFENSIVE_PUSH_FLOOR (200)
       const context = baseContext({ everBid: true, bidHistory: [opener] })
-      expect(chooseBid(0, runOnlyHand, OPENING_BID, 10, context)).toBe(OPENING_BID + 10)
+      expect(chooseBid(0, nearRunHand, OPENING_BID, 10, context)).toBe(OPENING_BID + 10)
 
       // weakHand has ceiling 130 (no meld, no aces) < DEFENSIVE_PUSH_FLOOR (200) — truly hopeless
       const hopelessContext = baseContext({ everBid: true, bidHistory: [opener] })
@@ -384,7 +475,7 @@ describe('chooseBid', () => {
 
     it('relaxes the ceiling to at least 330 once my partner has bid', () => {
       const withoutPartnerBid = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 320 }] })
-      expect(chooseBid(0, runOnlyHand, 320, 10, withoutPartnerBid)).toBeNull()
+      expect(chooseBid(0, nearRunHand, 320, 10, withoutPartnerBid)).toBeNull()
 
       const withPartnerBid = baseContext({
         everBid: true,
@@ -393,7 +484,7 @@ describe('chooseBid', () => {
           { player: 1, amount: 320 },
         ],
       })
-      expect(chooseBid(0, runOnlyHand, 320, 10, withPartnerBid)).toBe(330)
+      expect(chooseBid(0, nearRunHand, 320, 10, withPartnerBid)).toBe(330)
     })
   })
 })
@@ -746,10 +837,24 @@ describe('every bid chooseBid can return is legal (#177)', () => {
     // branch is only reachable there (see `worthContract`). Asserting the
     // ceiling first so a drift in the valuation constants fails as itself
     // rather than as a bidding regression.
-    const ceiling320Hand = [...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)), new Card(Suit.Spades, 'A', 1)]
+    //
+    // The hand was a trump Run plus an off-suit Ace until #242, which added
+    // the run's own Royal Marriage to the valuation and carried it 40 past the
+    // threshold it is here to sit exactly on. No hand holding a run can land
+    // on 320 any more — the floor for one is 340 — so this is built out of a
+    // near-run instead: 120 + Dix 10 + Pinochle 40 + one Ace 20 = 190.
+    const ceiling320Hand = [
+      new Card(Suit.Hearts, 'A', 1),
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Hearts, 'Q', 1),
+      new Card(Suit.Hearts, 'J', 1),
+      new Card(Suit.Hearts, '9', 1),
+      new Card(Suit.Spades, 'Q', 1),
+      new Card(Suit.Diamonds, 'J', 1),
+    ]
     const { trump, total } = bestBaseBid(ceiling320Hand, 0, 0)
     expect(trump).toBe(Suit.Hearts)
-    expect(total).toBe(OPENER_THRESHOLD) // Run 150 + two Aces 40 + baseline adj 130
+    expect(total).toBe(OPENER_THRESHOLD) // 190 of hand value + baseline adj 130
 
     // 4th bidder (dealer), partner (seat 2) has passed, nobody has bid.
     const context: AuctionContext = {
@@ -775,15 +880,27 @@ describe('every bid chooseBid can return is legal (#177)', () => {
 // off-ladder `currentBid` on purpose. Do not "simplify" them onto round AI
 // numbers; that is precisely the blind spot.
 describe('raising over a bid our own team already holds (#206)', () => {
-  // Ceiling 360 — clears PARTNER_RAISE_FLOOR with room above it.
+  // Ceiling 400 — clears PARTNER_RAISE_FLOOR with room above it. It read 360
+  // before #242 paid the second Royal Marriage this hand has always held.
   const strongHand = [
     ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
     new Card(Suit.Hearts, 'K', 2),
     new Card(Suit.Hearts, 'Q', 2),
     new Card(Suit.Spades, 'A', 1),
   ]
-  // Ceiling 320 — opens happily, but cannot support a 340 commitment.
-  const modestHand = [...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)), new Card(Suit.Spades, 'A', 1)]
+  // Ceiling 320 — opens happily, but cannot support a 340 commitment. This was
+  // a trump Run plus an off-suit Ace, which #242 moved to 360 and straight over
+  // the floor this fixture exists to sit under; a near-run of the same value
+  // takes its place (120 + Dix 10 + Pinochle 40 + one Ace 20 + adj 130).
+  const modestHand = [
+    new Card(Suit.Hearts, 'A', 1),
+    new Card(Suit.Hearts, 'K', 1),
+    new Card(Suit.Hearts, 'Q', 1),
+    new Card(Suit.Hearts, 'J', 1),
+    new Card(Suit.Hearts, '9', 1),
+    new Card(Suit.Spades, 'Q', 1),
+    new Card(Suit.Diamonds, 'J', 1),
+  ]
 
   /** Seat 2 opened one rung under `partnerBid`; its partner (seat 0) then bid
    *  `partnerBid`.
@@ -813,7 +930,7 @@ describe('raising over a bid our own team already holds (#206)', () => {
   })
 
   it('commits to PARTNER_RAISE_FLOOR rather than nudging its partner by ten', () => {
-    expect(bestBaseBid(strongHand, 0, 0).total).toBe(360)
+    expect(bestBaseBid(strongHand, 0, 0).total).toBe(400)
     // Every one of these used to answer `partnerBid + 10` — 270 over a 260 —
     // while requiring a 340-worthy hand to say it.
     for (const partnerBid of [260, 270, 280, 290, 300, 310, 320, 330]) {
@@ -896,7 +1013,7 @@ describe('raising over a bid our own team already holds (#206)', () => {
 // dial ships off; these exist so the arm stays correct and re-measurable rather
 // than rotting into something the harness can no longer trust.
 describe("openingPolicy: 'walk'", () => {
-  // Base Bid 210 (Run 150 + extra Royal Marriage 40 + Ace 20) -> ceiling 340 at
+  // Base Bid 250 (Run 150 + two Royal Marriages 80 + Ace 20) -> ceiling 380 at
   // the 0/0 adjustment, so it clears OPENER_THRESHOLD and has room above the
   // opening rung for the walk to actually climb into.
   const strongHand = [

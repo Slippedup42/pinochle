@@ -13,13 +13,18 @@ import { SKILL_PARAMS } from './skills'
 
 const RUN_RANKS: readonly Rank[] = ['A', '10', 'K', 'Q', 'J']
 
-/** A full Hearts Run plus a second royal marriage, an off-suit marriage and
- *  filler. Ceiling 360: Run 150 + extra Royal Marriage 40 + Common Marriage 20
- *  + one Ace 20, plus the 130 baseline competitive adjustment. */
+/** A full Hearts Run plus an off-suit marriage and filler. Ceiling 360: Run 150
+ *  + the run's own Royal Marriage 40 + Common Marriage 20 + one Ace 20, plus the
+ *  130 baseline competitive adjustment.
+ *
+ *  It also held a second King and Queen of Hearts until #242. The pairing with
+ *  `middlingHand` below is the entire point of this fixture and it only works
+ *  at equal ceilings, so when #242 started paying the marriage inside the run
+ *  the redundant K/Q came out to keep the number at 360 rather than the pair
+ *  being re-pinned at the 400 cap, where "identical ceiling" would be an
+ *  artefact of clamping instead of a statement about the two hands. */
 const strongHand = [
   ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
-  new Card(Suit.Hearts, 'K', 2),
-  new Card(Suit.Hearts, 'Q', 2),
   new Card(Suit.Spades, 'K', 1),
   new Card(Suit.Spades, 'Q', 1),
   new Card(Suit.Clubs, '9', 1),
@@ -172,10 +177,25 @@ describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
     passedPlayers: [],
   }
 
-  // Ceiling 300 — under OPENER_THRESHOLD, so the static rule passes, while the
-  // evaluator opens (a full trump Run is 150 guaranteed meld). One hand, two
-  // policies, which is what makes it a usable probe of the dial.
+  // Ceiling 340 since #242 (Run 150 + Royal Marriage 40 + Ace 20 + adj 130).
+  // Kept for the meld-only arithmetic below, which needs a hand that melds 190.
   const runOnlyHand = RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1))
+
+  // Ceiling 290 — under OPENER_THRESHOLD, so the static rule passes, while the
+  // evaluator opens (80 guaranteed meld and four fifths of a run). One hand,
+  // two policies, which is what makes it a usable probe of the dial.
+  //
+  // `runOnlyHand` was that probe until #242. Paying the Royal Marriage inside
+  // the run took it to 340, which the static threshold now opens on too — so
+  // the hand stopped separating the policies and would have gone on passing
+  // while proving nothing. A near-run does the job instead, and deliberately
+  // so: #242 left that branch untouched, which is exactly why a hand in it can
+  // still sit under the threshold.
+  const belowThresholdHand = [
+    ...RUN_RANKS.filter((r) => r !== 'A').map((r) => new Card(Suit.Hearts, r, 1)),
+    new Card(Suit.Hearts, 'K', 2),
+    new Card(Suit.Hearts, 'Q', 2),
+  ]
 
   it('runs the evaluator on hard and above, and the thresholds below (#115)', () => {
     // #114 pinned every level to 'static' so the model could not reach a player
@@ -195,22 +215,22 @@ describe('the skill dial selects the bid policy (#114, opened by #115)', () => {
   })
 
   it('separates the two policies on one hand the dial can be probed with', () => {
-    // Ceiling 300, under OPENER_THRESHOLD, so the static rule passes while the
+    // Ceiling 290, under OPENER_THRESHOLD, so the static rule passes while the
     // evaluator opens — one hand that reads the dial directly rather than
     // asserting on SKILL_PARAMS a second time.
-    expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
+    expect(chooseBid(0, belowThresholdHand, OPENING_BID - 10, 10, context, 'medium')).toBeNull()
     for (const level of ['hard', 'proficient', 'expert'] as const) {
-      expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, level)).toBe(OPENING_BID)
+      expect(chooseBid(0, belowThresholdHand, OPENING_BID - 10, 10, context, level)).toBe(OPENING_BID)
     }
   })
 
   it('opens this hand when the evaluator is consulted directly', () => {
-    // The same decision as above with the dial taken out of the picture: a full
-    // trump Run is 150 guaranteed meld, and the model takes the contract on it
-    // where a threshold on the ceiling alone does not.
+    // The same decision as above with the dial taken out of the picture: two
+    // Royal Marriages are 80 guaranteed meld, and the model takes the contract
+    // on it where a threshold on the ceiling alone does not.
     expect(
       shouldBid({
-        hand: runOnlyHand,
+        hand: belowThresholdHand,
         bid: OPENING_BID,
         ourScore: 0,
         theirScore: 0,

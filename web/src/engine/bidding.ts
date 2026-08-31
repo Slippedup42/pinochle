@@ -278,10 +278,16 @@ export function computeBaseBid(hand: readonly Card[], trump: Suit): BaseBidResul
   }
   if (runValue) breakdown['Run/near-run'] = runValue
 
-  // -- Royal marriage: only the "extra" (2nd) marriage beyond run/near-run
+  // -- Royal marriage ----------------------------------------------------
+  // A held Run does NOT absorb the Royal Marriage: pinochle_rules.md is
+  // explicit that a card counts toward multiple *different* meld types, and
+  // scoreMelds pays both, so the valuation pays both too (#242).
+  // The near-run branch keeps the extra-only rule: NEAR_RUN_VALUE is a
+  // speculative estimate of a run that is not in hand, not scored meld, and
+  // what it does or does not already price in is a separate question.
   const royalCount = Math.min(n(trump, 'K'), n(trump, 'Q'))
   let marriageValue = 0
-  if (runValue > 0) {
+  if (nearRun) {
     if (royalCount === 2) {
       marriageValue = ROYAL_MARRIAGE_VALUE
       claim(pool, trump, 'K', 1)
@@ -289,6 +295,8 @@ export function computeBaseBid(hand: readonly Card[], trump: Suit): BaseBidResul
     }
   } else {
     marriageValue = royalCount * ROYAL_MARRIAGE_VALUE
+    // Cards inside the run were already claimed above; this takes any
+    // King/Queen beyond it out of the leftover pool.
     claim(pool, trump, 'K', royalCount)
     claim(pool, trump, 'Q', royalCount)
   }
