@@ -5,10 +5,16 @@
 // there is AI research, not the value of a Double Run.
 //
 // A pure function over a hand and the trump suit, not a player decision.
-// A card can count toward multiple *different* meld types at once (a trump
-// King is part of both a Run and a Royal Marriage), but within a single
-// meld type you can't reuse a physical card — you need a second copy for a
-// second instance of the same meld.
+// A card can count toward multiple *different* meld types at once (the trump
+// Queen is part of both a Run and a Pinochle when spades is trump), but
+// within a single meld type you can't reuse a physical card — you need a
+// second copy for a second instance of the same meld.
+//
+// The Royal Marriage is the one exception, and it is the same rule stated
+// exactly (#273): a meld scores on top of a Run only if it needs at least one
+// card the Run does not use. The trump K+Q needs nothing the run has not
+// already consumed, so a bare Run scores 150, not 190. A second K+Q does need
+// cards outside the run, so it pays — hence `royalCount - runCount` below.
 //
 // Doubles (Double Run, Double Pinochle, Arounds doubles) REPLACE the single
 // value, they are not simple multiplication.
@@ -66,9 +72,12 @@ export function scoreMelds(hand: readonly Card[], trumpSuit: Suit): MeldResult {
     breakdown['Run'] = RUN_VALUE
   }
 
+  // A Run consumes one trump K and one trump Q; a Double Run consumes both
+  // copies of each and leaves no marriage at all (#273).
   const royalCount = Math.min(n(trumpSuit, 'K'), n(trumpSuit, 'Q'))
-  if (royalCount) {
-    breakdown['Royal Marriage'] = royalCount * ROYAL_MARRIAGE_VALUE
+  const payableRoyals = Math.max(0, royalCount - runCount)
+  if (payableRoyals) {
+    breakdown['Royal Marriage'] = payableRoyals * ROYAL_MARRIAGE_VALUE
   }
 
   let commonTotal = 0
@@ -127,7 +136,10 @@ export interface MeldCardsResult {
  * In real pinochle, the same card can be used in multiple *different* meld
  * types simultaneously (e.g. Q♠ counts toward Pinochle, Queens Around, and
  * a Royal Marriage if spades is trump). The only conflict is Run vs Royal
- * Marriage in the trump suit — the Run takes precedence since it scores higher.
+ * Marriage in the trump suit, and this function has always resolved it the way
+ * `scoreMelds` now does too (#273): the Run consumes the trump K and Q, so the
+ * marriage only forms out of a second pair. This was the one place in the tree
+ * that had the rule right before #273.
  *
  * This detection therefore does NOT remove cards from a pool as it goes;
  * instead, each meld type is detected independently, and the same Card object

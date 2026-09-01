@@ -69,7 +69,7 @@ export interface LogisticModelData {
 export const BID_MODEL: LogisticModelData = {
   decision: '1 = bid (taking the contract beats defending it)',
   threshold: 0.5,
-  intercept: -6.069390862993957,
+  intercept: -6.19389476032614,
   features: [
     'meld_total',
     'ace_count',
@@ -86,19 +86,19 @@ export const BID_MODEL: LogisticModelData = {
     'ceiling_minus_bid',
   ],
   weights: [
-    -0.0022923092415597585, // meld_total
-    -0.11915227455428673, // ace_count
-    1.40283764583207, // trump_length
-    0.3334661114180714, // longest_side_suit
-    1.5081945169943538, // has_run
-    -0.42927921973537847, // has_pinochle
-    -1.1128109370713444, // has_around
-    -0.012718278025399356, // bid
-    0.0004868776084134314, // score_diff
-    -0.36304435857880135, // partner_has_bid
-    -0.12119131162563343, // partner_has_passed
-    0.011403714584531583, // base_bid_ceiling
-    0.01320428510617928, // ceiling_minus_bid
+    -0.0024873622575311873, // meld_total
+    -0.126732228730393, // ace_count
+    1.4023166165334866, // trump_length
+    0.3288876019166424, // longest_side_suit
+    2.051057677712504, // has_run
+    -0.41992377065700787, // has_pinochle
+    -1.1119561513260512, // has_around
+    -0.012289767578943608, // bid
+    0.0004875362124900971, // score_diff
+    -0.3665798239912536, // partner_has_bid
+    -0.12901114987374146, // partner_has_passed
+    0.011541526172017473, // base_bid_ceiling
+    0.013203383279372491, // ceiling_minus_bid
   ],
 }
 
@@ -112,7 +112,7 @@ export const BID_MODEL: LogisticModelData = {
 export const FOLD_MODEL: LogisticModelData = {
   decision: '1 = concede (playing the contract out is worse than folding)',
   threshold: 0.5,
-  intercept: -2.082668858049474,
+  intercept: -2.069689117286419,
   features: [
     'meld_total',
     'ace_count',
@@ -130,19 +130,19 @@ export const FOLD_MODEL: LogisticModelData = {
     'fold_cost',
   ],
   weights: [
-    -0.006200129540398871, // meld_total
-    -0.46155705108551837, // ace_count
-    -1.2753029462568533, // trump_length
-    -0.2971986917283243, // longest_side_suit
-    -0.5504962413147405, // has_run
-    -0.9996315456762176, // has_pinochle
-    -0.06766905210127253, // has_around
-    0.02602992941918049, // bid
-    -0.01890992423936869, // bidding_meld
-    -0.005991904066792803, // defending_meld
-    0.0001361385592201033, // base_bid_ceiling
-    -0.003585502054810573, // ceiling_minus_bid
-    0.02233236081271136, // tricks_needed
-    0.0040453789421758994, // fold_cost
+    -0.006871643355541592, // meld_total
+    -0.46630896178550685, // ace_count
+    -1.2778613662319833, // trump_length
+    -0.2981074676390991, // longest_side_suit
+    -0.6568533488040701, // has_run
+    -0.9870238098788264, // has_pinochle
+    -0.05022535303011032, // has_around
+    0.02584810337337929, // bid
+    -0.0188676381017564, // bidding_meld
+    -0.005957546612203551, // defending_meld
+    0.0005200257374479207, // base_bid_ceiling
+    -0.0038763400167539605, // ceiling_minus_bid
+    0.022270677041430827, // tricks_needed
+    0.004012183599925915, // fold_cost
   ],
 }

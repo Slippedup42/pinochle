@@ -286,168 +286,214 @@
         "10H_2 10S_1 9C_1 9H_1 AC_1 AH_1 AS_1 JC_1 JD_2 JH_2 KD_1 KD_2",
         "10C_2 10H_1 9S_1 AC_2 AD_1 AH_2 JD_1 JS_1 KH_2 KS_2 QD_1 QH_1"
       ],
-      "bid_winner": 0,
-      "bid": 300,
-      "trump": "C",
-      "pass_to_bidder": "AC_1 AS_1 JC_1",
-      "pass_to_partner": "10D_1 9D_2 QS_1",
+      "bid_winner": 1,
+      "bid": 250,
+      "trump": "S",
+      "pass_to_bidder": "JD_1 QD_1 QH_1",
+      "pass_to_partner": "10C_1 10D_2 9D_1",
       "hands_after_pass": [
-        "9H_2 AC_1 AS_1 AS_2 JC_1 JC_2 JH_1 JS_2 KC_1 KH_1 QC_1 QC_2",
-        "10C_1 10D_2 10S_2 9C_2 9D_1 9S_2 AD_2 KC_2 KS_1 QD_2 QH_2 QS_2",
-        "10D_1 10H_2 10S_1 9C_1 9D_2 9H_1 AH_1 JD_2 JH_2 KD_1 KD_2 QS_1",
-        "10C_2 10H_1 9S_1 AC_2 AD_1 AH_2 JD_1 JS_1 KH_2 KS_2 QD_1 QH_1"
+        "10D_1 9D_2 9H_2 AS_2 JC_2 JH_1 JS_2 KC_1 KH_1 QC_1 QC_2 QS_1",
+        "10S_2 9C_2 9S_2 AD_2 JD_1 KC_2 KS_1 QD_1 QD_2 QH_1 QH_2 QS_2",
+        "10H_2 10S_1 9C_1 9H_1 AC_1 AH_1 AS_1 JC_1 JD_2 JH_2 KD_1 KD_2",
+        "10C_1 10C_2 10D_2 10H_1 9D_1 9S_1 AC_2 AD_1 AH_2 JS_1 KH_2 KS_2"
       ],
       "meld_by_player": [
-        40,
-        30,
-        50,
-        20
+        20,
+        90,
+        0,
+        10
       ],
       "meld_breakdown_by_player": [
         {
-          "Royal Marriage": 40
+          "Common Marriage": 20
         },
         {
-          "Common Marriage": 20,
-          "Dix": 10
-        },
-        {
+          "Royal Marriage": 40,
           "Dix": 10,
           "Pinochle": 40
         },
+        {},
         {
-          "Common Marriage": 20
+          "Dix": 10
         }
       ],
       "meld_by_team": [
-        90,
-        50
+        20,
+        100
       ],
       "tricks": [
         {
-          "leader": 0,
+          "leader": 1,
           "cards": [
-            "AC_1",
             "9C_2",
-            "9C_1",
-            "10C_2"
+            "JC_1",
+            "10C_2",
+            "JC_2"
           ],
           "legal_follows": [
-            "10C_1 9C_2 KC_2",
-            "9C_1",
-            "10C_2 AC_2"
+            "AC_1 JC_1",
+            "10C_1 10C_2 AC_2",
+            "JC_2 KC_1 QC_1 QC_2"
           ],
-          "winner": 0,
-          "points": 20
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "AS_2",
-            "9S_2",
-            "10S_1",
-            "9S_1"
-          ],
-          "legal_follows": [
-            "10S_2 9S_2 KS_1 QS_2",
-            "10S_1 QS_1",
-            "9S_1 JS_1 KS_2"
-          ],
-          "winner": 0,
-          "points": 20
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "AS_1",
-            "QS_2",
-            "QS_1",
-            "JS_1"
-          ],
-          "legal_follows": [
-            "10S_2 KS_1 QS_2",
-            "QS_1",
-            "JS_1 KS_2"
-          ],
-          "winner": 0,
+          "winner": 3,
           "points": 10
         },
         {
+          "leader": 3,
+          "cards": [
+            "9D_1",
+            "10D_1",
+            "AD_2",
+            "JD_2"
+          ],
+          "legal_follows": [
+            "10D_1",
+            "AD_2",
+            "JD_2 KD_1 KD_2"
+          ],
+          "winner": 1,
+          "points": 20
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "JD_1",
+            "KD_1",
+            "10D_2",
+            "9D_2"
+          ],
+          "legal_follows": [
+            "KD_1 KD_2",
+            "10D_2 AD_1",
+            "9D_2"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "9S_1",
+            "AS_2",
+            "9S_2",
+            "10S_1"
+          ],
+          "legal_follows": [
+            "AS_2 JS_2 QS_1",
+            "10S_2 9S_2 KS_1 QS_2",
+            "10S_1 AS_1"
+          ],
+          "winner": 0,
+          "points": 20
+        },
+        {
           "leader": 0,
           "cards": [
+            "QC_2",
+            "KC_2",
+            "AC_1",
+            "10C_1"
+          ],
+          "legal_follows": [
+            "KC_2",
+            "AC_1",
+            "10C_1 AC_2"
+          ],
+          "winner": 2,
+          "points": 30
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "AS_1",
+            "JS_1",
             "JS_2",
-            "KS_1",
+            "QS_2"
+          ],
+          "legal_follows": [
+            "JS_1 KS_2",
+            "JS_2 QS_1",
+            "10S_2 KS_1 QS_2"
+          ],
+          "winner": 2,
+          "points": 10
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "AH_1",
+            "KH_2",
+            "KH_1",
+            "QH_2"
+          ],
+          "legal_follows": [
+            "10H_1 AH_2 KH_2",
+            "9H_2 JH_1 KH_1",
+            "QH_1 QH_2"
+          ],
+          "winner": 2,
+          "points": 30
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "9C_1",
+            "AC_2",
+            "QC_1",
+            "KS_1"
+          ],
+          "legal_follows": [
+            "AC_2",
+            "KC_1 QC_1",
+            "10S_2 KS_1"
+          ],
+          "winner": 1,
+          "points": 20
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "QD_2",
+            "KD_2",
+            "AD_1",
+            "QS_1"
+          ],
+          "legal_follows": [
+            "KD_2",
+            "AD_1",
+            "QS_1"
+          ],
+          "winner": 0,
+          "points": 20
+        },
+        {
+          "leader": 0,
+          "cards": [
+            "KC_1",
+            "10S_2",
             "9H_1",
             "KS_2"
           ],
           "legal_follows": [
-            "10S_2 KS_1",
-            "10D_1 10H_2 9D_2 9H_1 AH_1 JD_2 JH_2 KD_1 KD_2",
+            "10S_2",
+            "10H_2 9H_1 JH_2",
             "KS_2"
           ],
           "winner": 1,
-          "points": 20
+          "points": 30
         },
         {
           "leader": 1,
           "cards": [
-            "9D_1",
-            "JD_2",
             "QD_1",
-            "KC_1"
-          ],
-          "legal_follows": [
-            "10D_1 JD_2 KD_1 KD_2",
-            "AD_1 QD_1",
-            "JC_1 JC_2 KC_1 QC_1 QC_2"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "JH_1",
-            "QH_2",
-            "10H_2",
-            "AH_2"
-          ],
-          "legal_follows": [
-            "QH_2",
-            "10H_2 AH_1",
-            "AH_2"
-          ],
-          "winner": 3,
-          "points": 20
-        },
-        {
-          "leader": 3,
-          "cards": [
-            "JD_1",
-            "JC_2",
-            "QD_2",
-            "KD_1"
-          ],
-          "legal_follows": [
-            "JC_1 JC_2 QC_1 QC_2",
-            "10D_2 AD_2 QD_2",
-            "10D_1 KD_1 KD_2"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "9H_2",
-            "KC_2",
             "JH_2",
-            "QH_1"
+            "10H_1",
+            "9H_2"
           ],
           "legal_follows": [
-            "10C_1 KC_2",
-            "AH_1 JH_2",
-            "10H_1 KH_2 QH_1"
+            "10H_2 JH_2",
+            "10H_1 AH_2",
+            "9H_2 JH_1"
           ],
           "winner": 1,
           "points": 10
@@ -455,75 +501,27 @@
         {
           "leader": 1,
           "cards": [
-            "10C_1",
-            "AH_1",
-            "AC_2",
-            "JC_1"
+            "QH_1",
+            "10H_2",
+            "AH_2",
+            "JH_1"
           ],
           "legal_follows": [
-            "10D_1 9D_2 AH_1 KD_2",
-            "AC_2",
-            "JC_1 QC_1 QC_2"
+            "10H_2",
+            "AH_2",
+            "JH_1"
           ],
           "winner": 3,
-          "points": 30
-        },
-        {
-          "leader": 3,
-          "cards": [
-            "KH_2",
-            "KH_1",
-            "10S_2",
-            "9D_2"
-          ],
-          "legal_follows": [
-            "KH_1",
-            "10D_2 10S_2 AD_2",
-            "10D_1 9D_2 KD_2"
-          ],
-          "winner": 3,
-          "points": 30
-        },
-        {
-          "leader": 3,
-          "cards": [
-            "10H_1",
-            "QC_2",
-            "10D_2",
-            "KD_2"
-          ],
-          "legal_follows": [
-            "QC_1 QC_2",
-            "10D_2 AD_2",
-            "10D_1 KD_2"
-          ],
-          "winner": 0,
-          "points": 30
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "QC_1",
-            "AD_2",
-            "10D_1",
-            "AD_1"
-          ],
-          "legal_follows": [
-            "AD_2",
-            "10D_1",
-            "AD_1"
-          ],
-          "winner": 0,
-          "points": 30
+          "points": 20
         }
       ],
       "trick_points_by_team": [
-        140,
-        110
+        110,
+        140
       ],
       "round_score_by_team": [
-        -300,
-        160
+        130,
+        -250
       ]
     },
     {
@@ -559,7 +557,7 @@
       ],
       "meld_by_player": [
         10,
-        190,
+        150,
         10,
         0
       ],
@@ -568,8 +566,7 @@
           "Dix": 10
         },
         {
-          "Run": 150,
-          "Royal Marriage": 40
+          "Run": 150
         },
         {
           "Dix": 10
@@ -578,7 +575,7 @@
       ],
       "meld_by_team": [
         20,
-        190
+        150
       ],
       "tricks": [
         {
@@ -618,7 +615,7 @@
           "cards": [
             "AH_2",
             "JH_2",
-            "10H_1",
+            "KH_2",
             "9H_1"
           ],
           "legal_follows": [
@@ -634,12 +631,12 @@
           "cards": [
             "AH_1",
             "KH_1",
-            "KH_2",
+            "10H_1",
             "QH_1"
           ],
           "legal_follows": [
             "KH_1",
-            "9H_2 JH_1 KH_2",
+            "10H_1 9H_2 JH_1",
             "QH_1 QH_2"
           ],
           "winner": 1,
@@ -667,7 +664,7 @@
             "QC_2",
             "10C_2",
             "JC_2",
-            "10C_1"
+            "KC_1"
           ],
           "legal_follows": [
             "10C_2",
@@ -696,7 +693,7 @@
         {
           "leader": 1,
           "cards": [
-            "KC_1",
+            "10C_1",
             "AC_1",
             "9C_2",
             "KC_2"
@@ -780,7 +777,7 @@
       ],
       "round_score_by_team": [
         100,
-        360
+        320
       ]
     },
     {
@@ -1059,138 +1056,60 @@
         "10D_1 10S_2 9D_1 9H_1 9S_1 JD_1 JH_1 JH_2 KD_2 QC_1 QD_1 QH_1",
         "10C_1 10D_2 10H_2 9C_1 9H_2 9S_2 AS_2 JC_2 JD_2 JS_2 KH_1 QD_2"
       ],
-      "bid_winner": 0,
-      "bid": 410,
-      "trump": "C",
-      "pass_to_bidder": "10S_2 9S_1 QC_1",
-      "pass_to_partner": "9D_2 KD_1 QS_1",
+      "bid_winner": 1,
+      "bid": 400,
+      "trump": "S",
+      "pass_to_bidder": "AS_2 JD_2 JS_2",
+      "pass_to_partner": "10H_1 9C_2 KC_2",
       "hands_after_pass": [
-        "10C_2 10S_2 9S_1 AC_1 AD_1 AH_2 AS_1 JC_1 KC_1 KS_1 QC_1 QC_2",
-        "10H_1 10S_1 9C_2 AC_2 AD_2 AH_1 JS_1 KC_2 KH_2 KS_2 QH_2 QS_2",
-        "10D_1 9D_1 9D_2 9H_1 JD_1 JH_1 JH_2 KD_1 KD_2 QD_1 QH_1 QS_1",
-        "10C_1 10D_2 10H_2 9C_1 9H_2 9S_2 AS_2 JC_2 JD_2 JS_2 KH_1 QD_2"
+        "10C_2 9D_2 AC_1 AD_1 AH_2 AS_1 JC_1 KC_1 KD_1 KS_1 QC_2 QS_1",
+        "10S_1 AC_2 AD_2 AH_1 AS_2 JD_2 JS_1 JS_2 KH_2 KS_2 QH_2 QS_2",
+        "10D_1 10S_2 9D_1 9H_1 9S_1 JD_1 JH_1 JH_2 KD_2 QC_1 QD_1 QH_1",
+        "10C_1 10D_2 10H_1 10H_2 9C_1 9C_2 9H_2 9S_2 JC_2 KC_2 KH_1 QD_2"
       ],
       "meld_by_player": [
-        290,
-        50,
-        60,
+        160,
+        310,
+        30,
         10
       ],
       "meld_breakdown_by_player": [
         {
-          "Run": 150,
           "Royal Marriage": 40,
+          "Common Marriage": 20,
           "As Around": 100
         },
         {
-          "Common Marriage": 40,
-          "Dix": 10
+          "Run": 150,
+          "Common Marriage": 20,
+          "Pinochle": 40,
+          "As Around": 100
         },
         {
           "Common Marriage": 20,
-          "Pinochle": 40
+          "Dix": 10
         },
         {
           "Dix": 10
         }
       ],
       "meld_by_team": [
-        350,
-        60
+        190,
+        320
       ],
       "tricks": [
         {
-          "leader": 0,
+          "leader": 1,
           "cards": [
-            "AC_1",
-            "KC_2",
-            "QS_1",
-            "10C_1"
+            "AS_2",
+            "10S_2",
+            "9S_2",
+            "KS_1"
           ],
           "legal_follows": [
-            "9C_2 AC_2 KC_2",
-            "10D_1 9D_1 9D_2 9H_1 JD_1 JH_1 JH_2 KD_1 KD_2 QD_1 QH_1 QS_1",
-            "10C_1 9C_1 JC_2"
-          ],
-          "winner": 0,
-          "points": 30
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "AS_1",
-            "JS_1",
-            "9H_1",
-            "9S_2"
-          ],
-          "legal_follows": [
-            "10S_1 JS_1 KS_2 QS_2",
-            "10D_1 9D_1 9D_2 9H_1 JD_1 JH_1 JH_2 KD_1 KD_2 QD_1 QH_1",
-            "9S_2 AS_2 JS_2"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "AD_1",
-            "AD_2",
-            "10D_1",
-            "JD_2"
-          ],
-          "legal_follows": [
-            "AD_2",
-            "10D_1 9D_1 9D_2 JD_1 KD_1 KD_2 QD_1",
-            "10D_2 JD_2 QD_2"
-          ],
-          "winner": 0,
-          "points": 30
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "AH_2",
-            "QH_2",
-            "JH_1",
-            "9H_2"
-          ],
-          "legal_follows": [
-            "10H_1 AH_1 KH_2 QH_2",
-            "JH_1 JH_2 QH_1",
-            "10H_2 9H_2 KH_1"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "9S_1",
-            "QS_2",
-            "JH_2",
-            "AS_2"
-          ],
-          "legal_follows": [
-            "10S_1 KS_2 QS_2",
-            "9D_1 9D_2 JD_1 JH_2 KD_1 KD_2 QD_1 QH_1",
-            "AS_2"
-          ],
-          "winner": 3,
-          "points": 10
-        },
-        {
-          "leader": 3,
-          "cards": [
-            "10D_2",
-            "KC_1",
-            "AC_2",
-            "9D_1"
-          ],
-          "legal_follows": [
-            "10C_2 JC_1 KC_1 QC_1 QC_2",
-            "AC_2",
-            "9D_1 9D_2 JD_1 KD_1 KD_2 QD_1"
+            "10S_2 9S_1",
+            "9S_2",
+            "AS_1 KS_1 QS_1"
           ],
           "winner": 1,
           "points": 30
@@ -1199,106 +1118,186 @@
           "leader": 1,
           "cards": [
             "AH_1",
-            "QH_1",
+            "9H_1",
+            "KH_1",
+            "AH_2"
+          ],
+          "legal_follows": [
+            "9H_1 JH_1 JH_2 QH_1",
+            "10H_1 10H_2 9H_2 KH_1",
+            "AH_2"
+          ],
+          "winner": 1,
+          "points": 30
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "AD_2",
+            "9D_1",
+            "10D_2",
+            "9D_2"
+          ],
+          "legal_follows": [
+            "10D_1 9D_1 JD_1 KD_2 QD_1",
+            "10D_2 QD_2",
+            "9D_2 AD_1 KD_1"
+          ],
+          "winner": 1,
+          "points": 20
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "AC_2",
+            "QC_1",
+            "KC_2",
+            "JC_1"
+          ],
+          "legal_follows": [
+            "QC_1",
+            "10C_1 9C_1 9C_2 JC_2 KC_2",
+            "10C_2 AC_1 JC_1 KC_1 QC_2"
+          ],
+          "winner": 1,
+          "points": 20
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "JD_2",
+            "QD_1",
+            "QD_2",
+            "KD_1"
+          ],
+          "legal_follows": [
+            "10D_1 KD_2 QD_1",
+            "QD_2",
+            "AD_1 KD_1"
+          ],
+          "winner": 0,
+          "points": 10
+        },
+        {
+          "leader": 0,
+          "cards": [
+            "AS_1",
+            "KS_2",
+            "9S_1",
+            "9H_2"
+          ],
+          "legal_follows": [
+            "10S_1 JS_1 JS_2 KS_2 QS_2",
+            "9S_1",
+            "10C_1 10H_1 10H_2 9C_1 9C_2 9H_2 JC_2"
+          ],
+          "winner": 0,
+          "points": 20
+        },
+        {
+          "leader": 0,
+          "cards": [
+            "AC_1",
+            "10S_1",
+            "JH_1",
+            "10C_1"
+          ],
+          "legal_follows": [
+            "10S_1 JS_1 JS_2 QS_2",
+            "10D_1 JD_1 JH_1 JH_2 KD_2 QH_1",
+            "10C_1 9C_1 9C_2 JC_2"
+          ],
+          "winner": 1,
+          "points": 30
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "QH_2",
+            "JH_2",
             "10H_2",
+            "QS_1"
+          ],
+          "legal_follows": [
+            "JH_2 QH_1",
+            "10H_1 10H_2",
+            "QS_1"
+          ],
+          "winner": 0,
+          "points": 10
+        },
+        {
+          "leader": 0,
+          "cards": [
+            "AD_1",
+            "JS_1",
+            "JD_1",
+            "10H_1"
+          ],
+          "legal_follows": [
+            "JS_1 JS_2 QS_2",
+            "10D_1 JD_1 KD_2",
+            "10H_1 9C_1 9C_2 JC_2"
+          ],
+          "winner": 1,
+          "points": 20
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "KH_2",
+            "QH_1",
+            "9C_1",
+            "QC_2"
+          ],
+          "legal_follows": [
+            "QH_1",
+            "9C_1 9C_2 JC_2",
+            "10C_2 KC_1 QC_2"
+          ],
+          "winner": 1,
+          "points": 10
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "QS_2",
+            "KD_2",
+            "9C_2",
+            "KC_1"
+          ],
+          "legal_follows": [
+            "10D_1 KD_2",
+            "9C_2 JC_2",
+            "10C_2 KC_1"
+          ],
+          "winner": 1,
+          "points": 20
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "JS_2",
+            "10D_1",
+            "JC_2",
             "10C_2"
           ],
           "legal_follows": [
-            "QH_1",
-            "10H_2 KH_1",
-            "10C_2 JC_1 QC_1 QC_2"
+            "10D_1",
+            "JC_2",
+            "10C_2"
           ],
-          "winner": 0,
-          "points": 30
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "10S_2",
-            "KS_2",
-            "9D_2",
-            "JS_2"
-          ],
-          "legal_follows": [
-            "10S_1 KS_2",
-            "9D_2 JD_1 KD_1 KD_2 QD_1",
-            "JS_2"
-          ],
-          "winner": 0,
+          "winner": 1,
           "points": 20
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "KS_1",
-            "10S_1",
-            "JD_1",
-            "9C_1"
-          ],
-          "legal_follows": [
-            "10S_1",
-            "JD_1 KD_1 KD_2 QD_1",
-            "9C_1 JC_2"
-          ],
-          "winner": 3,
-          "points": 20
-        },
-        {
-          "leader": 3,
-          "cards": [
-            "QD_2",
-            "JC_1",
-            "9C_2",
-            "KD_2"
-          ],
-          "legal_follows": [
-            "JC_1 QC_1 QC_2",
-            "9C_2",
-            "KD_1 KD_2"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "QC_2",
-            "KH_2",
-            "QD_1",
-            "JC_2"
-          ],
-          "legal_follows": [
-            "10H_1 KH_2",
-            "KD_1 QD_1",
-            "JC_2"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "QC_1",
-            "10H_1",
-            "KD_1",
-            "KH_1"
-          ],
-          "legal_follows": [
-            "10H_1",
-            "KD_1",
-            "KH_1"
-          ],
-          "winner": 0,
-          "points": 30
         }
       ],
       "trick_points_by_team": [
-        190,
-        60
+        40,
+        210
       ],
       "round_score_by_team": [
-        540,
-        120
+        230,
+        530
       ]
     },
     {
@@ -1333,7 +1332,7 @@
         "10C_2 10D_1 10D_2 9C_1 9H_1 9S_1 AH_1 JD_1 JD_2 KC_1 KD_2 QH_2"
       ],
       "meld_by_player": [
-        200,
+        160,
         0,
         0,
         10
@@ -1341,7 +1340,6 @@
       "meld_breakdown_by_player": [
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Dix": 10
         },
         {},
@@ -1351,7 +1349,7 @@
         }
       ],
       "meld_by_team": [
-        200,
+        160,
         10
       ],
       "tricks": [
@@ -1553,7 +1551,7 @@
         40
       ],
       "round_score_by_team": [
-        410,
+        370,
         50
       ]
     },
@@ -2096,71 +2094,107 @@
         "10C_1 10D_2 10H_1 10S_1 9D_1 JC_1 JH_2 JS_1 JS_2 KD_1 KS_2 QS_2",
         "9C_1 9D_2 9H_1 AH_1 AS_2 JH_1 KC_1 KD_2 QC_1 QC_2 QD_2 QH_1"
       ],
-      "bid_winner": 0,
-      "bid": 320,
-      "trump": "S",
-      "pass_to_bidder": "10S_1 KS_2 QS_2",
-      "pass_to_partner": "10C_2 9H_2 JC_2",
+      "bid_winner": 3,
+      "bid": 310,
+      "trump": "D",
+      "pass_to_bidder": "10D_1 AD_1 QD_1",
+      "pass_to_partner": "9C_1 9H_1 JH_1",
       "hands_after_pass": [
-        "10S_1 AC_2 AD_2 AH_2 AS_1 JD_1 JD_2 KC_2 KS_1 KS_2 QS_1 QS_2",
-        "10D_1 10H_2 10S_2 9C_2 9S_1 9S_2 AC_1 AD_1 KH_1 KH_2 QD_1 QH_2",
-        "10C_1 10C_2 10D_2 10H_1 9D_1 9H_2 JC_1 JC_2 JH_2 JS_1 JS_2 KD_1",
-        "9C_1 9D_2 9H_1 AH_1 AS_2 JH_1 KC_1 KD_2 QC_1 QC_2 QD_2 QH_1"
+        "10C_2 9H_2 AC_2 AD_2 AH_2 AS_1 JC_2 JD_1 JD_2 KC_2 KS_1 QS_1",
+        "10H_2 10S_2 9C_1 9C_2 9H_1 9S_1 9S_2 AC_1 JH_1 KH_1 KH_2 QH_2",
+        "10C_1 10D_2 10H_1 10S_1 9D_1 JC_1 JH_2 JS_1 JS_2 KD_1 KS_2 QS_2",
+        "10D_1 9D_2 AD_1 AH_1 AS_2 KC_1 KD_2 QC_1 QC_2 QD_1 QD_2 QH_1"
       ],
       "meld_by_player": [
-        480,
-        40,
-        0,
-        40
+        160,
+        20,
+        30,
+        70
       ],
       "meld_breakdown_by_player": [
         {
-          "Royal Marriage": 80,
-          "Double Pinochle": 300,
+          "Common Marriage": 20,
+          "Pinochle": 40,
           "As Around": 100
         },
         {
-          "Common Marriage": 20,
-          "Dix": 20
+          "Common Marriage": 20
         },
-        {},
         {
-          "Common Marriage": 40
+          "Common Marriage": 20,
+          "Dix": 10
+        },
+        {
+          "Royal Marriage": 40,
+          "Common Marriage": 20,
+          "Dix": 10
         }
       ],
       "meld_by_team": [
-        480,
-        80
+        190,
+        90
       ],
       "tricks": [
         {
-          "leader": 0,
+          "leader": 3,
           "cards": [
-            "AS_1",
-            "10S_2",
-            "JS_2",
-            "AS_2"
+            "AD_1",
+            "AD_2",
+            "9S_1",
+            "KD_1"
           ],
           "legal_follows": [
-            "10S_2 9S_1 9S_2",
-            "JS_1 JS_2",
-            "AS_2"
+            "AD_2 JD_1 JD_2",
+            "10H_2 10S_2 9C_1 9C_2 9H_1 9S_1 9S_2 AC_1 JH_1 KH_1 KH_2 QH_2",
+            "10D_2 9D_1 KD_1"
           ],
-          "winner": 0,
+          "winner": 3,
           "points": 30
         },
         {
-          "leader": 0,
+          "leader": 3,
           "cards": [
-            "AD_2",
-            "QD_1",
-            "10D_2",
-            "9D_2"
+            "AH_1",
+            "9H_2",
+            "KH_2",
+            "JH_2"
           ],
           "legal_follows": [
-            "10D_1 AD_1 QD_1",
-            "10D_2 9D_1 KD_1",
-            "9D_2 KD_2 QD_2"
+            "9H_2 AH_2",
+            "10H_2 9H_1 JH_1 KH_1 KH_2 QH_2",
+            "10H_1 JH_2"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "AS_2",
+            "QS_1",
+            "10S_2",
+            "JS_2"
+          ],
+          "legal_follows": [
+            "AS_1 KS_1 QS_1",
+            "10S_2 9S_2",
+            "10S_1 JS_1 JS_2 KS_2 QS_2"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "QH_1",
+            "AH_2",
+            "9H_1",
+            "10H_1"
+          ],
+          "legal_follows": [
+            "AH_2",
+            "10H_2 9H_1 JH_1 KH_1 QH_2",
+            "10H_1"
           ],
           "winner": 0,
           "points": 20
@@ -2171,168 +2205,136 @@
             "AC_2",
             "9C_2",
             "10C_1",
-            "9C_1"
-          ],
-          "legal_follows": [
-            "9C_2 AC_1",
-            "10C_1 10C_2 JC_1 JC_2",
-            "9C_1 KC_1 QC_1 QC_2"
-          ],
-          "winner": 0,
-          "points": 20
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "AH_2",
-            "QH_2",
-            "10H_1",
-            "9H_1"
-          ],
-          "legal_follows": [
-            "10H_2 KH_1 KH_2 QH_2",
-            "10H_1 9H_2 JH_2",
-            "9H_1 AH_1 JH_1 QH_1"
-          ],
-          "winner": 0,
-          "points": 20
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "JD_2",
-            "10D_1",
-            "9D_1",
-            "KD_2"
-          ],
-          "legal_follows": [
-            "10D_1 AD_1",
-            "9D_1 KD_1",
-            "KD_2 QD_2"
-          ],
-          "winner": 1,
-          "points": 20
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "AC_1",
-            "JC_1",
-            "KC_1",
-            "KC_2"
-          ],
-          "legal_follows": [
-            "10C_2 JC_1 JC_2",
-            "KC_1 QC_1 QC_2",
-            "KC_2"
-          ],
-          "winner": 1,
-          "points": 30
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "AD_1",
-            "KD_1",
-            "QD_2",
-            "JD_1"
-          ],
-          "legal_follows": [
-            "KD_1",
-            "QD_2",
-            "JD_1"
-          ],
-          "winner": 1,
-          "points": 20
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "KH_2",
-            "9H_2",
-            "AH_1",
-            "KS_1"
-          ],
-          "legal_follows": [
-            "9H_2 JH_2",
-            "AH_1",
-            "10S_1 KS_1 KS_2 QS_1 QS_2"
-          ],
-          "winner": 0,
-          "points": 30
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "10S_1",
-            "9S_1",
-            "JS_1",
-            "JH_1"
-          ],
-          "legal_follows": [
-            "9S_1 9S_2",
-            "JS_1",
-            "JH_1 QC_1 QC_2 QH_1"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "KS_2",
-            "9S_2",
-            "JH_2",
-            "QH_1"
-          ],
-          "legal_follows": [
-            "9S_2",
-            "10C_2 JC_2 JH_2",
-            "QC_1 QC_2 QH_1"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "QS_1",
-            "KH_1",
-            "JC_2",
             "QC_2"
           ],
           "legal_follows": [
-            "10H_2 KH_1",
-            "10C_2 JC_2",
-            "QC_1 QC_2"
+            "9C_1 9C_2 AC_1",
+            "10C_1 JC_1",
+            "KC_1 QC_1 QC_2"
           ],
           "winner": 0,
-          "points": 10
+          "points": 20
         },
         {
           "leader": 0,
           "cards": [
-            "QS_2",
-            "10H_2",
-            "10C_2",
-            "QC_1"
+            "AS_1",
+            "9S_2",
+            "KS_2",
+            "KD_2"
           ],
           "legal_follows": [
-            "10H_2",
-            "10C_2",
-            "QC_1"
+            "9S_2",
+            "10S_1 JS_1 KS_2 QS_2",
+            "10D_1 9D_2 KD_2 QD_1 QD_2"
           ],
-          "winner": 0,
+          "winner": 3,
+          "points": 30
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "QC_1",
+            "KC_2",
+            "AC_1",
+            "JC_1"
+          ],
+          "legal_follows": [
+            "10C_2 KC_2",
+            "AC_1",
+            "JC_1"
+          ],
+          "winner": 1,
           "points": 20
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "10H_2",
+            "10D_2",
+            "10D_1",
+            "JD_2"
+          ],
+          "legal_follows": [
+            "10D_2 9D_1",
+            "10D_1 9D_2 QD_1 QD_2",
+            "JD_1 JD_2"
+          ],
+          "winner": 2,
+          "points": 30
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "10S_1",
+            "9D_2",
+            "KS_1",
+            "9C_1"
+          ],
+          "legal_follows": [
+            "9D_2 QD_1 QD_2",
+            "KS_1",
+            "9C_1 JH_1 KH_1 QH_2"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "KC_1",
+            "10C_2",
+            "JH_1",
+            "9D_1"
+          ],
+          "legal_follows": [
+            "10C_2",
+            "JH_1 KH_1 QH_2",
+            "9D_1"
+          ],
+          "winner": 2,
+          "points": 20
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "QS_2",
+            "QD_2",
+            "JD_1",
+            "QH_2"
+          ],
+          "legal_follows": [
+            "QD_1 QD_2",
+            "JD_1",
+            "KH_1 QH_2"
+          ],
+          "winner": 3,
+          "points": 0
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "QD_1",
+            "JC_2",
+            "KH_1",
+            "JS_1"
+          ],
+          "legal_follows": [
+            "JC_2",
+            "KH_1",
+            "JS_1"
+          ],
+          "winner": 3,
+          "points": 10
         }
       ],
       "trick_points_by_team": [
-        180,
-        70
+        90,
+        160
       ],
       "round_score_by_team": [
-        660,
-        150
+        280,
+        -310
       ]
     },
     {
@@ -2462,7 +2464,7 @@
           "cards": [
             "AC_1",
             "9C_2",
-            "10C_1",
+            "KC_2",
             "JC_1"
           ],
           "legal_follows": [
@@ -2478,12 +2480,12 @@
           "cards": [
             "QD_2",
             "AD_2",
-            "KC_2",
+            "10C_1",
             "9S_1"
           ],
           "legal_follows": [
             "AD_2",
-            "10H_1 10H_2 9H_1 9H_2 KC_2 QH_1 QH_2",
+            "10C_1 10H_1 10H_2 9H_1 9H_2 QH_1 QH_2",
             "10S_2 9S_1 AS_1 JS_1"
           ],
           "winner": 3,
@@ -3221,7 +3223,7 @@
           "cards": [
             "AS_1",
             "9S_1",
-            "10S_2",
+            "KS_2",
             "QS_2"
           ],
           "legal_follows": [
@@ -3254,11 +3256,11 @@
             "AD_2",
             "QH_1",
             "JS_1",
-            "10D_1"
+            "KD_2"
           ],
           "legal_follows": [
             "QH_1 QH_2",
-            "10S_1 9C_2 JC_1 JC_2 JS_1 KS_2 QC_1",
+            "10S_1 10S_2 9C_2 JC_1 JC_2 JS_1 QC_1",
             "10D_1 10D_2 JD_1 KD_1 KD_2"
           ],
           "winner": 1,
@@ -3274,7 +3276,7 @@
           ],
           "legal_follows": [
             "9C_2 JC_1 JC_2 QC_1",
-            "10D_2 AS_2 JD_1 KD_1 KD_2 KS_1",
+            "10D_1 10D_2 AS_2 JD_1 KD_1 KS_1",
             "KC_1"
           ],
           "winner": 1,
@@ -3290,7 +3292,7 @@
           ],
           "legal_follows": [
             "JC_1 JC_2 QC_1",
-            "10D_2 AS_2 JD_1 KD_1 KD_2",
+            "10D_1 10D_2 AS_2 JD_1 KD_1",
             "10H_1 10H_2 9H_2 JH_1 KH_2"
           ],
           "winner": 0,
@@ -3306,8 +3308,8 @@
           ],
           "legal_follows": [
             "QH_2",
-            "10S_1 JC_1 KS_2 QC_1",
-            "10D_2 JD_1 KD_1 KD_2"
+            "10S_1 10S_2 JC_1 QC_1",
+            "10D_1 10D_2 JD_1 KD_1"
           ],
           "winner": 0,
           "points": 10
@@ -3318,12 +3320,12 @@
             "10H_1",
             "QC_2",
             "QC_1",
-            "KD_2"
+            "KD_1"
           ],
           "legal_follows": [
             "9S_2 QC_2 QS_1",
-            "10S_1 KS_2 QC_1",
-            "10D_2 KD_1 KD_2"
+            "10S_1 10S_2 QC_1",
+            "10D_1 10D_2 KD_1"
           ],
           "winner": 0,
           "points": 20
@@ -3333,13 +3335,13 @@
           "cards": [
             "JH_1",
             "9S_2",
-            "KS_2",
-            "KD_1"
+            "10S_2",
+            "10D_1"
           ],
           "legal_follows": [
             "9S_2 QS_1",
-            "10S_1 KS_2",
-            "10D_2 KD_1"
+            "10S_1 10S_2",
+            "10D_1 10D_2"
           ],
           "winner": 0,
           "points": 20
@@ -3466,7 +3468,7 @@
           "cards": [
             "AS_1",
             "KS_2",
-            "10S_2",
+            "KS_1",
             "JS_2"
           ],
           "legal_follows": [
@@ -3487,7 +3489,7 @@
           ],
           "legal_follows": [
             "AS_2",
-            "KS_1 QS_2",
+            "10S_2 QS_2",
             "10D_1 AD_2 JD_2"
           ],
           "winner": 3,
@@ -3544,7 +3546,7 @@
         {
           "leader": 2,
           "cards": [
-            "KS_1",
+            "10S_2",
             "10D_1",
             "QD_1",
             "AD_1"
@@ -3664,7 +3666,7 @@
       ],
       "meld_by_player": [
         20,
-        270,
+        230,
         60,
         20
       ],
@@ -3674,7 +3676,6 @@
         },
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Common Marriage": 20,
           "Dix": 20,
           "Pinochle": 40
@@ -3689,7 +3690,7 @@
       ],
       "meld_by_team": [
         80,
-        290
+        250
       ],
       "tricks": [
         {
@@ -3729,7 +3730,7 @@
           "cards": [
             "AH_1",
             "JH_1",
-            "10H_1",
+            "KH_1",
             "9H_2"
           ],
           "legal_follows": [
@@ -3794,12 +3795,12 @@
             "QH_1",
             "10D_2",
             "9C_2",
-            "KH_1"
+            "10H_1"
           ],
           "legal_follows": [
             "10D_2 9D_1 9D_2 JD_2 QD_1",
             "9C_2 9S_1 AC_1 AS_2 JC_2 QS_1",
-            "KH_1"
+            "10H_1"
           ],
           "winner": 1,
           "points": 20
@@ -3891,7 +3892,7 @@
       ],
       "round_score_by_team": [
         140,
-        480
+        440
       ]
     },
     {
@@ -4246,7 +4247,7 @@
           "cards": [
             "AH_1",
             "9H_2",
-            "10H_1",
+            "KH_1",
             "9H_1"
           ],
           "legal_follows": [
@@ -4284,7 +4285,7 @@
           "legal_follows": [
             "10H_2",
             "JH_2 QH_1",
-            "KH_1 QH_2"
+            "10H_1 QH_2"
           ],
           "winner": 2,
           "points": 20
@@ -4308,18 +4309,18 @@
         {
           "leader": 2,
           "cards": [
-            "KH_2",
+            "JH_1",
             "KC_2",
             "QH_1",
-            "KH_1"
+            "10H_1"
           ],
           "legal_follows": [
             "10C_1 10C_2 9C_2 JC_2 KC_1 KC_2",
             "QH_1",
-            "KH_1"
+            "10H_1"
           ],
           "winner": 3,
-          "points": 30
+          "points": 20
         },
         {
           "leader": 3,
@@ -4343,15 +4344,15 @@
             "10C_1",
             "JS_1",
             "JS_2",
-            "JH_1"
+            "KH_2"
           ],
           "legal_follows": [
             "10S_2 AS_2 JS_1 KS_1",
             "AS_1 JS_2 KS_2 QS_1",
-            "10S_1 9S_1 JH_1 QS_2"
+            "10S_1 9S_1 KH_2 QS_2"
           ],
           "winner": 3,
-          "points": 10
+          "points": 20
         },
         {
           "leader": 3,
@@ -4539,7 +4540,7 @@
             "9S_2",
             "KC_2",
             "9S_1",
-            "10S_2"
+            "KS_1"
           ],
           "legal_follows": [
             "10C_1 10C_2 9C_1 JC_1 KC_1 KC_2",
@@ -4606,7 +4607,7 @@
             "10C_2"
           ],
           "legal_follows": [
-            "JH_1 KS_1 QH_2 QS_1",
+            "10S_2 JH_1 QH_2 QS_1",
             "AS_1 KH_1 KS_2 QS_2",
             "10C_1 10C_2 9C_1 JC_1"
           ],
@@ -4623,7 +4624,7 @@
           ],
           "legal_follows": [
             "QC_2",
-            "KS_1 QH_2 QS_1",
+            "10S_2 QH_2 QS_1",
             "AS_1 KH_1 KS_2"
           ],
           "winner": 0,
@@ -4639,7 +4640,7 @@
           ],
           "legal_follows": [
             "10D_2 AH_2",
-            "KS_1 QS_1",
+            "10S_2 QS_1",
             "AS_1 KS_2"
           ],
           "winner": 0,
@@ -4650,12 +4651,12 @@
           "cards": [
             "9C_1",
             "AH_2",
-            "KS_1",
+            "10S_2",
             "AS_1"
           ],
           "legal_follows": [
             "AH_2",
-            "KS_1",
+            "10S_2",
             "AS_1"
           ],
           "winner": 0,
@@ -4691,151 +4692,69 @@
         "10H_1 10S_1 10S_2 9D_1 9D_2 AC_1 AS_1 KD_2 KH_2 KS_2 QC_1 QH_1",
         "10C_1 9C_1 9S_2 AC_2 AD_1 AH_2 JD_1 JS_1 KC_1 KC_2 QH_2 QS_2"
       ],
-      "bid_winner": 1,
-      "bid": 300,
-      "trump": "H",
-      "pass_to_bidder": "AD_1 AH_2 QH_2",
-      "pass_to_partner": "10C_2 JD_2 QC_2",
+      "bid_winner": 2,
+      "bid": 250,
+      "trump": "D",
+      "pass_to_bidder": "9C_2 9S_1 JH_1",
+      "pass_to_partner": "10H_1 10S_1 10S_2",
       "hands_after_pass": [
-        "10H_2 9C_2 9S_1 AD_2 AH_1 JC_1 JC_2 JH_1 KD_1 KH_1 QD_1 QS_1",
-        "10D_1 10D_2 9H_1 9H_2 AD_1 AH_2 AS_2 JH_2 JS_2 KS_1 QD_2 QH_2",
-        "10H_1 10S_1 10S_2 9D_1 9D_2 AC_1 AS_1 KD_2 KH_2 KS_2 QC_1 QH_1",
-        "10C_1 10C_2 9C_1 9S_2 AC_2 JD_1 JD_2 JS_1 KC_1 KC_2 QC_2 QS_2"
+        "10H_1 10H_2 10S_1 10S_2 AD_2 AH_1 JC_1 JC_2 KD_1 KH_1 QD_1 QS_1",
+        "10C_2 10D_1 10D_2 9H_1 9H_2 AS_2 JD_2 JH_2 JS_2 KS_1 QC_2 QD_2",
+        "9C_2 9D_1 9D_2 9S_1 AC_1 AS_1 JH_1 KD_2 KH_2 KS_2 QC_1 QH_1",
+        "10C_1 9C_1 9S_2 AC_2 AD_1 AH_2 JD_1 JS_1 KC_1 KC_2 QH_2 QS_2"
       ],
       "meld_by_player": [
-        20,
-        20,
         40,
-        60
+        0,
+        40,
+        40
       ],
       "meld_breakdown_by_player": [
         {
-          "Common Marriage": 20
+          "Royal Marriage": 40
         },
+        {},
         {
+          "Common Marriage": 20,
           "Dix": 20
         },
         {
-          "Royal Marriage": 40
-        },
-        {
-          "Common Marriage": 20,
           "Pinochle": 40
         }
       ],
       "meld_by_team": [
-        60,
-        80
+        80,
+        40
       ],
       "tricks": [
         {
-          "leader": 1,
+          "leader": 2,
           "cards": [
-            "AH_2",
-            "QH_1",
-            "JD_1",
-            "JH_1"
+            "9C_2",
+            "KC_1",
+            "JC_2",
+            "10C_2"
           ],
           "legal_follows": [
-            "10H_1 KH_2 QH_1",
-            "10C_1 10C_2 9C_1 9S_2 AC_2 JD_1 JD_2 JS_1 KC_1 KC_2 QC_2 QS_2",
-            "10H_2 AH_1 JH_1 KH_1"
+            "10C_1 AC_2 KC_1 KC_2",
+            "JC_1 JC_2",
+            "10C_2"
           ],
           "winner": 1,
-          "points": 10
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "AD_1",
-            "9D_1",
-            "JD_2",
-            "QD_1"
-          ],
-          "legal_follows": [
-            "9D_1 9D_2 KD_2",
-            "JD_2",
-            "AD_2 KD_1 QD_1"
-          ],
-          "winner": 1,
-          "points": 10
+          "points": 20
         },
         {
           "leader": 1,
           "cards": [
             "AS_2",
-            "KS_2",
+            "9S_1",
             "9S_2",
-            "9S_1"
+            "QS_1"
           ],
           "legal_follows": [
-            "10S_1 10S_2 AS_1 KS_2",
+            "9S_1 AS_1 KS_2",
             "9S_2 JS_1 QS_2",
-            "9S_1 QS_1"
-          ],
-          "winner": 1,
-          "points": 20
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "JS_2",
-            "10S_1",
-            "JS_1",
-            "QS_1"
-          ],
-          "legal_follows": [
-            "10S_1 10S_2 AS_1",
-            "JS_1 QS_2",
-            "QS_1"
-          ],
-          "winner": 2,
-          "points": 10
-        },
-        {
-          "leader": 2,
-          "cards": [
-            "9D_2",
-            "QS_2",
-            "KD_1",
-            "10D_2"
-          ],
-          "legal_follows": [
-            "10C_1 10C_2 9C_1 AC_2 KC_1 KC_2 QC_2 QS_2",
-            "AD_2 KD_1",
-            "10D_1 10D_2"
-          ],
-          "winner": 1,
-          "points": 20
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "QD_2",
-            "KD_2",
-            "9C_1",
-            "AD_2"
-          ],
-          "legal_follows": [
-            "KD_2",
-            "10C_1 10C_2 9C_1 AC_2 KC_1 KC_2 QC_2",
-            "AD_2"
-          ],
-          "winner": 0,
-          "points": 20
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "9C_2",
-            "9H_2",
-            "QC_1",
-            "KC_1"
-          ],
-          "legal_follows": [
-            "9H_1 9H_2 JH_2 QH_2",
-            "AC_1 QC_1",
-            "10C_1 10C_2 AC_2 KC_1 KC_2"
+            "10S_1 10S_2 QS_1"
           ],
           "winner": 1,
           "points": 10
@@ -4843,63 +4762,127 @@
         {
           "leader": 1,
           "cards": [
-            "10D_1",
-            "KH_2",
             "QC_2",
-            "10H_2"
+            "AC_1",
+            "9C_1",
+            "JC_1"
           ],
           "legal_follows": [
-            "10H_1 KH_2",
-            "10C_1 10C_2 AC_2 KC_2 QC_2",
-            "10H_2 AH_1"
+            "AC_1",
+            "10C_1 9C_1 AC_2 KC_2",
+            "JC_1"
+          ],
+          "winner": 2,
+          "points": 10
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "JH_1",
+            "QH_2",
+            "KH_1",
+            "9H_2"
+          ],
+          "legal_follows": [
+            "AH_2 QH_2",
+            "10H_1 10H_2 AH_1 KH_1",
+            "9H_1 9H_2 JH_2"
           ],
           "winner": 0,
-          "points": 30
+          "points": 10
         },
         {
           "leader": 0,
           "cards": [
-            "JC_2",
-            "9H_1",
-            "AC_1",
-            "KC_2"
+            "QD_1",
+            "10D_2",
+            "9D_1",
+            "AD_1"
           ],
           "legal_follows": [
-            "9H_1 JH_2 QH_2",
-            "AC_1",
-            "10C_1 10C_2 AC_2 KC_2"
+            "10D_1 10D_2",
+            "9D_1 9D_2 KD_2",
+            "AD_1"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "AH_2",
+            "10H_2",
+            "9H_1",
+            "QH_1"
+          ],
+          "legal_follows": [
+            "10H_1 10H_2 AH_1",
+            "9H_1 JH_2",
+            "KH_2 QH_1"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "AC_2",
+            "KD_1",
+            "10D_1",
+            "QC_1"
+          ],
+          "legal_follows": [
+            "AD_2 KD_1",
+            "10D_1",
+            "QC_1"
           ],
           "winner": 1,
-          "points": 20
+          "points": 30
         },
         {
           "leader": 1,
           "cards": [
-            "KS_1",
-            "10S_2",
-            "10C_1",
-            "KH_1"
+            "JH_2",
+            "KH_2",
+            "JD_1",
+            "10H_1"
           ],
           "legal_follows": [
-            "10S_2 AS_1",
-            "10C_1 10C_2 AC_2",
-            "AH_1 KH_1"
+            "KH_2",
+            "JD_1",
+            "10H_1 AH_1"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "10C_1",
+            "AD_2",
+            "JD_2",
+            "9D_2"
+          ],
+          "legal_follows": [
+            "AD_2",
+            "JD_2 QD_2",
+            "9D_2 KD_2"
           ],
           "winner": 0,
-          "points": 40
+          "points": 20
         },
         {
           "leader": 0,
           "cards": [
-            "JC_1",
-            "JH_2",
-            "10H_1",
-            "10C_2"
+            "10S_1",
+            "JS_2",
+            "AS_1",
+            "JS_1"
           ],
           "legal_follows": [
-            "JH_2 QH_2",
-            "10H_1",
-            "10C_2 AC_2"
+            "JS_2 KS_1",
+            "AS_1",
+            "JS_1 QS_2"
           ],
           "winner": 2,
           "points": 20
@@ -4907,27 +4890,43 @@
         {
           "leader": 2,
           "cards": [
-            "AS_1",
-            "AC_2",
-            "AH_1",
-            "QH_2"
+            "KD_2",
+            "QS_2",
+            "10S_2",
+            "QD_2"
           ],
           "legal_follows": [
-            "AC_2",
-            "AH_1",
-            "QH_2"
+            "KC_2 QS_2",
+            "10S_2 AH_1",
+            "QD_2"
           ],
-          "winner": 0,
-          "points": 30
+          "winner": 2,
+          "points": 20
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "KS_2",
+            "KC_2",
+            "AH_1",
+            "KS_1"
+          ],
+          "legal_follows": [
+            "KC_2",
+            "AH_1",
+            "KS_1"
+          ],
+          "winner": 2,
+          "points": 40
         }
       ],
       "trick_points_by_team": [
-        160,
-        90
+        130,
+        120
       ],
       "round_score_by_team": [
-        220,
-        -300
+        -250,
+        160
       ]
     },
     {
@@ -5222,7 +5221,7 @@
       "meld_by_player": [
         10,
         110,
-        230,
+        190,
         0
       ],
       "meld_breakdown_by_player": [
@@ -5236,13 +5235,12 @@
         },
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Pinochle": 40
         },
         {}
       ],
       "meld_by_team": [
-        240,
+        200,
         110
       ],
       "tricks": [
@@ -5444,7 +5442,7 @@
         50
       ],
       "round_score_by_team": [
-        440,
+        400,
         160
       ]
     },
@@ -5480,7 +5478,7 @@
         "10H_2 9H_1 9S_2 AH_2 JD_1 JS_2 KD_2 KH_2 QC_1 QD_2 QH_1 QS_1"
       ],
       "meld_by_player": [
-        210,
+        170,
         20,
         20,
         140
@@ -5488,7 +5486,6 @@
       "meld_breakdown_by_player": [
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Dix": 20
         },
         {
@@ -5504,7 +5501,7 @@
         }
       ],
       "meld_by_team": [
-        230,
+        190,
         160
       ],
       "tricks": [
@@ -5706,7 +5703,7 @@
         30
       ],
       "round_score_by_team": [
-        450,
+        410,
         190
       ]
     },
@@ -5745,7 +5742,7 @@
         60,
         0,
         60,
-        190
+        150
       ],
       "meld_breakdown_by_player": [
         {
@@ -5758,13 +5755,12 @@
           "Pinochle": 40
         },
         {
-          "Run": 150,
-          "Royal Marriage": 40
+          "Run": 150
         }
       ],
       "meld_by_team": [
         120,
-        190
+        150
       ],
       "tricks": [
         {
@@ -5853,7 +5849,7 @@
             "9S_2",
             "KH_1",
             "QS_1",
-            "10S_1"
+            "KS_1"
           ],
           "legal_follows": [
             "10H_1 JH_1 KH_1 QH_1 QH_2",
@@ -5873,7 +5869,7 @@
           ],
           "legal_follows": [
             "10D_1 AD_1",
-            "10S_2 AS_2 JS_1 JS_2 KS_1 KS_2",
+            "10S_1 10S_2 AS_2 JS_1 JS_2 KS_2",
             "JD_2 QD_2"
           ],
           "winner": 0,
@@ -5888,7 +5884,7 @@
             "10H_1"
           ],
           "legal_follows": [
-            "10S_2 AS_2 JS_1 KS_1 KS_2",
+            "10S_1 10S_2 AS_2 JS_1 KS_2",
             "AC_1 KC_1",
             "10H_1 JH_1 QH_1 QH_2"
           ],
@@ -5900,12 +5896,12 @@
           "cards": [
             "KD_1",
             "AD_1",
-            "KS_1",
+            "KS_2",
             "QD_2"
           ],
           "legal_follows": [
             "AD_1",
-            "10S_2 AS_2 KS_1 KS_2",
+            "10S_1 10S_2 AS_2 KS_2",
             "QD_2"
           ],
           "winner": 0,
@@ -5915,12 +5911,12 @@
           "leader": 0,
           "cards": [
             "KH_2",
-            "KS_2",
+            "10S_1",
             "9S_1",
             "JH_1"
           ],
           "legal_follows": [
-            "10S_2 AS_2 KS_2",
+            "10S_1 10S_2 AS_2",
             "9S_1 AC_1 QS_2",
             "JH_1 QH_1 QH_2"
           ],
@@ -5966,7 +5962,7 @@
       ],
       "round_score_by_team": [
         200,
-        360
+        320
       ]
     },
     {
@@ -6004,7 +6000,7 @@
         40,
         60,
         20,
-        190
+        150
       ],
       "meld_breakdown_by_player": [
         {
@@ -6018,13 +6014,12 @@
           "Common Marriage": 20
         },
         {
-          "Run": 150,
-          "Royal Marriage": 40
+          "Run": 150
         }
       ],
       "meld_by_team": [
         60,
-        250
+        210
       ],
       "tricks": [
         {
@@ -6226,7 +6221,7 @@
       ],
       "round_score_by_team": [
         110,
-        450
+        410
       ]
     },
     {
@@ -6262,7 +6257,7 @@
       ],
       "meld_by_player": [
         110,
-        310,
+        270,
         90,
         20
       ],
@@ -6274,7 +6269,6 @@
         },
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Common Marriage": 20,
           "As Around": 100
         },
@@ -6289,7 +6283,7 @@
       ],
       "meld_by_team": [
         200,
-        330
+        290
       ],
       "tricks": [
         {
@@ -6329,7 +6323,7 @@
           "cards": [
             "AS_2",
             "9S_1",
-            "10S_2",
+            "KS_2",
             "JS_1"
           ],
           "legal_follows": [
@@ -6345,7 +6339,7 @@
           "cards": [
             "AC_2",
             "9C_1",
-            "10C_2",
+            "KC_1",
             "KC_2"
           ],
           "legal_follows": [
@@ -6361,12 +6355,12 @@
           "cards": [
             "AS_1",
             "JS_2",
-            "10S_1",
+            "10S_2",
             "QS_2"
           ],
           "legal_follows": [
             "JS_2 QS_1",
-            "10S_1 9S_2 KS_2",
+            "10S_1 10S_2 9S_2",
             "KS_1 QS_2"
           ],
           "winner": 1,
@@ -6377,12 +6371,12 @@
           "cards": [
             "AC_1",
             "JC_1",
-            "KC_1",
+            "10C_2",
             "10C_1"
           ],
           "legal_follows": [
             "JC_1",
-            "9C_2 JC_2 KC_1 QC_1 QC_2",
+            "10C_2 9C_2 JC_2 QC_1 QC_2",
             "10C_1"
           ],
           "winner": 1,
@@ -6398,7 +6392,7 @@
           ],
           "legal_follows": [
             "10H_1",
-            "9C_2 9S_2 JC_2 KS_2 QC_1 QC_2",
+            "10S_1 9C_2 9S_2 JC_2 QC_1 QC_2",
             "AH_1"
           ],
           "winner": 0,
@@ -6410,12 +6404,12 @@
             "AD_2",
             "KD_2",
             "9D_2",
-            "KS_2"
+            "10S_1"
           ],
           "legal_follows": [
             "10D_2 JD_1 KD_2 QD_1",
             "9D_2 JD_2 QD_2",
-            "9C_2 JC_2 KS_2 QC_1 QC_2"
+            "10S_1 9C_2 JC_2 QC_1 QC_2"
           ],
           "winner": 0,
           "points": 30
@@ -6491,7 +6485,7 @@
       ],
       "round_score_by_team": [
         290,
-        490
+        450
       ]
     },
     {
@@ -6528,7 +6522,7 @@
       "meld_by_player": [
         60,
         0,
-        290,
+        250,
         80
       ],
       "meld_breakdown_by_player": [
@@ -6539,7 +6533,6 @@
         {},
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "As Around": 100
         },
         {
@@ -6549,7 +6542,7 @@
         }
       ],
       "meld_by_team": [
-        350,
+        310,
         80
       ],
       "tricks": [
@@ -6751,7 +6744,7 @@
         60
       ],
       "round_score_by_team": [
-        540,
+        500,
         140
       ]
     },
@@ -6788,7 +6781,7 @@
       ],
       "meld_by_player": [
         40,
-        490,
+        450,
         0,
         20
       ],
@@ -6799,7 +6792,6 @@
         },
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Double Pinochle": 300
         },
         {},
@@ -6809,7 +6801,7 @@
       ],
       "meld_by_team": [
         40,
-        510
+        470
       ],
       "tricks": [
         {
@@ -6849,7 +6841,7 @@
           "cards": [
             "AC_2",
             "JC_1",
-            "10C_1",
+            "KC_1",
             "JC_2"
           ],
           "legal_follows": [
@@ -6887,7 +6879,7 @@
           "legal_follows": [
             "10S_2 QS_1",
             "AS_2 KS_2",
-            "10H_1 9C_1 AC_1 JH_1 KC_1 KH_1 KH_2 QC_1"
+            "10C_1 10H_1 9C_1 AC_1 JH_1 KH_1 KH_2 QC_1"
           ],
           "winner": 2,
           "points": 10
@@ -6918,7 +6910,7 @@
           ],
           "legal_follows": [
             "AS_2",
-            "10H_1 AC_1 KC_1 KH_1 KH_2 QC_1",
+            "10C_1 10H_1 AC_1 KH_1 KH_2 QC_1",
             "JS_2"
           ],
           "winner": 2,
@@ -6945,12 +6937,12 @@
           "cards": [
             "10D_2",
             "JH_2",
-            "KC_1",
+            "KH_2",
             "QD_1"
           ],
           "legal_follows": [
             "10C_2 JH_2 QH_1 QH_2",
-            "10H_1 AC_1 KC_1 KH_2",
+            "10C_1 10H_1 AC_1 KH_2",
             "QD_1"
           ],
           "winner": 1,
@@ -6961,12 +6953,12 @@
           "cards": [
             "QD_2",
             "QH_1",
-            "AC_1",
+            "10H_1",
             "QC_2"
           ],
           "legal_follows": [
             "10C_2 QH_1 QH_2",
-            "10H_1 AC_1 KH_2",
+            "10C_1 10H_1 AC_1",
             "AH_2 KC_2 QC_2"
           ],
           "winner": 1,
@@ -6977,12 +6969,12 @@
           "cards": [
             "JD_2",
             "QH_2",
-            "KH_2",
+            "10C_1",
             "KC_2"
           ],
           "legal_follows": [
             "10C_2 QH_2",
-            "10H_1 KH_2",
+            "10C_1 AC_1",
             "AH_2 KC_2"
           ],
           "winner": 1,
@@ -6993,12 +6985,12 @@
           "cards": [
             "JD_1",
             "10C_2",
-            "10H_1",
+            "AC_1",
             "AH_2"
           ],
           "legal_follows": [
             "10C_2",
-            "10H_1",
+            "AC_1",
             "AH_2"
           ],
           "winner": 1,
@@ -7011,7 +7003,7 @@
       ],
       "round_score_by_team": [
         100,
-        700
+        660
       ]
     },
     {
@@ -7292,70 +7284,182 @@
         "10C_2 10D_2 10S_1 9H_2 AC_2 AD_1 JC_1 JD_1 JD_2 JH_1 JH_2 KD_2",
         "10H_2 9C_2 9D_2 9H_1 AC_1 AS_1 JS_2 KD_1 KS_1 QC_2 QH_1 QS_2"
       ],
-      "bid_winner": 0,
-      "bid": 320,
+      "bid_winner": 3,
+      "bid": 310,
       "trump": "S",
-      "pass_to_bidder": "10S_1 JD_1 JD_2",
-      "pass_to_partner": "10C_1 9C_1 KC_2",
+      "pass_to_bidder": "9S_1 AH_1 JS_1",
+      "pass_to_partner": "10H_2 9H_1 QH_1",
       "hands_after_pass": [
-        "10S_1 10S_2 AD_2 AH_2 AS_2 JD_1 JD_2 KH_1 KH_2 KS_2 QD_1 QS_1",
-        "10D_1 10H_1 9D_1 9S_1 9S_2 AH_1 JC_2 JS_1 KC_1 QC_1 QD_2 QH_2",
-        "10C_1 10C_2 10D_2 9C_1 9H_2 AC_2 AD_1 JC_1 JH_1 JH_2 KC_2 KD_2",
-        "10H_2 9C_2 9D_2 9H_1 AC_1 AS_1 JS_2 KD_1 KS_1 QC_2 QH_1 QS_2"
+        "10C_1 10S_2 9C_1 AD_2 AH_2 AS_2 KC_2 KH_1 KH_2 KS_2 QD_1 QS_1",
+        "10D_1 10H_1 10H_2 9D_1 9H_1 9S_2 JC_2 KC_1 QC_1 QD_2 QH_1 QH_2",
+        "10C_2 10D_2 10S_1 9H_2 AC_2 AD_1 JC_1 JD_1 JD_2 JH_1 JH_2 KD_2",
+        "9C_2 9D_2 9S_1 AC_1 AH_1 AS_1 JS_1 JS_2 KD_1 KS_1 QC_2 QS_2"
       ],
       "meld_by_player": [
-        80,
         40,
+        30,
         0,
-        40
+        50
       ],
       "meld_breakdown_by_player": [
         {
-          "Royal Marriage": 40,
-          "Pinochle": 40
+          "Royal Marriage": 40
         },
         {
           "Common Marriage": 20,
-          "Dix": 20
+          "Dix": 10
         },
         {},
         {
-          "Royal Marriage": 40
+          "Royal Marriage": 40,
+          "Dix": 10
         }
       ],
       "meld_by_team": [
-        80,
+        40,
         80
       ],
       "tricks": [
         {
-          "leader": 0,
+          "leader": 3,
           "cards": [
-            "AS_2",
-            "9S_1",
-            "9H_2",
-            "KS_1"
+            "AS_1",
+            "KS_2",
+            "9S_2",
+            "10S_1"
           ],
           "legal_follows": [
-            "9S_1 9S_2 JS_1",
-            "10C_1 10C_2 10D_2 9C_1 9H_2 AC_2 AD_1 JC_1 JH_1 JH_2 KC_2 KD_2",
-            "AS_1 JS_2 KS_1 QS_2"
+            "10S_2 AS_2 KS_2 QS_1",
+            "9S_2",
+            "10S_1"
+          ],
+          "winner": 3,
+          "points": 30
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "AC_1",
+            "9C_1",
+            "KC_1",
+            "JC_1"
+          ],
+          "legal_follows": [
+            "10C_1 9C_1 KC_2",
+            "JC_2 KC_1 QC_1",
+            "10C_2 AC_2 JC_1"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "AH_1",
+            "KH_2",
+            "10H_1",
+            "9H_2"
+          ],
+          "legal_follows": [
+            "AH_2 KH_1 KH_2",
+            "10H_1 10H_2 9H_1 QH_1 QH_2",
+            "9H_2 JH_1 JH_2"
+          ],
+          "winner": 3,
+          "points": 30
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "QC_2",
+            "KC_2",
+            "JC_2",
+            "10C_2"
+          ],
+          "legal_follows": [
+            "10C_1 KC_2",
+            "JC_2 QC_1",
+            "10C_2 AC_2"
+          ],
+          "winner": 2,
+          "points": 20
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "AD_1",
+            "9D_2",
+            "QD_1",
+            "9D_1"
+          ],
+          "legal_follows": [
+            "9D_2 KD_1",
+            "AD_2 QD_1",
+            "10D_1 9D_1 QD_2"
+          ],
+          "winner": 2,
+          "points": 10
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "AC_2",
+            "9C_2",
+            "10C_1",
+            "QC_1"
+          ],
+          "legal_follows": [
+            "9C_2",
+            "10C_1",
+            "QC_1"
+          ],
+          "winner": 2,
+          "points": 20
+        },
+        {
+          "leader": 2,
+          "cards": [
+            "JH_1",
+            "KS_1",
+            "KH_1",
+            "10H_2"
+          ],
+          "legal_follows": [
+            "9S_1 JS_1 JS_2 KS_1 QS_2",
+            "AH_2 KH_1",
+            "10H_2"
+          ],
+          "winner": 3,
+          "points": 30
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "KD_1",
+            "AD_2",
+            "QD_2",
+            "KD_2"
+          ],
+          "legal_follows": [
+            "AD_2",
+            "10D_1 QD_2",
+            "10D_2 JD_1 JD_2 KD_2"
           ],
           "winner": 0,
-          "points": 20
+          "points": 30
         },
         {
           "leader": 0,
           "cards": [
-            "AD_2",
-            "9D_1",
-            "10D_2",
-            "9D_2"
+            "AS_2",
+            "10D_1",
+            "JH_2",
+            "9S_1"
           ],
           "legal_follows": [
-            "10D_1 9D_1 QD_2",
-            "10D_2 AD_1 KD_2",
-            "9D_2 KD_1"
+            "10D_1 9H_1 QH_1 QH_2",
+            "10D_2 JD_1 JD_2 JH_2",
+            "9S_1 JS_1 JS_2 QS_2"
           ],
           "winner": 0,
           "points": 20
@@ -7364,14 +7468,30 @@
           "leader": 0,
           "cards": [
             "AH_2",
-            "QH_2",
-            "JH_1",
-            "9H_1"
+            "9H_1",
+            "JD_2",
+            "JS_2"
           ],
           "legal_follows": [
-            "10H_1 AH_1 QH_2",
-            "JH_1 JH_2",
-            "10H_2 9H_1 QH_1"
+            "9H_1 QH_1 QH_2",
+            "10D_2 JD_1 JD_2",
+            "JS_1 JS_2 QS_2"
+          ],
+          "winner": 3,
+          "points": 10
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "QS_2",
+            "10S_2",
+            "QH_2",
+            "JD_1"
+          ],
+          "legal_follows": [
+            "10S_2",
+            "QH_1 QH_2",
+            "10D_2 JD_1"
           ],
           "winner": 0,
           "points": 10
@@ -7379,155 +7499,27 @@
         {
           "leader": 0,
           "cards": [
-            "QD_1",
-            "10D_1",
-            "AD_1",
-            "KD_1"
-          ],
-          "legal_follows": [
-            "10D_1",
-            "AD_1",
-            "KD_1"
-          ],
-          "winner": 2,
-          "points": 30
-        },
-        {
-          "leader": 2,
-          "cards": [
-            "AC_2",
-            "9C_2",
-            "KS_2",
-            "JC_2"
-          ],
-          "legal_follows": [
-            "9C_2 AC_1 QC_2",
-            "10S_1 10S_2 KS_2 QS_1",
-            "JC_2 KC_1 QC_1"
-          ],
-          "winner": 0,
-          "points": 20
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "JD_2",
-            "QD_2",
-            "KD_2",
-            "AS_1"
-          ],
-          "legal_follows": [
-            "QD_2",
-            "KD_2",
-            "AS_1 JS_2 QS_2"
-          ],
-          "winner": 3,
-          "points": 20
-        },
-        {
-          "leader": 3,
-          "cards": [
-            "AC_1",
-            "10S_2",
-            "QC_1",
-            "10C_2"
-          ],
-          "legal_follows": [
-            "10S_1 10S_2 QS_1",
-            "KC_1 QC_1",
-            "10C_1 10C_2 9C_1 JC_1 KC_2"
-          ],
-          "winner": 0,
-          "points": 30
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "JD_1",
-            "9S_2",
-            "JH_2",
-            "JS_2"
-          ],
-          "legal_follows": [
-            "9S_2 JS_1",
-            "10C_1 9C_1 JC_1 JH_2 KC_2",
-            "JS_2 QS_2"
-          ],
-          "winner": 3,
-          "points": 0
-        },
-        {
-          "leader": 3,
-          "cards": [
-            "QC_2",
-            "10S_1",
-            "KC_1",
-            "10C_1"
-          ],
-          "legal_follows": [
-            "10S_1 QS_1",
-            "KC_1",
-            "10C_1"
-          ],
-          "winner": 0,
-          "points": 30
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "KH_2",
-            "10H_1",
-            "9C_1",
-            "10H_2"
-          ],
-          "legal_follows": [
-            "10H_1 AH_1",
-            "9C_1 JC_1 KC_2",
-            "10H_2 QH_1"
-          ],
-          "winner": 1,
-          "points": 30
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "AH_1",
-            "JC_1",
+            "QS_1",
             "QH_1",
-            "KH_1"
+            "10D_2",
+            "JS_1"
           ],
           "legal_follows": [
-            "JC_1 KC_2",
             "QH_1",
-            "KH_1"
+            "10D_2",
+            "JS_1"
           ],
-          "winner": 1,
-          "points": 20
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "JS_1",
-            "KC_2",
-            "QS_2",
-            "QS_1"
-          ],
-          "legal_follows": [
-            "KC_2",
-            "QS_2",
-            "QS_1"
-          ],
-          "winner": 3,
+          "winner": 0,
           "points": 10
         }
       ],
       "trick_points_by_team": [
-        160,
-        90
+        130,
+        120
       ],
       "round_score_by_team": [
-        -320,
-        170
+        170,
+        -310
       ]
     },
     {
@@ -7564,7 +7556,7 @@
       "meld_by_player": [
         0,
         100,
-        250,
+        210,
         20
       ],
       "meld_breakdown_by_player": [
@@ -7575,7 +7567,6 @@
         },
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Dix": 20,
           "Pinochle": 40
         },
@@ -7584,7 +7575,7 @@
         }
       ],
       "meld_by_team": [
-        250,
+        210,
         120
       ],
       "tricks": [
@@ -7786,7 +7777,7 @@
         40
       ],
       "round_score_by_team": [
-        460,
+        420,
         160
       ]
     },
@@ -7871,7 +7862,7 @@
           "cards": [
             "AD_1",
             "9D_1",
-            "10D_1",
+            "KD_1",
             "QD_2"
           ],
           "legal_follows": [
@@ -7903,7 +7894,7 @@
           "cards": [
             "AH_1",
             "9H_1",
-            "10H_2",
+            "KH_2",
             "JH_2"
           ],
           "legal_follows": [
@@ -7924,7 +7915,7 @@
           ],
           "legal_follows": [
             "KC_1",
-            "10D_2 9H_2 AH_2 JH_1 KD_1 KH_2 QD_1 QH_2",
+            "10D_1 10D_2 10H_2 9H_2 AH_2 JH_1 QD_1 QH_2",
             "10C_1 10C_2 AC_2"
           ],
           "winner": 0,
@@ -7936,12 +7927,12 @@
             "JC_1",
             "KS_1",
             "9C_1",
-            "KD_1"
+            "10D_1"
           ],
           "legal_follows": [
             "10S_2 9S_2 KS_1 KS_2 QS_1",
             "9C_1",
-            "10D_2 9H_2 AH_2 JH_1 KD_1 KH_2 QH_2"
+            "10D_1 10D_2 10H_2 9H_2 AH_2 JH_1 QH_2"
           ],
           "winner": 1,
           "points": 20
@@ -7973,7 +7964,7 @@
           "legal_follows": [
             "JD_1",
             "JS_1 JS_2 QS_2",
-            "9H_2 AH_2 JH_1 KH_2 QH_2"
+            "10H_2 9H_2 AH_2 JH_1 QH_2"
           ],
           "winner": 2,
           "points": 10
@@ -7982,12 +7973,12 @@
           "leader": 2,
           "cards": [
             "QH_1",
-            "KH_2",
+            "10H_2",
             "10H_1",
             "KS_2"
           ],
           "legal_follows": [
-            "AH_2 KH_2",
+            "10H_2 AH_2",
             "10H_1",
             "10S_2 9S_2 KS_2 QS_1"
           ],
@@ -8602,7 +8593,7 @@
       ],
       "meld_by_player": [
         10,
-        200,
+        160,
         100,
         40
       ],
@@ -8612,7 +8603,6 @@
         },
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Dix": 10
         },
         {
@@ -8625,7 +8615,7 @@
       ],
       "meld_by_team": [
         110,
-        240
+        200
       ],
       "tricks": [
         {
@@ -8681,7 +8671,7 @@
           "cards": [
             "AD_2",
             "QD_2",
-            "10D_1",
+            "KD_1",
             "JD_2"
           ],
           "legal_follows": [
@@ -8702,7 +8692,7 @@
           ],
           "legal_follows": [
             "10C_1 AC_2 JC_2 KC_1 KC_2 QC_1",
-            "9D_1 KD_1",
+            "10D_1 9D_1",
             "JD_1"
           ],
           "winner": 1,
@@ -8743,7 +8733,7 @@
         {
           "leader": 2,
           "cards": [
-            "KD_1",
+            "10D_1",
             "KH_2",
             "9C_1",
             "QC_1"
@@ -8827,7 +8817,7 @@
       ],
       "round_score_by_team": [
         220,
-        380
+        340
       ]
     },
     {
@@ -9423,7 +9413,7 @@
           "cards": [
             "AD_1",
             "9D_2",
-            "10D_2",
+            "KD_2",
             "JD_2"
           ],
           "legal_follows": [
@@ -9492,7 +9482,7 @@
           ],
           "legal_follows": [
             "9S_2 AS_2 QS_2",
-            "10D_1 9C_2 9D_1 JC_2 KD_2 QC_2 QD_2",
+            "10D_1 10D_2 9C_2 9D_1 JC_2 QC_2 QD_2",
             "KH_1"
           ],
           "winner": 1,
@@ -9507,7 +9497,7 @@
             "JD_1"
           ],
           "legal_follows": [
-            "10D_1 9D_1 KD_2 QD_2",
+            "10D_1 10D_2 9D_1 QD_2",
             "QD_1",
             "JD_1"
           ],
@@ -9540,7 +9530,7 @@
           ],
           "legal_follows": [
             "9S_2 QS_2",
-            "10D_1 KD_2 QC_2 QD_2",
+            "10D_1 10D_2 QC_2 QD_2",
             "KS_2"
           ],
           "winner": 3,
@@ -9557,7 +9547,7 @@
           "legal_follows": [
             "9S_1 JS_1 JS_2",
             "10C_1",
-            "10D_1 KD_2 QD_2"
+            "10D_1 10D_2 QD_2"
           ],
           "winner": 0,
           "points": 20
@@ -9567,12 +9557,12 @@
           "cards": [
             "JS_1",
             "QS_2",
-            "KD_2",
+            "10D_2",
             "JH_2"
           ],
           "legal_follows": [
             "QS_2",
-            "10D_1 KD_2",
+            "10D_1 10D_2",
             "10C_2 JH_2"
           ],
           "winner": 1,
@@ -9624,57 +9614,57 @@
         "10C_1 10S_2 9C_2 AD_2 AH_2 JS_1 KD_1 KD_2 KH_1 KS_1 KS_2 QS_2",
         "10C_2 10H_1 10H_2 10S_1 9H_1 AC_1 AC_2 JD_1 JD_2 JH_1 KC_2 QC_1"
       ],
-      "bid_winner": 0,
-      "bid": 300,
-      "trump": "S",
-      "pass_to_bidder": "KS_1 KS_2 QS_2",
-      "pass_to_partner": "JC_1 JC_2 KC_1",
+      "bid_winner": 1,
+      "bid": 250,
+      "trump": "H",
+      "pass_to_bidder": "JD_1 JD_2 QC_1",
+      "pass_to_partner": "9C_1 9D_1 9D_2",
       "hands_after_pass": [
-        "10D_1 10D_2 9S_2 AH_1 AS_1 JH_2 KS_1 KS_2 QD_1 QD_2 QH_1 QS_2",
-        "9C_1 9D_1 9D_2 9H_2 9S_1 AD_1 AS_2 JS_2 KH_2 QC_2 QH_2 QS_1",
-        "10C_1 10S_2 9C_2 AD_2 AH_2 JC_1 JC_2 JS_1 KC_1 KD_1 KD_2 KH_1",
-        "10C_2 10H_1 10H_2 10S_1 9H_1 AC_1 AC_2 JD_1 JD_2 JH_1 KC_2 QC_1"
+        "10D_1 10D_2 9S_2 AH_1 AS_1 JC_1 JC_2 JH_2 KC_1 QD_1 QD_2 QH_1",
+        "9H_2 9S_1 AD_1 AS_2 JD_1 JD_2 JS_2 KH_2 QC_1 QC_2 QH_2 QS_1",
+        "10C_1 10S_2 9C_2 AD_2 AH_2 JS_1 KD_1 KD_2 KH_1 KS_1 KS_2 QS_2",
+        "10C_2 10H_1 10H_2 10S_1 9C_1 9D_1 9D_2 9H_1 AC_1 AC_2 JH_1 KC_2"
       ],
       "meld_by_player": [
-        50,
-        30,
         0,
-        20
+        90,
+        20,
+        10
       ],
       "meld_breakdown_by_player": [
-        {
-          "Royal Marriage": 40,
-          "Dix": 10
-        },
-        {
-          "Common Marriage": 20,
-          "Dix": 10
-        },
         {},
         {
+          "Royal Marriage": 40,
+          "Dix": 10,
+          "Pinochle": 40
+        },
+        {
           "Common Marriage": 20
+        },
+        {
+          "Dix": 10
         }
       ],
       "meld_by_team": [
-        50,
-        50
+        20,
+        100
       ],
       "tricks": [
         {
-          "leader": 0,
+          "leader": 1,
           "cards": [
-            "AS_1",
             "9S_1",
-            "10S_2",
-            "10S_1"
+            "JS_1",
+            "10S_1",
+            "AS_1"
           ],
           "legal_follows": [
-            "9S_1 AS_2 JS_2 QS_1",
-            "10S_2 JS_1",
-            "10S_1"
+            "10S_2 JS_1 KS_1 KS_2 QS_2",
+            "10S_1",
+            "AS_1"
           ],
           "winner": 0,
-          "points": 30
+          "points": 20
         },
         {
           "leader": 0,
@@ -9695,31 +9685,95 @@
         {
           "leader": 0,
           "cards": [
-            "QH_1",
-            "KH_2",
-            "AH_2",
+            "9S_2",
+            "JS_2",
+            "QS_2",
             "JH_1"
           ],
           "legal_follows": [
-            "KH_2",
-            "AH_2",
+            "AS_2 JS_2 QS_1",
+            "10S_2 KS_1 KS_2 QS_2",
             "10H_1 10H_2 JH_1"
           ],
-          "winner": 2,
+          "winner": 3,
+          "points": 0
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "9D_1",
+            "QD_1",
+            "AD_1",
+            "KD_1"
+          ],
+          "legal_follows": [
+            "10D_1 10D_2 QD_1 QD_2",
+            "AD_1",
+            "AD_2 KD_1 KD_2"
+          ],
+          "winner": 1,
           "points": 20
+        },
+        {
+          "leader": 1,
+          "cards": [
+            "JD_2",
+            "KD_2",
+            "9D_2",
+            "10D_2"
+          ],
+          "legal_follows": [
+            "AD_2 KD_2",
+            "9D_2",
+            "10D_1 10D_2"
+          ],
+          "winner": 0,
+          "points": 20
+        },
+        {
+          "leader": 0,
+          "cards": [
+            "QD_2",
+            "JD_1",
+            "AD_2",
+            "10H_2"
+          ],
+          "legal_follows": [
+            "JD_1",
+            "AD_2",
+            "10H_1 10H_2"
+          ],
+          "winner": 3,
+          "points": 20
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "9C_1",
+            "JC_1",
+            "QC_2",
+            "10C_1"
+          ],
+          "legal_follows": [
+            "JC_1 JC_2 KC_1",
+            "QC_1 QC_2",
+            "10C_1"
+          ],
+          "winner": 2,
+          "points": 10
         },
         {
           "leader": 2,
           "cards": [
-            "AD_2",
-            "JD_2",
-            "10D_2",
-            "9D_1"
+            "AH_2",
+            "10H_1",
+            "JH_2",
+            "QH_2"
           ],
           "legal_follows": [
-            "JD_1 JD_2",
-            "10D_1 10D_2 QD_1 QD_2",
-            "9D_1 9D_2 AD_1"
+            "10H_1",
+            "JH_2 QH_1",
+            "KH_2 QH_2"
           ],
           "winner": 2,
           "points": 20
@@ -9728,129 +9782,65 @@
           "leader": 2,
           "cards": [
             "9C_2",
-            "QC_1",
-            "KS_2",
-            "9C_1"
-          ],
-          "legal_follows": [
-            "10C_2 AC_1 AC_2 KC_2 QC_1",
-            "9S_2 KS_1 KS_2 QS_2",
-            "9C_1 QC_2"
-          ],
-          "winner": 0,
-          "points": 10
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "JH_2",
-            "QH_2",
-            "JS_1",
-            "10H_2"
-          ],
-          "legal_follows": [
-            "QH_2",
-            "JS_1",
-            "10H_1 10H_2"
-          ],
-          "winner": 2,
-          "points": 10
-        },
-        {
-          "leader": 2,
-          "cards": [
-            "JC_1",
             "KC_2",
-            "KS_1",
-            "QC_2"
+            "JC_2",
+            "QC_1"
           ],
           "legal_follows": [
             "10C_2 AC_1 AC_2 KC_2",
-            "9S_2 KS_1 QS_2",
-            "QC_2"
+            "JC_2 KC_1",
+            "QC_1"
           ],
-          "winner": 0,
-          "points": 20
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "QD_1",
-            "AD_1",
-            "KD_1",
-            "JD_1"
-          ],
-          "legal_follows": [
-            "AD_1",
-            "KD_1 KD_2",
-            "JD_1"
-          ],
-          "winner": 1,
-          "points": 20
-        },
-        {
-          "leader": 1,
-          "cards": [
-            "9D_2",
-            "KD_2",
-            "10H_1",
-            "10D_1"
-          ],
-          "legal_follows": [
-            "KD_2",
-            "10C_2 10H_1 AC_1 AC_2",
-            "10D_1"
-          ],
-          "winner": 0,
-          "points": 30
-        },
-        {
-          "leader": 0,
-          "cards": [
-            "QD_2",
-            "JS_2",
-            "JC_2",
-            "10C_2"
-          ],
-          "legal_follows": [
-            "AS_2 JS_2 QS_1",
-            "10C_1 JC_2 KC_1",
-            "10C_2 AC_1 AC_2"
-          ],
-          "winner": 1,
+          "winner": 3,
           "points": 10
+        },
+        {
+          "leader": 3,
+          "cards": [
+            "10C_2",
+            "KC_1",
+            "KH_2",
+            "KS_2"
+          ],
+          "legal_follows": [
+            "KC_1",
+            "KH_2",
+            "10S_2 KS_1 KS_2"
+          ],
+          "winner": 1,
+          "points": 40
         },
         {
           "leader": 1,
           "cards": [
             "QS_1",
-            "KC_1",
+            "KS_1",
             "AC_1",
-            "9S_2"
+            "QH_1"
           ],
           "legal_follows": [
-            "10C_1 KC_1",
+            "10S_2 KS_1",
             "AC_1 AC_2",
-            "9S_2 QS_2"
+            "QH_1"
           ],
-          "winner": 1,
+          "winner": 0,
           "points": 20
         },
         {
-          "leader": 1,
+          "leader": 0,
           "cards": [
+            "10D_1",
             "AS_2",
-            "10C_1",
-            "AC_2",
-            "QS_2"
+            "10S_2",
+            "AC_2"
           ],
           "legal_follows": [
-            "10C_1",
-            "AC_2",
-            "QS_2"
+            "AS_2",
+            "10S_2",
+            "AC_2"
           ],
-          "winner": 1,
-          "points": 30
+          "winner": 0,
+          "points": 40
         }
       ],
       "trick_points_by_team": [
@@ -9858,8 +9848,8 @@
         90
       ],
       "round_score_by_team": [
-        -300,
-        140
+        180,
+        -250
       ]
     },
     {
@@ -9895,7 +9885,7 @@
       ],
       "meld_by_player": [
         100,
-        200,
+        160,
         10,
         40
       ],
@@ -9906,7 +9896,6 @@
         },
         {
           "Run": 150,
-          "Royal Marriage": 40,
           "Dix": 10
         },
         {
@@ -9918,7 +9907,7 @@
       ],
       "meld_by_team": [
         110,
-        240
+        200
       ],
       "tricks": [
         {
@@ -10120,7 +10109,7 @@
       ],
       "round_score_by_team": [
         210,
-        390
+        350
       ]
     },
     {

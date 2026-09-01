@@ -132,9 +132,10 @@ describe('gameFlowReducer', () => {
 
   describe('TRICK_COMPLETE', () => {
     function stateAfterAuction(overrides: Partial<AuctionResult> = {}, scoresByTeam = { 0: 0, 1: 0 }): GameFlowState {
-      // Player 0 (team 0) holds a Hearts run + Royal Marriage under Hearts
-      // trump; player 1 (team 1) holds nothing special — gives a
-      // deterministic, non-zero meld split to assert on.
+      // Player 0 (team 0) holds a bare Hearts run under Hearts trump, which
+      // melds 150: the Run absorbs the Royal Marriage inside it (#273), so this
+      // is 150 and not 190. Player 1 (team 1) holds nothing special — together
+      // that gives a deterministic, non-zero meld split to assert on.
       const hands = emptyHands()
       hands[0] = [
         new Card(Suit.Hearts, 'A', 1),
@@ -160,13 +161,13 @@ describe('gameFlowReducer', () => {
 
       expect(next.phase).toBe('round-summary')
       expect(next.roundSummary).not.toBeNull()
-      // Team 0: Run (150) + Royal Marriage (40) = 190 meld + 100 trick = 290 >= bid 300? no -> set.
-      expect(next.roundSummary?.meldPointsByTeam[0]).toBe(190)
+      // Team 0: Run (150) meld + 100 trick = 250 >= bid 300? no -> set.
+      expect(next.roundSummary?.meldPointsByTeam[0]).toBe(150)
       expect(next.roundSummary?.meldPointsByTeam[1]).toBe(0)
       expect(next.roundSummary?.trickPointsByTeam).toEqual({ 0: 100, 1: 150 })
       expect(next.roundSummary?.bidWinnerTeam).toBe(0)
       expect(next.roundSummary?.bid).toBe(300)
-      // 190 + 100 = 290 < 300 bid -> bidding team (0) goes set, scores -300.
+      // 150 + 100 = 250 < 300 bid -> bidding team (0) goes set, scores -300.
       expect(next.roundSummary?.roundScoreByTeam).toEqual({ 0: -300, 1: 150 })
       expect(next.roundSummary?.cumulativeScoresByTeam).toEqual({ 0: -300, 1: 150 })
       expect(next.scoresByTeam).toEqual({ 0: -300, 1: 150 })
@@ -174,11 +175,11 @@ describe('gameFlowReducer', () => {
 
     it('adds this round on top of prior cumulative scores', () => {
       const state = stateAfterAuction({}, { 0: 400, 1: 200 })
-      // Now the bidding team clears their bid: 190 meld + 200 trick = 390 >= 300.
+      // Now the bidding team clears their bid: 150 meld + 200 trick = 350 >= 300.
       const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 200, 1: 50 }, trickWinners: [] }
       const next = gameFlowReducer(state, { type: 'TRICK_COMPLETE', result: trickResult })
-      expect(next.roundSummary?.roundScoreByTeam).toEqual({ 0: 390, 1: 50 })
-      expect(next.scoresByTeam).toEqual({ 0: 790, 1: 250 })
+      expect(next.roundSummary?.roundScoreByTeam).toEqual({ 0: 350, 1: 50 })
+      expect(next.scoresByTeam).toEqual({ 0: 750, 1: 250 })
     })
 
     it('is ignored outside trick-play', () => {
@@ -198,7 +199,7 @@ describe('gameFlowReducer', () => {
         bidWinnerTeam: 0,
         bid: 300,
         trumpSuit: Suit.Hearts,
-        // 190 meld + 100 tricks = 290 < 300 -> set (see the first test above).
+        // 150 meld + 100 tricks = 250 < 300 -> set (see the first test above).
         wentSet: true,
         conceded: false,
         roundScoreByTeam: { 0: -300, 1: 150 },
@@ -219,11 +220,11 @@ describe('gameFlowReducer', () => {
 
       expect(second.handLedger.map((e) => e.hand)).toEqual([1, 2])
       expect(second.handLedger[0].roundScoreByTeam).toEqual({ 0: -300, 1: 150 })
-      // 190 meld + 200 tricks = 390 >= 300 -> made, and the running totals
+      // 150 meld + 200 tricks = 350 >= 300 -> made, and the running totals
       // pick up where hand 1 left off.
       expect(second.handLedger[1].wentSet).toBe(false)
-      expect(second.handLedger[1].roundScoreByTeam).toEqual({ 0: 390, 1: 50 })
-      expect(second.handLedger[1].cumulativeScoresByTeam).toEqual({ 0: 90, 1: 200 })
+      expect(second.handLedger[1].roundScoreByTeam).toEqual({ 0: 350, 1: 50 })
+      expect(second.handLedger[1].cumulativeScoresByTeam).toEqual({ 0: 50, 1: 200 })
     })
 
     it('marks a folded hand as conceded in the ledger (#198)', () => {
