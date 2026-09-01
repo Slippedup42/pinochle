@@ -72,9 +72,34 @@ from standard card-game rank order.
 
 Meld is **not a player decision** — it's a pure scan of each hand once
 trump is set. A card may count toward multiple *different* meld types
-at once (e.g. a trump King is part of both a Run and a Royal Marriage),
-but a single physical card can't be reused twice *within* the same
-meld type — a second instance of a meld needs a second copy of the card.
+at once (e.g. with spades trump the Q♠ is part of a Run, a Pinochle and
+Queens Around all at once), but a single physical card can't be reused
+twice *within* the same meld type — a second instance of a meld needs a
+second copy of the card.
+
+**The Royal Marriage is the one exception, and it is the general rule
+stated precisely.** A meld scores on top of a Run only if it needs at
+least one card the Run does not use:
+
+| Meld held alongside a Run | Needs a card outside the Run? | Scores on top? |
+|---|---|---|
+| Royal Marriage (trump K + Q) | **No** — the Run uses both | **No** |
+| Pinochle (Q♠ + J♦) | Yes — one of the pair is always outside the Run | Yes |
+| Aces/Kings/Queens/Jacks Around | Yes — three cards in the other suits | Yes |
+| Dix (trump 9) | Yes — the 9 is never part of a Run | Yes |
+
+You must hold the trump K and Q to have a Run at all, so the Run absorbs
+them and **a bare trump Run scores 150, not 190.** A *second* K + Q needs
+a second King and a second Queen, which the Run has not used, so that one
+does score: a Run plus a spare trump K + Q is 190. A **Double Run** uses
+both copies of both cards and leaves no marriage at all — it scores 1500
+flat.
+
+*(Recorded with the reasoning and not just the answer because this rule
+has now been got wrong in both directions: the scorer paid the absorbed
+marriage for the life of the project, and #242 "fixed" the bid valuation
+to match it before Paul ruled on it in #273. The argument above is what
+settles it, so the next reader can check it rather than re-derive it.)*
 
 ### Class A — Trump & Marriage Melds
 
@@ -82,7 +107,7 @@ meld type — a second instance of a meld needs a second copy of the card.
 |---|---|---|
 | Run | A, 10, K, Q, J of TrumpSuit | 150 |
 | Double Run | Both copies of A, 10, K, Q, J of TrumpSuit | 1500 |
-| Royal Marriage | K + Q of TrumpSuit | 40 |
+| Royal Marriage | K + Q of TrumpSuit *not used by a Run* | 40 |
 | Common Marriage | K + Q of a non-trump suit | 20 |
 | Dix | 9 of TrumpSuit | 10 |
 

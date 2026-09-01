@@ -167,10 +167,13 @@ export const ENDGAME_RESCUE_CEILING = 200
  * the Base Bid, and the comparison is `>=` — reached, not cleared — which is
  * the form that was measured.
  *
- * Both runs predate #242, which raised every hand holding a trump Run by 40.
- * The two mechanisms are independent and the gap between the arms is far
- * larger than that shift, so the direction stands; the exact figures are of
- * the valuation as it was that day.
+ * Both runs predate #242, which raised every hand holding a trump Run by 40,
+ * and #273, which put it back — so on the run/marriage question the valuation
+ * is once again the one that was measured. What #273 did change under these
+ * figures is the >300-meld uncap in `maxBid`, since the scorer now pays 40
+ * less on a run. The two mechanisms are independent and the gap between the
+ * arms is far larger than either shift, so the direction stands; the exact
+ * figures are of the valuation as it was that day.
  */
 export const THIRD_BIDDER_FLOOR = 200
 
@@ -293,28 +296,25 @@ export function computeBaseBid(hand: readonly Card[], trump: Suit): BaseBidResul
   }
   if (runValue) breakdown['Run/near-run'] = runValue
 
-  // -- Royal marriage ----------------------------------------------------
-  // A held Run does NOT absorb the Royal Marriage: pinochle_rules.md is
-  // explicit that a card counts toward multiple *different* meld types, and
-  // scoreMelds pays both, so the valuation pays both too (#242).
-  // The near-run branch keeps the extra-only rule: NEAR_RUN_VALUE is a
-  // speculative estimate of a run that is not in hand, not scored meld, and
-  // what it does or does not already price in is a separate question.
+  // -- Royal marriage: only the marriages a run has not already absorbed ---
+  // A Run needs the trump K and Q to exist at all, so it consumes them and
+  // only a *second* K+Q pays on top (#273 - see `scoreMelds`, which now
+  // applies the same subtraction, and `pinochle_rules.md`'s Phase 3 note for
+  // why the Royal Marriage is the one meld that works this way). A Double Run
+  // consumes both copies of each and leaves nothing.
+  //
+  // The near-run estimate counts as one run in waiting for this purpose: it is
+  // priced as though the missing card arrives, and a run that arrives would
+  // take a K and a Q with it. #268 confirmed that branch was right all along
+  // and it is unchanged here.
   const royalCount = Math.min(n(trump, 'K'), n(trump, 'Q'))
-  let marriageValue = 0
-  if (nearRun) {
-    if (royalCount === 2) {
-      marriageValue = ROYAL_MARRIAGE_VALUE
-      claim(pool, trump, 'K', 1)
-      claim(pool, trump, 'Q', 1)
-    }
-  } else {
-    marriageValue = royalCount * ROYAL_MARRIAGE_VALUE
-    // Cards inside the run were already claimed above; this takes any
-    // King/Queen beyond it out of the leftover pool.
-    claim(pool, trump, 'K', royalCount)
-    claim(pool, trump, 'Q', royalCount)
-  }
+  const consumedByRun = runCount ? runCount : nearRun ? 1 : 0
+  const extraRoyals = Math.max(0, royalCount - consumedByRun)
+  const marriageValue = extraRoyals * ROYAL_MARRIAGE_VALUE
+  // Cards inside the run were already claimed above; this takes any
+  // King/Queen beyond it out of the leftover pool.
+  claim(pool, trump, 'K', extraRoyals)
+  claim(pool, trump, 'Q', extraRoyals)
   if (marriageValue) breakdown['Royal Marriage'] = marriageValue
 
   // -- Common marriage ----------------------------------------------------

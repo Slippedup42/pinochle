@@ -152,9 +152,19 @@ def score_melds(hand, trump_suit):
     meld_name -> points, for debugging/testing visibility.
 
     Key rule: a card can count toward multiple *different* meld types at
-    once (a trump King is part of both a Run and a Royal Marriage), but
-    within a single meld type you can't reuse a physical card — you need
-    a second copy for a second instance of the same meld.
+    once (the trump Q is part of both a Run and a Pinochle), but within a
+    single meld type you can't reuse a physical card — you need a second
+    copy for a second instance of the same meld.
+
+    The Royal Marriage is the one exception, and it is not an extra rule
+    so much as the same rule stated exactly (#273): a meld scores on top
+    of a Run only if it needs at least one card the Run does not use. A
+    Pinochle needs the Q♠ or the J♦, one of which is always outside the
+    run; an Around needs three cards in other suits; the Dix needs the
+    trump 9, which is never in a run. The trump K+Q needs nothing the run
+    has not already consumed, so a bare Run scores 150 and not 190. A
+    *second* K+Q does need cards the run has not used, so it pays — which
+    is why the count below is `royal_count - run_count`.
 
     Doubles (Double Run, Double Pinochle, Arounds doubles) REPLACE the
     single value, they are not simple multiplication.
@@ -175,9 +185,12 @@ def score_melds(hand, trump_suit):
     elif run_count == 1:
         breakdown["Run"] = RUN_VALUE
 
+    # A Run consumes one trump K and one trump Q; a Double Run consumes both
+    # of each and leaves no marriage at all (#273).
     royal_count = min(n(trump_suit, "K"), n(trump_suit, "Q"))
-    if royal_count:
-        breakdown["Royal Marriage"] = royal_count * ROYAL_MARRIAGE_VALUE
+    payable_royals = max(0, royal_count - run_count)
+    if payable_royals:
+        breakdown["Royal Marriage"] = payable_royals * ROYAL_MARRIAGE_VALUE
 
     common_total = 0
     for suit in Suit:
@@ -288,10 +301,13 @@ ENDGAME_RESCUE_CEILING = 200
 # and the comparison is `>=` - reached, not cleared - which is the form that
 # was measured.
 #
-# Both runs predate #242, which raised every hand holding a trump Run by 40.
-# The two mechanisms are independent and the gap between the arms is far larger
-# than that shift, so the direction stands; the exact figures are of the
-# valuation as it was that day.
+# Both runs predate #242, which raised every hand holding a trump Run by 40,
+# and #273, which put it back - so on the run/marriage question the valuation
+# is once again the one that was measured. What #273 did change under these
+# figures is `max_bid`'s >300-meld uncap, since the scorer now pays 40 less on
+# a run. The two mechanisms are independent and the gap between the arms is far
+# larger than either shift, so the direction stands; the exact figures are of
+# the valuation as it was that day.
 THIRD_BIDDER_FLOOR = 200
 
 
@@ -382,26 +398,25 @@ def compute_base_bid(hand, trump):
     if run_value:
         breakdown["Run/near-run"] = run_value
 
-    # -- Royal marriage ----------------------------------------------------
-    # A held Run does NOT absorb the Royal Marriage: pinochle_rules.md is
-    # explicit that a card counts toward multiple *different* meld types, and
-    # calculate_meld pays both, so the valuation pays both too (#242).
-    # The near-run branch keeps the extra-only rule: NEAR_RUN_VALUE is a
-    # speculative estimate of a run that is not in hand, not scored meld, and
-    # what it does or does not already price in is a separate question.
+    # -- Royal marriage: only the marriages a run has not already absorbed ---
+    # A Run needs the trump K and Q to exist at all, so it consumes them and
+    # only a *second* K+Q pays on top (#273 - see `score_melds`, which now
+    # applies the same subtraction, and `pinochle_rules.md`'s Phase 3 note for
+    # why the Royal Marriage is the one meld that works this way). A Double
+    # Run consumes both copies of each and leaves nothing.
+    #
+    # The near-run estimate counts as one run in waiting for this purpose: it
+    # is priced as though the missing card arrives, and a run that arrives
+    # would take a K and a Q with it. #268 confirmed that branch was right all
+    # along and it is unchanged here.
     royal_count = min(n(trump, "K"), n(trump, "Q"))
-    marriage_value = 0
-    if near_run:
-        if royal_count == 2:
-            marriage_value = ROYAL_MARRIAGE_VALUE
-            claim(trump, "K", 1)
-            claim(trump, "Q", 1)
-    else:
-        marriage_value = royal_count * ROYAL_MARRIAGE_VALUE
-        # Cards inside the run were already claimed above; this takes any
-        # King/Queen beyond it out of the leftover pool.
-        claim(trump, "K", royal_count)
-        claim(trump, "Q", royal_count)
+    consumed_by_run = run_count if run_count else (1 if near_run else 0)
+    extra_royals = max(0, royal_count - consumed_by_run)
+    marriage_value = extra_royals * ROYAL_MARRIAGE_VALUE
+    # Cards inside the run were already claimed above; this takes any
+    # King/Queen beyond it out of the leftover pool.
+    claim(trump, "K", extra_royals)
+    claim(trump, "Q", extra_royals)
     if marriage_value:
         breakdown["Royal Marriage"] = marriage_value
 
@@ -1367,10 +1382,18 @@ def _return_pass_meld_groups(hand, trump):
     Section 3 knapsack input: every meld currently present in `hand` (same
     categories as `score_melds`), as (value, name, required_cards) triples.
     `required_cards` are the exact physical Card objects that meld needs —
-    deliberately allowed to overlap across groups (e.g. a trump King is
-    part of both Run and Royal Marriage using the very same card), since
-    `_knapsack_lock_return_pass_melds` below dedupes by tracking what's
-    already locked rather than by partitioning cards into disjoint pools.
+    deliberately allowed to overlap across groups (e.g. the trump Queen is
+    part of Run, Royal Marriage and, in spades, Pinochle using the very
+    same card), since `_knapsack_lock_return_pass_melds` below dedupes by
+    tracking what's already locked rather than by partitioning cards into
+    disjoint pools.
+
+    The Royal Marriage line stays at the full `royal_count` here even though
+    `score_melds` now subtracts the run's own K+Q (#273). That is not drift:
+    this is a list of *candidates* for a knapsack that may decline to keep
+    the Run whole, and a hand whose run gets broken up still melds the
+    marriage. What the group is worth is what it is worth if kept, and with
+    the Run also kept the overlap costs nothing, because locking dedupes.
     """
     groups = []
 

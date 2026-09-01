@@ -29,8 +29,10 @@ product and a comparison, and costs microseconds in a React render; an ensemble
 buys none of that back for four tenths of a point. `--compare` prints the
 baselines that argument rests on rather than asking anyone to take it on trust.
 
-The one feature that is not a CSV column. `base_bid_ceiling` is recomputed here
-from the row's `hand` column via `compute_max_bid`/`capped_bid`. That is not a
+Two features are not read from the CSV. `base_bid_ceiling` is recomputed here
+from the row's `hand` column via `compute_max_bid`/`capped_bid`, and since #273
+`meld_total` is recomputed through `score_melds` for the reason its own
+docstring gives. That is not a
 label leak and not expensive: it is exactly the quantity `bidding.ts` already
 computes as `bestBaseBid` and compares against `OPENER_THRESHOLD`, so #114 gets
 it for free. It carries the non-linear part of the valuation - run and marriage
@@ -57,6 +59,7 @@ from pinochle_engine import (
     Suit,
     capped_bid,
     compute_max_bid,
+    score_melds,
 )
 from generate_rollout_dataset import (
     BID_DECISION,
@@ -146,6 +149,27 @@ def base_bid_ceiling(hand, trump, our_score=0, their_score=0):
     return capped_bid(hand, trump, total)
 
 
+def meld_total(hand, trump):
+    """`score_melds` of `hand` in `trump`, recomputed rather than read.
+
+    The dataset stores a `meld_total` column, and until #273 reading it was the
+    same thing as computing it. #273 corrected the scorer - a Run absorbs the
+    Royal Marriage it contains - so every stored value on a row whose hand holds
+    a run is 40 too high, while `evaluator.ts` computes the corrected number
+    live from the same 12 cards. A model fitted on one definition and applied to
+    the other is precisely the silent failure `evaluatorParity.test.ts` exists to
+    catch, so this recomputes, the same way and for the same reason
+    `base_bid_ceiling` does.
+
+    Regenerating the dataset would fix it at the source and is the better answer;
+    that is #226, it is deferred, and the labels have other reasons to be stale
+    (see #225). This keeps the fitted features and the live features the same
+    quantity in the meantime, which is the part that cannot wait.
+    """
+    total, _breakdown = score_melds(hand, trump)
+    return float(total)
+
+
 def _number(text):
     """CSV cell -> float, or None for a blank. Blank means "not measured here"
     and must never silently become 0.0 — `ev_fold` of zero is a real value."""
@@ -186,7 +210,9 @@ def bid_features(row):
         hand, Suit(row["trump"]), int(row["our_score"]), int(row["their_score"]),
     )
     features = {name: row[name] for name in BID_FEATURES
-                if name not in ("base_bid_ceiling", "ceiling_minus_bid")}
+                if name not in ("base_bid_ceiling", "ceiling_minus_bid",
+                                "meld_total")}
+    features["meld_total"] = meld_total(hand, Suit(row["trump"]))
     features["base_bid_ceiling"] = float(ceiling)
     features["ceiling_minus_bid"] = float(ceiling) - row["bid"]
     return features
@@ -207,7 +233,8 @@ def fold_features(row):
     ceiling = float(base_bid_ceiling(hand, Suit(row["trump"])))
     features = {name: row[name] for name in FOLD_FEATURES
                 if name not in ("base_bid_ceiling", "ceiling_minus_bid",
-                                "tricks_needed", "fold_cost")}
+                                "tricks_needed", "fold_cost", "meld_total")}
+    features["meld_total"] = meld_total(hand, Suit(row["trump"]))
     features["base_bid_ceiling"] = ceiling
     features["ceiling_minus_bid"] = ceiling - row["bid"]
     features["tricks_needed"] = row["bid"] - row["bidding_meld"]

@@ -66,17 +66,17 @@ afterAll(() => {
 })
 
 describe('computeBaseBid', () => {
-  it('scores a full trump Run at 150, its Royal Marriage at 40, and its aces', () => {
-    // The Run does not absorb the Royal Marriage (#242). Both are paid,
-    // because the King and Queen of trump are in two *different* melds at
-    // once and `pinochle_rules.md` says so in as many words. This line used
-    // to read 170 and the Royal Marriage line used to be absent.
+  it('scores a full trump Run at 150, absorbing its Royal Marriage, plus its aces', () => {
+    // The rule (#273): a meld pays on top of a Run only if it needs a card the
+    // Run does not use, and the trump K+Q needs nothing the Run has not already
+    // consumed. So a bare Run is 150, not 190. This line read 210 between #242
+    // and #273, when the marriage inside the run was paid twice over.
     const hand = RUN_RANKS.map((r) => new Card(trump, r, 1))
     const { total, breakdown } = computeBaseBid(hand, trump)
     expect(breakdown['Run/near-run']).toBe(150)
-    expect(breakdown['Royal Marriage']).toBe(ROYAL_MARRIAGE_VALUE)
+    expect(breakdown['Royal Marriage']).toBeUndefined()
     expect(breakdown['Aces (flat, 20/ea)']).toBe(ACE_VALUE)
-    expect(total).toBe(150 + ROYAL_MARRIAGE_VALUE + ACE_VALUE)
+    expect(total).toBe(150 + ACE_VALUE)
   })
 
   it('credits a near-run (missing exactly one rank) at 120', () => {
@@ -98,10 +98,10 @@ describe('computeBaseBid', () => {
     expect(pool).toHaveLength(0)
   })
 
-  it('credits both Royal Marriages when a Run and a spare K/Q are both held', () => {
-    // Full run + a spare K/Q pair. Two Royal Marriages are held and two are
-    // paid; this asserted 40 before #242, on the reading that the run had
-    // already consumed the first one.
+  it('credits the second Royal Marriage when a Run and a spare K/Q are both held', () => {
+    // The other half of the rule (#273): a *second* K+Q needs a second King and
+    // a second Queen, which the Run has not used, so it pays. One marriage, not
+    // two - this asserted 80 between #242 and #273.
     const hand = [
       ...RUN_RANKS.map((r) => new Card(trump, r, 1)),
       new Card(trump, 'K', 2),
@@ -109,7 +109,7 @@ describe('computeBaseBid', () => {
     ]
     const { breakdown } = computeBaseBid(hand, trump)
     expect(breakdown['Run/near-run']).toBe(150)
-    expect(breakdown['Royal Marriage']).toBe(2 * ROYAL_MARRIAGE_VALUE)
+    expect(breakdown['Royal Marriage']).toBe(ROYAL_MARRIAGE_VALUE)
   })
 
   it('credits the Royal Marriage at full value when there is no run at all', () => {
@@ -119,15 +119,15 @@ describe('computeBaseBid', () => {
     expect(breakdown['Run/near-run']).toBeUndefined()
   })
 
-  // -- #242: the valuation must not price meld the scorer will actually pay --
+  // -- the valuation must price certain meld at exactly what the scorer pays --
   //
-  // The bug was one judgement made twice, in `compute_base_bid` and here, and
-  // the number was always wrong by exactly 40 per Royal Marriage held inside a
-  // run. Pinning the new number alone would not stop that happening again, so
-  // what these check is *agreement with `scoreMelds`* — the two are supposed to
-  // describe the same cards, and the moment they stop doing so is the moment
-  // the AI is bidding against a hand it does not have.
-  describe('agrees with scoreMelds about certain meld (#242)', () => {
+  // #242 found this disagreement and resolved it the wrong way, by moving the
+  // valuation up to a scorer that was itself wrong; #273 moves the scorer down
+  // and the valuation back. What survives both is the shape: what these check
+  // is *agreement with `scoreMelds`*, not either number alone. The two are
+  // supposed to describe the same cards, and the moment they stop doing so is
+  // the moment the AI is bidding against a hand it does not have.
+  describe('agrees with scoreMelds about certain meld (#273)', () => {
     // Sum of the Base Bid lines that describe *held* meld. `Aces (flat)` and
     // the 3-different-aces bonus are trick-taking estimates, not meld, and the
     // near-run / near-double-pinochle lines are speculative — so these cases
@@ -144,7 +144,7 @@ describe('computeBaseBid', () => {
       MELD_LINES.reduce((sum, key) => sum + (breakdown[key] ?? 0), 0)
 
     const cases: ReadonlyArray<[string, Card[], number]> = [
-      ['a bare trump Run', RUN_RANKS.map((r) => new Card(trump, r, 1)), 150 + 40],
+      ['a bare trump Run', RUN_RANKS.map((r) => new Card(trump, r, 1)), 150],
       [
         'a Run plus a second Royal Marriage',
         [
@@ -152,12 +152,15 @@ describe('computeBaseBid', () => {
           new Card(trump, 'K', 2),
           new Card(trump, 'Q', 2),
         ],
-        150 + 80,
+        150 + 40,
       ],
+      // A Double Run uses both copies of the trump King and both of the Queen,
+      // so there is no K+Q pair left outside it: 1500 flat, not 1540 and not
+      // #242's 1580.
       [
         'a Double Run',
         RUN_RANKS.flatMap((r) => [new Card(trump, r, 1), new Card(trump, r, 2)]),
-        1500 + 80,
+        1500,
       ],
     ]
 
@@ -171,11 +174,13 @@ describe('computeBaseBid', () => {
     }
 
     it('leaves the near-run branch alone, which is a separate call site', () => {
-      // Explicitly out of #242's scope and not an oversight. NEAR_RUN_VALUE is
-      // a guess at a run that is *not* in hand, so what it does or does not
-      // already price in is a different question from what the scorer pays for
-      // cards that are. Four run ranks and two K/Q pairs: the valuation credits
-      // 120 + one marriage, the scorer pays two marriages and no run.
+      // The rule applied to a run that is not there yet. NEAR_RUN_VALUE is a
+      // guess at a run that is *not* in hand, and the run it imagines would
+      // take a K and a Q with it, so only the second marriage is credited -
+      // while the scorer, seeing no run, pays both. They disagree on purpose,
+      // and #268 ruled this branch correct as it stands. Four run ranks and two
+      // K/Q pairs: the valuation credits 120 + one marriage, the scorer pays
+      // two marriages and no run.
       const hand = [
         ...RUN_RANKS.filter((r) => r !== 'A').map((r) => new Card(trump, r, 1)),
         new Card(trump, 'K', 2),
@@ -321,22 +326,25 @@ describe('chooseBid', () => {
   // adjustment (+130 baseline). Below OPENER_THRESHOLD (320), and below the
   // 330 the competitive branch relaxes to once a partner has bid.
   //
-  // This was a bare trump Run until #242, which is the whole point: paying the
-  // Royal Marriage inside a run moved that hand from 300 to 340 and put it
-  // *over* the threshold, so it stopped being able to play this part. Four run
-  // ranks and a second K/Q keeps a hand the valuation likes without one it
-  // will open on. It sits in the near-run branch, which #242 deliberately left
-  // alone — so if that branch is ever settled the same way, this fixture moves
-  // again and these tests are where it shows up.
+  // This was a bare trump Run until #242, which paid the Royal Marriage inside
+  // a run and moved the hand from 300 to 340, over the threshold, so it could
+  // no longer play this part. Four run ranks and a second K/Q keeps a hand the
+  // valuation likes without one it will open on. #273 puts a bare Run back at
+  // 300, so the original would work again — but this fixture sits in the
+  // near-run branch, which neither #242 nor #273 touched, and that is the
+  // better place for a hand chosen to sit under a threshold. If that branch is
+  // ever settled too, this fixture moves and these tests are where it shows
+  // up: `ceilingOf` derives the band before anything asserts behaviour.
   const nearRunHand = [
     ...RUN_RANKS.filter((r) => r !== 'A').map((r) => new Card(Suit.Hearts, r, 1)),
     new Card(Suit.Hearts, 'K', 2),
     new Card(Suit.Hearts, 'Q', 2),
   ]
 
-  // Base Bid 250 (Run 150 + two Royal Marriages 80 + Ace 20) -> ceiling
-  // 380 at the default 0/0 adjustment (+130 baseline). Clears both
-  // OPENER_THRESHOLD (320) and the 340 raise-support gate.
+  // Base Bid 210 (Run 150 + the second Royal Marriage 40 + Ace 20) -> ceiling
+  // 340 at the default 0/0 adjustment (+130 baseline). Clears both
+  // OPENER_THRESHOLD (320) and the 340 raise-support gate. It read 380 while
+  // #242 also paid the marriage the run absorbs.
   const strongHand = [
     ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
     new Card(Suit.Hearts, 'K', 2),
@@ -357,7 +365,8 @@ describe('chooseBid', () => {
    *  tests assert where a fixture sits relative to a floor rather than
    *  trusting the number in its comment: #242 moved every hand holding a
    *  trump Run up by 40 and took one of these fixtures out of the band it was
-   *  chosen for, which is the failure mode this closes. */
+   *  chosen for, and #273 moved it back down again. That is the failure mode
+   *  this closes, twice over now. */
   const ceilingOf = (hand: readonly Card[]): number => {
     const { trump: suit, total } = bestBaseBid(hand, 0, 0)
     const cap = maxBid(hand, suit)
@@ -455,7 +464,8 @@ describe('chooseBid', () => {
       // The hand has to sit strictly inside the 200-320 band for this test to
       // be testing anything, and a fixture's value is not a stable thing to
       // assume — #242 moved every hand holding a trump Run up by 40 and this
-      // test's original fixture out of the band with it. So the band is
+      // test's original fixture out of the band with it, and #273 moved every
+      // such hand back down by 40. So the band is
       // derived from the current valuation here rather than taken on trust,
       // and this assertion is what will fail first if it moves again.
       expect(ceilingOf(nearRunHand)).toBeGreaterThanOrEqual(THIRD_BIDDER_FLOOR)
@@ -922,9 +932,11 @@ describe('every bid chooseBid can return is legal (#177)', () => {
     //
     // The hand was a trump Run plus an off-suit Ace until #242, which added
     // the run's own Royal Marriage to the valuation and carried it 40 past the
-    // threshold it is here to sit exactly on. No hand holding a run can land
-    // on 320 any more — the floor for one is 340 — so this is built out of a
-    // near-run instead: 120 + Dix 10 + Pinochle 40 + one Ace 20 = 190.
+    // threshold it is here to sit exactly on, so it was rebuilt out of a
+    // near-run: 120 + Dix 10 + Pinochle 40 + one Ace 20 = 190. #273 makes the
+    // run version land on 320 again, and this stays a near-run regardless —
+    // a fixture that has to sit *exactly* on a threshold should not depend on
+    // the rule that has moved twice underneath it.
     const ceiling320Hand = [
       new Card(Suit.Hearts, 'A', 1),
       new Card(Suit.Hearts, 'K', 1),
@@ -962,8 +974,10 @@ describe('every bid chooseBid can return is legal (#177)', () => {
 // off-ladder `currentBid` on purpose. Do not "simplify" them onto round AI
 // numbers; that is precisely the blind spot.
 describe('raising over a bid our own team already holds (#206)', () => {
-  // Ceiling 400 — clears PARTNER_RAISE_FLOOR with room above it. It read 360
-  // before #242 paid the second Royal Marriage this hand has always held.
+  // Ceiling 360 — clears PARTNER_RAISE_FLOOR with room above it. 360 before
+  // #242, 400 (the cap) while #242 paid the marriage the run absorbs, and 360
+  // again since #273 put the run's own marriage back inside the run. The
+  // second K/Q this hand has always held is the one that still pays.
   const strongHand = [
     ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
     new Card(Suit.Hearts, 'K', 2),
@@ -973,7 +987,10 @@ describe('raising over a bid our own team already holds (#206)', () => {
   // Ceiling 320 — opens happily, but cannot support a 340 commitment. This was
   // a trump Run plus an off-suit Ace, which #242 moved to 360 and straight over
   // the floor this fixture exists to sit under; a near-run of the same value
-  // takes its place (120 + Dix 10 + Pinochle 40 + one Ace 20 + adj 130).
+  // took its place (120 + Dix 10 + Pinochle 40 + one Ace 20 + adj 130). #273
+  // makes the run version worth 320 again, and the near-run is kept anyway:
+  // its value does not depend on the Run/Royal-Marriage rule at all, which is
+  // the property a fixture chosen to sit on a threshold wants.
   const modestHand = [
     new Card(Suit.Hearts, 'A', 1),
     new Card(Suit.Hearts, 'K', 1),
@@ -1012,7 +1029,7 @@ describe('raising over a bid our own team already holds (#206)', () => {
   })
 
   it('commits to PARTNER_RAISE_FLOOR rather than nudging its partner by ten', () => {
-    expect(bestBaseBid(strongHand, 0, 0).total).toBe(400)
+    expect(bestBaseBid(strongHand, 0, 0).total).toBe(360)
     // Every one of these used to answer `partnerBid + 10` — 270 over a 260 —
     // while requiring a 340-worthy hand to say it.
     for (const partnerBid of [260, 270, 280, 290, 300, 310, 320, 330]) {

@@ -14,18 +14,20 @@ import { SHIPPED_PARAMS, SHIPPED_SKILL, SKILL_LEVELS, SKILL_PARAMS, type SkillLe
 
 const RUN_RANKS: readonly Rank[] = ['A', '10', 'K', 'Q', 'J']
 
-/** A full Hearts Run plus an off-suit marriage and filler. Ceiling 360: Run 150
- *  + the run's own Royal Marriage 40 + Common Marriage 20 + one Ace 20, plus the
- *  130 baseline competitive adjustment.
+/** A full Hearts Run plus a second royal marriage, an off-suit marriage and
+ *  filler. Ceiling 360: Run 150 + the extra Royal Marriage 40 + Common Marriage
+ *  20 + one Ace 20, plus the 130 baseline competitive adjustment.
  *
- *  It also held a second King and Queen of Hearts until #242. The pairing with
+ *  The second King and Queen of Hearts came out under #242, which paid the
+ *  marriage the run absorbs and would otherwise have taken this hand to the 400
+ *  cap; #273 puts that rule back and they return with it. The pairing with
  *  `middlingHand` below is the entire point of this fixture and it only works
- *  at equal ceilings, so when #242 started paying the marriage inside the run
- *  the redundant K/Q came out to keep the number at 360 rather than the pair
- *  being re-pinned at the 400 cap, where "identical ceiling" would be an
- *  artefact of clamping instead of a statement about the two hands. */
+ *  at equal ceilings — pinning both at the cap would make "identical ceiling"
+ *  an artefact of clamping instead of a statement about the two hands. */
 const strongHand = [
   ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
+  new Card(Suit.Hearts, 'K', 2),
+  new Card(Suit.Hearts, 'Q', 2),
   new Card(Suit.Spades, 'K', 1),
   new Card(Suit.Spades, 'Q', 1),
   new Card(Suit.Clubs, '9', 1),
@@ -203,8 +205,9 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
     passedPlayers: [],
   }
 
-  // Ceiling 340 since #242 (Run 150 + Royal Marriage 40 + Ace 20 + adj 130).
-  // Kept for the meld-only arithmetic below, which needs a hand that melds 190.
+  // Ceiling 300 (Run 150 + Ace 20 + adj 130) - 340 while #242 also paid the
+  // marriage the run absorbs, 300 again since #273. Kept for the meld-only
+  // arithmetic below, which needs a hand whose certain meld is a known number.
   const runOnlyHand = RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1))
 
   // Ceiling 290 — under OPENER_THRESHOLD, so the static rule passes, while the
@@ -212,11 +215,12 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
   // two policies, which is what makes it a usable probe of the dial.
   //
   // `runOnlyHand` was that probe until #242. Paying the Royal Marriage inside
-  // the run took it to 340, which the static threshold now opens on too — so
-  // the hand stopped separating the policies and would have gone on passing
-  // while proving nothing. A near-run does the job instead, and deliberately
-  // so: #242 left that branch untouched, which is exactly why a hand in it can
-  // still sit under the threshold.
+  // the run took it to 340, which the static threshold opens on too — so the
+  // hand stopped separating the policies and would have gone on passing while
+  // proving nothing. A near-run took over, and stays: #273 puts `runOnlyHand`
+  // back under the threshold at 300, but the near-run branch is untouched by
+  // both changes, which is exactly the property a fixture chosen to sit under
+  // a threshold should be resting on.
   const belowThresholdHand = [
     ...RUN_RANKS.filter((r) => r !== 'A').map((r) => new Card(Suit.Hearts, r, 1)),
     new Card(Suit.Hearts, 'K', 2),
@@ -272,8 +276,9 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
     // happens, so that arm is unchanged by #114 and MELD_ONLY_TRICK_ESTIMATE
     // stays live. `easy` selected it until #222 removed the dial; it is
     // installed here for the same reason `'static'` is above.
-    // This hand melds 190 under Hearts (Run 150 + Royal Marriage 40), so the
-    // meld-only ceiling is 190 + 60 flat + noise in [-30, 30] = [220, 280].
+    // This hand melds 150 under Hearts (a bare Run, whose Royal Marriage the Run
+    // absorbs - #273), so the meld-only ceiling is 150 + 60 flat + noise in
+    // [-30, 30] = [180, 240]. It read [220, 280] while #242 paid that marriage.
     //
     // The noise stays pinned even though it no longer has to be. #200's 250
     // opener sat *inside* [220, 280], which turned a bare `toBeNull()` into a
@@ -281,17 +286,17 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
     // 300 and the whole range falls short again, so the bare assertion would be
     // deterministic once more. Pinning is kept because it asserts the
     // arithmetic rather than the outcome: both extremes are named, and the
-    // upper one records that the miss is by 20 points, not by miles. If either
+    // upper one records how far short the miss is. If either
     // MELD_ONLY_TRICK_ESTIMATE or the opening rung moves back toward the other,
     // this fails on the specific number instead of going quietly random.
     const random = vi.spyOn(Math, 'random')
     try {
       withPolicy({ handValuation: 'meld_only' }, (meldOnly) => {
-        random.mockReturnValue(0) // noise -30 -> ceiling 220, 80 under the opener
+        random.mockReturnValue(0) // noise -30 -> ceiling 180, 120 under the opener
         expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, meldOnly)).toBeNull()
         expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, SHIPPED_SKILL)).toBe(OPENING_BID)
 
-        random.mockReturnValue(1) // noise +30 -> ceiling 280, still 20 under it
+        random.mockReturnValue(1) // noise +30 -> ceiling 240, still 60 under it
         expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, meldOnly)).toBeNull()
         expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, SHIPPED_SKILL)).toBe(OPENING_BID)
       })
