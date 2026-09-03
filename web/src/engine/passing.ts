@@ -37,6 +37,61 @@ function breaksAround(hand: readonly Card[], card: Card): boolean {
   return nOf(hand, card.suit, card.rank) === 1
 }
 
+/**
+ * Is this a non-trump 10 that the hand's own Aces make a winner?
+ *
+ * Paul's ruling, 2026-09-02, from live play: a non-trump 10 is **protected**
+ * when the hand holds BOTH Aces of that suit, and a protected 10 must not be
+ * shed ahead of ordinary filler. Two reasons, either of which is sufficient:
+ *
+ * - **Held**: with both Aces of the suit in this hand, the suit can be played
+ *   out last and the 10 takes the trick behind them.
+ * - **Passed**: a 10 delivered to a partner holding the Ace becomes a
+ *   20-point trick when the Ace is led and the 10 falls on it.
+ *
+ * Which of the two applies at a pass decision is worth being precise about,
+ * because it settles where the card belongs. If *this* hand holds both Aces
+ * then the other hand holds none, so passing this 10 cannot buy the
+ * drop-on-partner's-Ace trick. All of the value is in keeping the suit intact
+ * and cashing it late, which is why the tiers below rank a protected 10
+ * *behind* ordinary filler rather than ahead of it.
+ *
+ * Deliberately narrow, per issue #276. A 10 behind a single Ace is only
+ * partially protected and is NOT covered here; trump 10s are run cards and
+ * were never in scope. This is a different notion from the `isProtected`
+ * closure in `bidderPassSelection`, which means "trump, or Q(S), or J(D)" -
+ * i.e. meld significance - and the two must not be folded together.
+ *
+ * Ported from `_is_protected_ten` in `pinochle_engine.py`, which stays
+ * authoritative (#213).
+ */
+function isProtectedTen(hand: readonly Card[], trump: Suit, card: Card): boolean {
+  return card.rank === '10' && card.suit !== trump && nOf(hand, card.suit, 'A') === 2
+}
+
+/**
+ * Is this one of the two Aces that make a 10 of its own suit protected?
+ *
+ * The corollary of `isProtectedTen`, and not optional. The reason to keep the
+ * 10 is that both Aces are behind it, so a pass rule that keeps the 10 while
+ * shedding an Ace produces the one outcome that is strictly worse than
+ * shedding the 10 was: a bare 10 with nothing left to make it win. A-A-10 of
+ * a non-trump suit is a running suit, and the tiers below move it as a unit.
+ */
+function protectsATen(hand: readonly Card[], trump: Suit, card: Card): boolean {
+  return (
+    card.rank === 'A' &&
+    card.suit !== trump &&
+    nOf(hand, card.suit, 'A') === 2 &&
+    nOf(hand, card.suit, '10') >= 1
+  )
+}
+
+/** A-A-10 of a non-trump suit, as one group (#276) - see the two above. */
+function inProtectedTenRun(hand: readonly Card[], trump: Suit, card: Card): boolean {
+  return isProtectedTen(hand, trump, card) || protectsATen(hand, trump, card)
+}
+
 /** Move matching cards from `pool` into `chosen` (both in place) until `count` is hit. */
 function take(
   pool: Card[],
@@ -162,6 +217,15 @@ export function partnerPassSelection(
  *
  * Aces are never passed except via the explicit pro-move tier (D/S
  * only) - they're too valuable to give away speculatively.
+ *
+ * The "non-trump 10s" tier means *unprotected* 10s only (#276). A 10 with
+ * both Aces of its suit behind it is a winner the bidder can cash by playing
+ * that suit out last, not a liability, so it is held out of that tier - along
+ * with the void tier and the duplicate-Ace pro move, the two other places a
+ * piece of that A-A-10 group could leave early - and reaches the shed list
+ * only at "any unprotected non-ace", behind every J/9 rag and behind a spare
+ * K/Q doing no meld work. See `isProtectedTen` for the rule and Paul's
+ * reasoning.
  */
 export function bidderPassSelection(hand: readonly Card[], trump: Suit, category: PassCategory, count: number): Card[] {
   const pool = [...hand]
@@ -191,7 +255,12 @@ export function bidderPassSelection(hand: readonly Card[], trump: Suit, category
   // control, which beats scattering the same number of cards - check
   // this before falling into the generic rank tiers.
   if (chosen.length < count) {
-    const voidCards = findVoidOpportunity(pool, trump, isProtected, count - chosen.length)
+    const voidCards = findVoidOpportunity(
+      pool,
+      trump,
+      (c) => isProtected(c) || inProtectedTenRun(hand, trump, c),
+      count - chosen.length,
+    )
     if (voidCards) {
       for (const c of voidCards) {
         if (chosen.length >= count) break
@@ -209,16 +278,24 @@ export function bidderPassSelection(hand: readonly Card[], trump: Suit, category
     (c) => !isProtected(c) && (c.rank === 'J' || c.rank === '9') && !breaksMarriage(hand, c) && !breaksAround(hand, c),
   )
 
-  // Non-trump 10s
-  take(pool, chosen, count, (c) => !isProtected(c) && c.rank === '10')
+  // Non-trump 10s - but not one that both Aces of its suit make a winner
+  // (#276); that one falls through to the "any unprotected non-ace" tier,
+  // behind the J/9 filler and the spare K/Q this bidder can spend more cheaply.
+  take(pool, chosen, count, (c) => !isProtected(c) && c.rank === '10' && !isProtectedTen(hand, trump, c))
 
   if (category === 'DS') {
-    // Pro move: duplicate AS/AD
+    // Pro move: duplicate AS/AD - unless that pair is what is holding a 10 of
+    // the same suit up (#276). Shipping one of them turns a kept winner into a
+    // bare 10, which is worse than either whole answer.
     take(
       pool,
       chosen,
       count,
-      (c) => c.rank === 'A' && (c.suit === Suit.Spades || c.suit === Suit.Diamonds) && nOf(hand, c.suit, 'A') === 2,
+      (c) =>
+        c.rank === 'A' &&
+        (c.suit === Suit.Spades || c.suit === Suit.Diamonds) &&
+        nOf(hand, c.suit, 'A') === 2 &&
+        !protectsATen(hand, trump, c),
     )
   }
 
@@ -301,9 +378,15 @@ export function choosePassCards(
       const ranked = [...hand].sort((a, b) => easyCardWorth(a, trumpSuit!) - easyCardWorth(b, trumpSuit!))
       return ranked.slice(0, count)
     }
-    // Bidder: ship non-trump 10s first, then lowest-worth filler
+    // Bidder: ship non-trump 10s first, then lowest-worth filler. A 10 with
+    // both Aces of its suit behind it is exempt (#276) - it wins a trick when
+    // the suit is played out last, so it drops back into the worth-ranked
+    // filler, where `easyCardWorth` scores it level with an Ace or King and
+    // behind every Q/J/9 in the hand.
     const pool = [...hand]
-    const chosen = pool.filter((c) => c.suit !== trumpSuit && c.rank === '10').slice(0, count)
+    const chosen = pool
+      .filter((c) => c.suit !== trumpSuit && c.rank === '10' && !isProtectedTen(hand, trumpSuit, c))
+      .slice(0, count)
     for (const c of chosen) {
       const idx = pool.indexOf(c)
       if (idx !== -1) pool.splice(idx, 1)

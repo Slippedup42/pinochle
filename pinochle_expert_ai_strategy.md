@@ -159,6 +159,14 @@ Tier-0 eligible. Correct play: **keep K+Q** (preserves the partner's own
 of Run/Double Run, which are trump-only — a non-trump 10 is pure
 liability; shipping it also starts a void).
 
+That example turns on the 10 being *unprotected*, which is the ordinary
+case but not the only one — see "The exception: a 10 behind both Aces"
+below. Tier 1 measures protection against what will still be here after
+the pass rather than against the whole hand, because Tier 0 chases every
+Ace it can reach: when both Aces are already committed to the Bidder the
+10 is no longer protected in what remains, and shipping it is right, since
+it arrives behind the very Aces that make it a winner.
+
 **Resolved for v1 (issue #61, revised)**: this is not one fixed global
 rule — it's a static-mode-vs-rollout-compare-mode split tied to skill
 level (see #63's dial), implemented as an optional `rollout_evaluator`
@@ -202,6 +210,49 @@ liability (count value, no meld upside, and the Bidder has to protect it
 through 12 tricks while also managing trump control as declarer). Any
 non-trump 10 not needed for a Run should be a top candidate to return,
 in either pass direction.
+
+### The exception: a 10 behind both Aces
+
+Paul's ruling, 2026-09-02, from live play (issue #276), and it is the one
+correction to the paragraph above rather than a qualification of it. The
+argument there is about *meld*, and it is right about meld; what it misses
+is that a 10 can also simply **win a trick**.
+
+> The 10 should be kept. If you have 2 aces, you can play that suit last
+> and the 10 will become a winner. Or you can pass the 10 to your partner
+> and they can play it on the A, making a 20 pt trick.
+
+So: **a non-trump 10 is protected when the hand holds both Aces of that
+suit**, and a protected 10 is not shed ahead of ordinary filler. Two
+independent reasons, either sufficient — held, the suit is played out last
+and the 10 takes the trick behind the Aces; passed, a 10 delivered to a
+partner holding the Ace becomes a 20-point trick.
+
+Which of the two applies at a pass decision settles where the card
+belongs. If *this* hand holds both Aces then the other hand holds none, so
+passing the 10 cannot buy the drop-on-partner's-Ace trick; all of the
+value is in keeping the suit intact and cashing it late. A protected 10
+therefore ranks *behind* ordinary filler, not ahead of it.
+
+The corollary is not optional: **A-A-10 moves as a group**. A rule that
+kept the 10 while shedding one of the Aces holding it up would leave a
+bare 10 — strictly worse than shedding the 10 was. So the Aces of a suit
+that also holds a 10 are protected alongside it, and if the group has to
+break at all, the 10 goes first: the two Aces still win their tricks
+without it, while a lone Ace does nothing for a 10 left behind.
+
+Deliberately narrow. A 10 behind a *single* Ace is only partially
+protected and is **not** covered — Paul specified two Aces, and guessing
+past that would change far more hands. Trump 10s are Run cards and were
+never in scope. Nothing here says Tier 0 should go looking for a 10.
+
+Implemented in `pinochle_engine.py` as `_is_protected_ten` /
+`_protects_a_ten` / `_in_protected_ten_run`, applied in
+`_bidder_pass_selection`, `_tier1_forward_pass_candidates`,
+`_return_pass_pool_priority` and both simplified `choose_pass_cards`
+bidder branches; and in `web/src/engine/passing.ts` as `isProtectedTen` /
+`protectsATen`, applied in `bidderPassSelection` and `choosePassCards`.
+Unmeasured — #270 holds the A/B until the queue is drained.
 
 ### Knapsack triage across competing melds
 

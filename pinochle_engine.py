@@ -1029,6 +1029,70 @@ def _breaks_around(hand, card):
     return _n_of(hand, card.suit, card.rank) == 1
 
 
+def _is_protected_ten(hand, trump, card):
+    """Is this a non-trump 10 that the hand's own Aces make a winner?
+
+    Paul's ruling, 2026-09-02, from live play: a non-trump 10 is
+    **protected** when the hand holds BOTH Aces of that suit, and a
+    protected 10 must not be shed ahead of ordinary filler. Two reasons,
+    either of which is sufficient:
+
+      - **Held**: with both Aces of the suit in this hand, the suit can be
+        played out last and the 10 takes the trick behind them.
+      - **Passed**: a 10 delivered to a partner holding the Ace becomes a
+        20-point trick when the Ace is led and the 10 falls on it.
+
+    Which of the two applies at a pass decision is worth being precise
+    about, because it settles where the card belongs. If *this* hand holds
+    both Aces then the other hand holds none, so passing this 10 cannot
+    buy the drop-on-partner's-Ace trick. All of the value is in keeping
+    the suit intact and cashing it late, which is why every pass path
+    ranks a protected 10 *behind* ordinary filler rather than ahead of it.
+
+    Deliberately narrow, per issue #276. A 10 behind a single Ace is only
+    partially protected and is NOT covered here; trump 10s are run cards
+    and were never in scope. This is a different notion from the
+    `is_protected` lambda in `_bidder_pass_selection`, which means "trump,
+    or Q(S), or J(D)" - i.e. meld significance - and the two must not be
+    folded together.
+    """
+    return (
+        card.rank == "10"
+        and card.suit != trump
+        and _n_of(hand, card.suit, "A") == 2
+    )
+
+
+def _protects_a_ten(hand, trump, card):
+    """Is this one of the two Aces that make a 10 of its own suit protected?
+
+    The corollary of `_is_protected_ten`, and not optional. The reason to
+    keep the 10 is that both Aces are behind it, so a pass rule that keeps
+    the 10 while shedding an Ace produces the one outcome that is strictly
+    worse than shedding the 10 was: a bare 10 with nothing left to make it
+    win. A-A-10 of a non-trump suit is a running suit, and the pass tiers
+    below move it as a unit rather than as three independent cards.
+    """
+    return (
+        card.rank == "A"
+        and card.suit != trump
+        and _n_of(hand, card.suit, "A") == 2
+        and _n_of(hand, card.suit, "10") >= 1
+    )
+
+
+def _in_protected_ten_run(hand, trump, card):
+    """A-A-10 of a non-trump suit, as one group (#276) - see the two
+    predicates above."""
+    return _is_protected_ten(hand, trump, card) or _protects_a_ten(hand, trump, card)
+
+
+# Within the protected group, if it has to be broken up at all, the 10 is
+# the cheapest piece to give up: the two Aces still win their tricks
+# without it, while a lone Ace does nothing for a 10 left behind.
+_PROTECTED_RUN_SHED_ORDER = {"10": 0, "A": 1}
+
+
 def _take(pool, chosen, count, predicate, sort_key=lambda c: 0):
     """Move matching cards from pool into chosen (in place) until count is hit."""
     cands = sorted([c for c in pool if predicate(c)], key=sort_key)
@@ -1124,6 +1188,15 @@ def _bidder_pass_selection(hand, trump, category, count):
 
     Aces are never passed except via the explicit pro-move tier (D/S
     only) - they're too valuable to give away speculatively.
+
+    The "non-trump 10s" tier means *unprotected* 10s only (#276). A 10
+    with both Aces of its suit behind it is a winner the bidder can cash
+    by playing that suit out last, not a liability, so it is held out of
+    that tier - along with the void tier and the duplicate-Ace pro move,
+    the two other places a piece of that A-A-10 group could leave early -
+    and reaches the shed list only at "any unprotected non-ace", behind
+    every J/9 rag and behind a spare K/Q doing no meld work. See
+    `_is_protected_ten` for the rule and Paul's reasoning.
     """
     pool = list(hand)
     chosen = []
@@ -1150,7 +1223,10 @@ def _bidder_pass_selection(hand, trump, category, count):
     # control, which beats scattering the same number of cards - check
     # this before falling into the generic rank tiers.
     if len(chosen) < count:
-        void_cards = _find_void_opportunity(pool, trump, is_protected, count - len(chosen))
+        void_cards = _find_void_opportunity(
+            pool, trump,
+            lambda c: is_protected(c) or _in_protected_ten_run(hand, trump, c),
+            count - len(chosen))
         if void_cards:
             for c in void_cards:
                 if len(chosen) >= count:
@@ -1163,14 +1239,22 @@ def _bidder_pass_selection(hand, trump, category, count):
           lambda c: not is_protected(c) and c.rank in ("J", "9")
           and not _breaks_marriage(hand, c) and not _breaks_around(hand, c))
 
-    # Non-trump 10s
-    _take(pool, chosen, count, lambda c: not is_protected(c) and c.rank == "10")
+    # Non-trump 10s - but not one that both Aces of its suit make a winner
+    # (#276); that one falls through to the "any unprotected non-ace" tier,
+    # behind the J/9 filler and the spare K/Q this bidder can spend more
+    # cheaply.
+    _take(pool, chosen, count,
+          lambda c: not is_protected(c) and c.rank == "10"
+          and not _is_protected_ten(hand, trump, c))
 
     if category == "DS":
-        # Pro move: duplicate AS/AD
+        # Pro move: duplicate AS/AD - unless that pair is what is holding a
+        # 10 of the same suit up (#276). Shipping one of them turns a kept
+        # winner into a bare 10, which is worse than either whole answer.
         _take(pool, chosen, count,
               lambda c: c.rank == "A" and c.suit in (Suit.SPADES, Suit.DIAMONDS)
-              and _n_of(hand, c.suit, "A") == 2)
+              and _n_of(hand, c.suit, "A") == 2
+              and not _protects_a_ten(hand, trump, c))
 
     # Random J/9 - true last resort within this family, no safety check
     _take(pool, chosen, count, lambda c: not is_protected(c) and c.rank in ("J", "9"))
@@ -1263,21 +1347,38 @@ def _tier1_forward_pass_candidates(hand, trump, exclude):
     fill all slots (static mode) or as the competing alternative to a
     marginal Tier 0 pick (rollout-compare mode). Priority order:
 
-      1. Non-trump 10s not already chosen — zero meld value outside a
-         trump-only Run/Double Run, pure liability (same reasoning as the
-         return-pass rule in Section 3).
+      1. **Unprotected** non-trump 10s not already chosen — a 10 with no
+         Ace of its own suit behind it has zero meld value outside a
+         trump-only Run/Double Run and no way to win a trick either, so it
+         is pure liability (same reasoning as the return-pass rule in
+         Section 3).
       2. Other unprotected non-trump count-cards (A/K) that wouldn't break
          partner's own kept marriage/around.
       3. Void-building filler: a whole non-trump suit that fits the
          remaining slots and contains nothing protected.
       4. Any other non-trump card that doesn't break a kept meld.
-      5. True last resort: anything left (surplus trump, or a card that
+      5. A **protected** A-A-10 group (`_in_protected_ten_run`, #276): both
+         Aces of a non-trump suit and the 10 they hold up. The suit can be
+         played out last and the 10 takes a trick behind the Aces, so this
+         is a winner rather than a liability and it is shed only once every
+         ordinary rag is gone — the 10 first if the group has to break.
+      6. True last resort: anything left (surplus trump, or a card that
          would break a kept meld).
+
+    A 10's protection is measured against what will still be here after
+    the pass, not against the whole hand, which is why the group test uses
+    `exclude`'s complement. Tier 0 ships every Ace it can reach, so in the
+    common case both Aces are already committed to the Bidder, the 10 is
+    NOT protected in what remains, and it sheds at tier 1 exactly as
+    before — which is right: it follows the Aces into the hand that can
+    now cash all three. Tier 5 only bites when Tier 0 found three better
+    cards than the Aces and the running suit is staying put.
 
     Concrete doc example: partner holds 10-K-Q of a non-trump suit and
     nothing Tier-0 eligible — keeps K+Q (preserves the 20-pt Common
-    Marriage), ships the 10 (tier 1). Never proposes a card that would
-    break the partner's own kept meld ahead of one that wouldn't.
+    Marriage), ships the 10 (tier 1). That still holds, because the 10
+    there is unprotected. Never proposes a card that would break the
+    partner's own kept meld ahead of one that wouldn't.
     """
     pool = [c for c in hand if c not in exclude]
     chosen = []
@@ -1285,23 +1386,37 @@ def _tier1_forward_pass_candidates(hand, trump, exclude):
 
     keeps_meld = lambda c: _breaks_marriage(hand, c) or _breaks_around(hand, c)
 
+    # Frozen before the tiers run, so the group test reads the post-Tier-0
+    # hand and does not evaporate as `_take` empties `pool` (#276).
+    kept = list(pool)
+    protected_run = lambda c: _in_protected_ten_run(kept, trump, c)
+
     _take(pool, chosen, limit,
-          lambda c: c.suit != trump and c.rank == "10",
+          lambda c: c.suit != trump and c.rank == "10" and not protected_run(c),
           sort_key=lambda c: _suit_length(hand, c.suit))
 
     _take(pool, chosen, limit,
-          lambda c: c.suit != trump and c.rank in POINT_RANKS and not keeps_meld(c),
+          lambda c: c.suit != trump and c.rank in POINT_RANKS and not keeps_meld(c)
+          and not protected_run(c),
           sort_key=lambda c: _suit_length(hand, c.suit))
 
     if len(chosen) < limit:
-        void_cards = _find_void_opportunity(pool, trump, keeps_meld, limit - len(chosen))
+        void_cards = _find_void_opportunity(
+            pool, trump, lambda c: keeps_meld(c) or protected_run(c), limit - len(chosen))
         if void_cards:
             for c in void_cards:
                 if c in pool and len(chosen) < limit:
                     chosen.append(c)
                     pool.remove(c)
 
-    _take(pool, chosen, limit, lambda c: c.suit != trump and not keeps_meld(c))
+    _take(pool, chosen, limit,
+          lambda c: c.suit != trump and not keeps_meld(c) and not protected_run(c))
+
+    # The protected A-A-10 group (#276): behind every ordinary rag, ahead
+    # only of surplus trump and cards that would break a kept meld.
+    _take(pool, chosen, limit, protected_run,
+          sort_key=lambda c: _PROTECTED_RUN_SHED_ORDER[c.rank])
+
     _take(pool, chosen, limit, lambda c: True)
 
     return chosen
@@ -1480,15 +1595,29 @@ def _return_pass_pool_priority(pool, hand, trump):
     Objective: reduce the Bidder's count-card liability, pass loser-points
     to partner. Priority order:
 
-      1. Non-trump 10s — zero meld value outside a trump-only Run/Double
-         Run, so any non-trump 10 not needed for a Run is a top ship
-         candidate (doc-mandated, tier-agnostic).
+      1. **Unprotected** non-trump 10s — zero meld value outside a
+         trump-only Run/Double Run and nothing in the suit to make them
+         win, so any such 10 is a top ship candidate (doc-mandated,
+         tier-agnostic).
       2. Other unprotected non-trump count-cards (A/K) — reduces liability
          the Bidder would otherwise have to protect through 12 tricks.
       3. Void-building filler: a whole non-trump suit that fits the
          remaining slots.
       4. Any other non-trump card.
-      5. True last resort: trump (or anything left).
+      5. A **protected** A-A-10 group (`_in_protected_ten_run`, #276): the
+         Bidder holds both Aces of a non-trump suit and the 10 behind
+         them, so the suit can be played out last and all three win. That
+         is three tricks the declarer owns, not liability to hand off, and
+         shipping the 10 could not buy the drop-on-partner's-Ace trick
+         either — both Aces being here means the partner has none. The
+         group is shed only after every ordinary non-trump card, and the
+         10 goes first if it has to break at all.
+      6. True last resort: trump (or anything left).
+
+    Tier 2 has to know about the group as well, and that is the whole
+    reason `_protects_a_ten` exists: keeping the 10 while tier 2 shipped
+    the Aces out from under it would leave a bare 10, which is worse than
+    what the code did before this rule (#276).
     """
     remaining = list(pool)
     chosen = []
@@ -1496,27 +1625,36 @@ def _return_pass_pool_priority(pool, hand, trump):
 
     # Everything reaching this pool is already NOT part of a locked meld
     # (that's what makes it pool, not locked), so there's no kept-meld to
-    # break here — `_find_void_opportunity` still wants an is_protected
-    # callback, so pass a permissive no-op.
-    not_protected = lambda c: False
+    # break here. The one thing `_find_void_opportunity` still has to be
+    # told to leave alone is a protected A-A-10 group (#276) — the void
+    # tier is the only place a piece of it could leave without passing one
+    # of the rank predicates below.
+    #
+    # Locked cards stay in the hand, so unlike the forward pass the group
+    # test reads `hand` and not the pool: nothing has been committed away.
+    protected_run = lambda c: _in_protected_ten_run(hand, trump, c)
 
     _take(remaining, chosen, limit,
-          lambda c: c.suit != trump and c.rank == "10",
+          lambda c: c.suit != trump and c.rank == "10" and not protected_run(c),
           sort_key=lambda c: _suit_length(hand, c.suit))
 
     _take(remaining, chosen, limit,
-          lambda c: c.suit != trump and c.rank in POINT_RANKS,
+          lambda c: c.suit != trump and c.rank in POINT_RANKS and not protected_run(c),
           sort_key=lambda c: _suit_length(hand, c.suit))
 
     if len(chosen) < limit:
-        void_cards = _find_void_opportunity(remaining, trump, not_protected, limit - len(chosen))
+        void_cards = _find_void_opportunity(remaining, trump, protected_run, limit - len(chosen))
         if void_cards:
             for c in void_cards:
                 if c in remaining and len(chosen) < limit:
                     chosen.append(c)
                     remaining.remove(c)
 
-    _take(remaining, chosen, limit, lambda c: c.suit != trump)
+    _take(remaining, chosen, limit, lambda c: c.suit != trump and not protected_run(c))
+
+    _take(remaining, chosen, limit, protected_run,
+          sort_key=lambda c: _PROTECTED_RUN_SHED_ORDER[c.rank])
+
     _take(remaining, chosen, limit, lambda c: True)
 
     return chosen
@@ -2227,10 +2365,16 @@ class EasyPlayer(Player):
         # states plainly that a non-trump 10 has zero meld value and is a
         # pure count-card liability regardless of tier, so it's a safe,
         # tier-agnostic default even for Easy's otherwise-flat logic.
+        # The exception is tier-agnostic for the same reason (#276): a 10
+        # with both Aces of its suit behind it wins a trick when the suit
+        # is played out last, so it isn't shipped on sight - it drops back
+        # into the worth-ranked filler, where `_easy_card_worth` scores it
+        # level with an Ace or King and behind every Q/J/9 in the hand.
         # Remaining slots fall back to lowest-worth filler, same as the
         # partner branch above.
         pool = list(self.hand)
-        chosen = [c for c in pool if c.suit != trump_suit and c.rank == "10"][:count]
+        chosen = [c for c in pool if c.suit != trump_suit and c.rank == "10"
+                  and not _is_protected_ten(self.hand, trump_suit, c)][:count]
         for c in chosen:
             pool.remove(c)
         if len(chosen) < count:
@@ -2648,8 +2792,10 @@ class GeneralStrategy(Player):
             if not is_bid_winner:
                 ranked = sorted(self.hand, key=lambda c: _easy_card_worth(c, trump_suit))
                 return ranked[:count]
+            # Same protected-10 exception as EasyPlayer's own branch (#276).
             pool = list(self.hand)
-            chosen = [c for c in pool if c.suit != trump_suit and c.rank == "10"][:count]
+            chosen = [c for c in pool if c.suit != trump_suit and c.rank == "10"
+                      and not _is_protected_ten(self.hand, trump_suit, c)][:count]
             for c in chosen:
                 pool.remove(c)
             if len(chosen) < count:

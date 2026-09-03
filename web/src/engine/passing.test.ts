@@ -150,6 +150,151 @@ describe('choosePassCards', () => {
 })
 
 /**
+ * A non-trump 10 behind BOTH Aces of its suit is a winner, not a liability
+ * (#276) - Paul's ruling, 2026-09-02, from live play.
+ *
+ * - **Held**: with both Aces of the suit in hand, the suit can be played out
+ *   last and the 10 takes the trick behind them.
+ * - **Passed**: a 10 delivered to a partner holding the Ace becomes a
+ *   20-point trick when the Ace is led and the 10 falls on it.
+ *
+ * Which of the two applies at a pass decision decides where the card belongs.
+ * If THIS hand holds both Aces then the other hand holds none, so passing the
+ * 10 cannot buy the drop-on-partner's-Ace trick; all of the value is in
+ * keeping the suit intact and cashing it late. So the protected 10 is shed
+ * only once ordinary filler is gone, and the two Aces holding it up go with
+ * it - keeping the 10 while shedding an Ace would leave a bare 10, which is
+ * strictly worse than the behaviour this replaces.
+ *
+ * Mirrors `test_protected_tens.py`, which covers the Python-only tier-0/tier-1
+ * and return-pass paths as well. Trump is spades in the fixtures below so that
+ * every J/9 in the hand is trump: that strips out the safe-filler tier which
+ * would otherwise fill all three slots before the 10s tier is reached, and
+ * leaves the spare K/Q as the ordinary filler the 10 has to outlast.
+ */
+describe('a 10 behind both Aces of its suit is protected (#276)', () => {
+  const names = (cards: readonly Card[]) => cards.map((c) => `${c.rank}${c.suit}`).sort()
+
+  const CLUB_ACES = [new Card(Suit.Clubs, 'A', 1), new Card(Suit.Clubs, 'A', 2)]
+  const SIDE_SUITS = [
+    new Card(Suit.Hearts, 'A', 1),
+    new Card(Suit.Hearts, 'K', 1),
+    new Card(Suit.Diamonds, 'A', 1),
+    new Card(Suit.Diamonds, 'K', 1),
+  ]
+  const TRUMP_FILLER = [
+    new Card(Suit.Spades, 'A', 1),
+    new Card(Suit.Spades, '10', 1),
+    new Card(Suit.Spades, '10', 2),
+    new Card(Suit.Spades, 'Q', 1),
+    new Card(Suit.Spades, 'Q', 2),
+    new Card(Suit.Spades, 'J', 1),
+    new Card(Suit.Spades, 'J', 2),
+    new Card(Suit.Spades, '9', 1),
+    new Card(Suit.Spades, '9', 2),
+  ]
+
+  /** 15-card bidder hand holding the 10 of clubs and `clubAces` Aces of clubs. */
+  const bidderHand = (clubAces: number): Card[] => {
+    const hand = [new Card(Suit.Clubs, '10', 1), new Card(Suit.Clubs, 'K', 1)]
+    hand.push(...CLUB_ACES.slice(0, clubAces))
+    hand.push(...SIDE_SUITS)
+    hand.push(...TRUMP_FILLER.slice(0, 15 - hand.length))
+    expect(hand).toHaveLength(15)
+    return hand
+  }
+
+  it('keeps a 10 with both Aces of its suit behind it, and keeps the Aces too', () => {
+    const chosen = names(bidderPassSelection(bidderHand(2), Suit.Spades, 'DS', 3))
+    expect(chosen).not.toContain(`10${Suit.Clubs}`)
+    expect(chosen).not.toContain(`A${Suit.Clubs}`)
+  })
+
+  it('still sheds a 10 behind only one Ace - partial protection is out of scope', () => {
+    const chosen = names(bidderPassSelection(bidderHand(1), Suit.Spades, 'DS', 3))
+    expect(chosen).toContain(`10${Suit.Clubs}`)
+  })
+
+  it('is unchanged for a 10 with no Ace of its suit - still the first thing thrown', () => {
+    const chosen = names(bidderPassSelection(bidderHand(0), Suit.Spades, 'DS', 3))
+    expect(chosen).toContain(`10${Suit.Clubs}`)
+  })
+
+  it('stands the duplicate-Ace pro move down when that pair is holding a 10 up', () => {
+    const hand = [
+      new Card(Suit.Spades, '10', 1),
+      new Card(Suit.Spades, 'A', 1),
+      new Card(Suit.Spades, 'A', 2),
+      new Card(Suit.Spades, 'K', 1),
+      new Card(Suit.Hearts, 'A', 1),
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Clubs, 'A', 1),
+      new Card(Suit.Clubs, 'K', 1),
+      new Card(Suit.Diamonds, 'A', 1),
+      new Card(Suit.Diamonds, '10', 1),
+      new Card(Suit.Diamonds, '10', 2),
+      new Card(Suit.Diamonds, 'Q', 1),
+      new Card(Suit.Diamonds, 'J', 1),
+      new Card(Suit.Diamonds, '9', 1),
+      new Card(Suit.Diamonds, '9', 2),
+    ]
+    const chosen = names(bidderPassSelection(hand, Suit.Diamonds, 'DS', 3))
+    expect(chosen).not.toContain(`A${Suit.Spades}`)
+    expect(chosen).not.toContain(`10${Suit.Spades}`)
+  })
+
+  describe("choosePassCards' simplified bidder branch", () => {
+    const MELD_ONLY_LEVEL: SkillLevel = 'easy'
+    let pristine: SkillParams
+    beforeAll(() => {
+      pristine = SKILL_PARAMS[MELD_ONLY_LEVEL]
+      SKILL_PARAMS[MELD_ONLY_LEVEL] = { ...pristine, handValuation: 'meld_only' }
+    })
+    afterAll(() => {
+      SKILL_PARAMS[MELD_ONLY_LEVEL] = pristine
+    })
+
+    // The simplified branch ships non-trump 10s on sight before ranking
+    // anything by worth. The exception is tier-agnostic for the same reason
+    // the rule is: it is what the card is worth, not a piece of expert-tier
+    // sophistication.
+    const easyHand = (clubAces: number): Card[] => {
+      const hand = [
+        new Card(Suit.Clubs, '10', 1),
+        new Card(Suit.Clubs, '9', 1),
+        new Card(Suit.Clubs, '9', 2),
+        new Card(Suit.Clubs, 'J', 1),
+        new Card(Suit.Spades, '9', 1),
+        new Card(Suit.Spades, '9', 2),
+        new Card(Suit.Spades, 'J', 1),
+        new Card(Suit.Diamonds, '9', 1),
+        new Card(Suit.Diamonds, '9', 2),
+        new Card(Suit.Diamonds, 'J', 1),
+        new Card(Suit.Hearts, 'A', 1),
+        new Card(Suit.Hearts, 'K', 1),
+      ]
+      hand.push(...CLUB_ACES.slice(0, clubAces))
+      return hand
+    }
+
+    it('keeps a protected 10 and ships 9/J filler instead', () => {
+      const chosen = names(choosePassCards(easyHand(2), 3, Suit.Hearts, true, MELD_ONLY_LEVEL))
+      expect(chosen).not.toContain(`10${Suit.Clubs}`)
+    })
+
+    it('still ships a 10 behind one Ace', () => {
+      const chosen = names(choosePassCards(easyHand(1), 3, Suit.Hearts, true, MELD_ONLY_LEVEL))
+      expect(chosen).toContain(`10${Suit.Clubs}`)
+    })
+
+    it('is unchanged for a 10 with no Ace of its suit', () => {
+      const chosen = names(choosePassCards(easyHand(0), 3, Suit.Hearts, true, MELD_ONLY_LEVEL))
+      expect(chosen).toContain(`10${Suit.Clubs}`)
+    })
+  })
+})
+
+/**
  * The 3-card pass, pinned against every configuration the engine has (#196).
  *
  * Paul's dad reported that changing the AI skill level let him pass **4** cards
