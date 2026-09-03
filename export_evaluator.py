@@ -40,14 +40,16 @@ import json
 import os
 import sys
 
-from generate_rollout_dataset import BID_DECISION, FOLD_DECISION
+from generate_rollout_dataset import BID_DECISION, FOLD_DECISION, extract_features
 from fit_evaluator import (
     DEFAULT_DATASET_PATH,
     DEFAULT_MODEL_PATH,
     PROBLEMS,
     LogisticModel,
+    decode_hand,
     read_dataset,
 )
+from pinochle_engine import best_base_bid
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +250,45 @@ def _stride_sample(rows, count):
     return [rows[int(index * stride)] for index in range(count)]
 
 
+def bid_parity_row(row):
+    """A bid row re-read at the trump today's engine would name.
+
+    The fixture is a statement about the two *live* engines, and the live bid
+    path on both sides searches for its own trump: `evaluateBid` calls
+    `bestBaseBid`, `label_bid_situation` called `best_base_bid`. Those agreed
+    for the life of the dataset until #277 restructured the valuation, and they
+    do not any more - the stored `trump` column is the answer the *old*
+    valuation gave, and it now differs from today's answer on 22% of bid rows.
+    Emitting the stored column as the expected trump would assert something
+    false about the current engine and would fail `evaluatorParity.test.ts` for
+    a reason that has nothing to do with the port.
+
+    So the trump is searched here, and every feature that depends on it is
+    recomputed from the hand through `extract_features` - the same function
+    that wrote those columns in the first place, so this is a re-derivation and
+    not a second definition. `bid`, the scores and the partner flags are
+    situation, not hand shape, and are carried across unchanged.
+
+    What this does NOT fix, and cannot: the model itself is fitted on the
+    stored trump, because that is the trump the rollout *label* was measured
+    at, and a label measured playing hearts cannot be re-pointed at spades.
+    So a fifth of the training rows now describe a contract the current
+    valuation would not choose. That is dataset staleness and its fix is #226,
+    which is deferred; recorded on #277 so the size of it is written down.
+    """
+    hand = decode_hand(row["hand"])
+    trump, _ceiling, _breakdown = best_base_bid(
+        hand, int(row["our_score"]), int(row["their_score"])
+    )
+    reread = dict(row)
+    reread["trump"] = trump.value
+    reread.update(extract_features(
+        hand, trump, row["bid"], row["score_diff"],
+        row["partner_has_bid"], row["partner_has_passed"],
+    ))
+    return reread
+
+
 def _case_fields(row, problem, model, extra):
     """Shared tail of a parity case: features, logit and decision, from Python."""
     features = {name: float(value) for name, value in problem["extract"](row).items()}
@@ -327,7 +368,8 @@ def build_fixture_module(rows, models, dataset_path):
 
     bid_problem = PROBLEMS[BID_DECISION]
     lines.append("export const BID_PARITY_CASES: readonly BidParityCase[] = [")
-    for row in _stride_sample(bid_problem["rows"](rows), BID_PARITY_CASES):
+    for row in map(bid_parity_row,
+                   _stride_sample(bid_problem["rows"](rows), BID_PARITY_CASES)):
         lines.append(_case_fields(row, bid_problem, models[BID_DECISION], [
             "hand: " + _string(row["hand"]),
             "ourScore: " + _number(row["our_score"]),

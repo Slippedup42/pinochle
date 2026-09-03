@@ -250,9 +250,13 @@ Implemented in `pinochle_engine.py` as `_is_protected_ten` /
 `_protects_a_ten` / `_in_protected_ten_run`, applied in
 `_bidder_pass_selection`, `_tier1_forward_pass_candidates`,
 `_return_pass_pool_priority` and both simplified `choose_pass_cards`
-bidder branches; and in `web/src/engine/passing.ts` as `isProtectedTen` /
-`protectsATen`, applied in `bidderPassSelection` and `choosePassCards`.
-Unmeasured — #270 holds the A/B until the queue is drained.
+bidder branches; and in `web/src/engine/handShape.ts` as `isProtectedTen`,
+with `protectsATen` in `passing.ts`, applied in `bidderPassSelection` and
+`choosePassCards`. The predicate itself sits above both consumers on each
+side because #277 gave the same card a *price* as well as a pass rank
+(`compute_trick_potential` / `computeTrickPotential`, 20 a protected 10),
+and one rule stated twice is one rule that can drift. Unmeasured — #270
+holds the A/B until the queue is drained.
 
 ### Knapsack triage across competing melds
 

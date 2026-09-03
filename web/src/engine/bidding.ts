@@ -18,18 +18,31 @@
 // (#118). Python is not frozen either — it is the live AI-research and
 // measurement platform — it simply does not rule this file.
 //
-// Two layers. Valuation: computeBaseBid (guaranteed + speculative hand
-// value) -> computeCompetitiveAdjustment (score-context) -> the 400-cap /
-// >300-meld-uncap rule (maxBid / cappedBid). bestBaseBid searches all 4
-// trump candidates and applies the cap to find the winning trump + ceiling.
+// Two layers. Valuation, in three stages that each ask a different question
+// of the same hand: computeBaseBid (what will it meld?) ->
+// computeTrickPotential (what will it take? — #277) ->
+// computeCompetitiveAdjustment (what is the scoreboard asking for?) -> the
+// 400-cap / >300-meld-uncap rule (maxBid / cappedBid). bestBaseBid searches
+// all 4 trump candidates and applies the cap to find the winning trump +
+// ceiling.
 // Decision: chooseBid/chooseTrump wrap that valuation with the stateful
 // auction rules (endgame protection, 3rd-bidder-opens-cheap, when to raise
 // vs. pass) - ported from Player.choose_bid / Player.choose_trump. This
 // module only decides; it does not run an auction loop — that lives in
 // components/auctionReducer.ts (#34), under gameFlowReducer.ts (#47).
 
-import { type Card, GAME_WIN_SCORE, handCount, OPENING_BID, type Rank, Suit, SUITS } from './card'
+import {
+  type Card,
+  GAME_WIN_SCORE,
+  handCount,
+  OPENING_BID,
+  type Rank,
+  Suit,
+  suitLength,
+  SUITS,
+} from './card'
 import { shouldBid } from './evaluator'
+import { isProtectedTen } from './handShape'
 import {
   MELD_ONLY_BID_NOISE,
   MELD_ONLY_TRICK_ESTIMATE,
@@ -53,10 +66,10 @@ import {
 import { partnerOf, type TeamId, teamOf } from './round'
 import type { PlayerIndex } from './trick'
 
-// -- Base Bid — the hand-strength number bidding decisions are built on.
-// Distinct from scoreMelds: this is a *speculative* valuation (near-run,
-// near-double-pinochle, remaining-card trick-taking potential, partner
-// estimate), not the actual guaranteed meld. ------------------------------
+// -- Base Bid — the hand-strength number bidding decisions are built on, and
+// the two stages that sit on top of it. Distinct from scoreMelds: this is a
+// *speculative* valuation (near-run, near-double-pinochle), not the actual
+// guaranteed meld. ---------------------------------------------------------
 
 // These two are ported from pinochle_engine.py, which CLAUDE.md names the
 // reference implementation for this port and which is still authoritative
@@ -72,7 +85,31 @@ import type { PlayerIndex } from './trick'
 // name a different trump than the reference engine on the very same hand.
 export const NEAR_RUN_VALUE = 120
 export const NEAR_DOUBLE_PINOCHLE_VALUE = 225
-export const ACE_VALUE = 20
+// A Queen of Spades that no spade marriage is asking for is a freer pinochle
+// card, so a hand holding a pinochle and NO King of Spades at all is worth a
+// little more (#277). Paid once for the hand, never per copy: a double
+// pinochle with no K(S) adds 20 and not 40.
+export const PINOCHLE_NO_KING_OF_SPADES_BONUS = 20
+
+// -- Trick potential (#277). The stage between the Base Bid and the
+// competitive adjustment: what the hand can win with cards rather than meld.
+// computeBaseBid's comment has always said this belongs somewhere else and
+// named the competitive adjustment as its home, but that layer only ever read
+// the score, so until now nothing priced the tricks at all. It does now, and
+// it is its own stage rather than more lines inside the Base Bid because the
+// two answer different questions - what will this hand meld, and what will it
+// take.
+export const ACE_VALUE = 20 // every Ace, any suit, flat
+// Per copy, and ON TOP of the flat Ace above, so a trump Ace is worth 40.
+export const TRUMP_ACE_VALUE = 20
+// Trump beyond the fourth card is length rather than shape.
+export const TRUMP_LENGTH_BASELINE = 4
+export const EXTRA_TRUMP_VALUE = 20
+// See `isProtectedTen` in handShape.ts — the same rule the pass reads (#276).
+export const PROTECTED_TEN_VALUE = 20
+// A non-trump King with no Queen of its suit behind it, and vice versa.
+export const LOOSE_KING_VALUE = 30
+export const LOOSE_QUEEN_VALUE = 20
 // Proficient AI draws randomly in this range each bid (partner-strength
 // estimate). Not consumed by the pure valuation functions below — ported
 // for parity with the Python constant block, same as there.
@@ -267,11 +304,17 @@ export interface BaseBidResult {
 }
 
 /**
- * Pure hand-value Base Bid: meld you have, plus the Run/Double-Pinochle
- * proximity bonuses, plus flat Ace value. Deliberately excludes
- * remaining-card trick-taking potential and partner estimate - those
- * live in computeCompetitiveAdjustment instead, since they're about
- * context/speculation rather than what the hand itself guarantees.
+ * Pure hand-value Base Bid: the meld you have, plus the Run and
+ * Double-Pinochle proximity bonuses. Every line here is about *meld* - what
+ * the hand will put face up. What the hand can win in tricks is priced one
+ * stage later, in computeTrickPotential, and the score context one stage
+ * after that in computeCompetitiveAdjustment.
+ *
+ * #277 moved the flat Ace line out to that middle stage and deleted the
+ * "3 different Aces" bonus, which paid 60 with hearts or clubs trump and 50
+ * otherwise. No rule of pinochle makes three Aces worth more when hearts are
+ * trump than when spades are, nothing in the repo ever explained the
+ * asymmetry, and Paul's rewrite of the valuation omits it.
  */
 export function computeBaseBid(hand: readonly Card[], trump: Suit): BaseBidResult {
   const n = (suit: Suit, rank: Rank) => handCount(hand, suit, rank)
@@ -359,6 +402,19 @@ export function computeBaseBid(hand: readonly Card[], trump: Suit): BaseBidResul
   }
   if (pinochleValue) breakdown['Pinochle/near-double'] = pinochleValue
 
+  // A Queen of Spades doing no marriage work is a freer pinochle card, so a
+  // hand that holds a pinochle at all and has no King of Spades to pair
+  // against gets a little more (#277). Once for the hand: the reason is about
+  // the absent King, and there is only one absence however many Queens sit
+  // behind it. `pinochleValue` is the "holds a pinochle" test rather than
+  // `pinCount`, and the two agree - the near-double branch needs three of the
+  // four pieces, which cannot be reached without at least one of each.
+  let noKsBonus = 0
+  if (pinochleValue && n(Suit.Spades, 'K') === 0) {
+    noKsBonus = PINOCHLE_NO_KING_OF_SPADES_BONUS
+    breakdown['Pinochle (no King of Spades)'] = noKsBonus
+  }
+
   // -- Arounds ---------------------------------------------------------------
   let aroundValue = 0
   for (const [rank, base] of Object.entries(AROUND_VALUES) as ['A' | 'K' | 'Q' | 'J', number][]) {
@@ -373,30 +429,75 @@ export function computeBaseBid(hand: readonly Card[], trump: Suit): BaseBidResul
   }
   if (aroundValue) breakdown['Arounds'] = aroundValue
 
-  // -- Aces, flat, ~2 tricks worth each -----------------------------------
-  const aceCount = hand.filter((c) => c.rank === 'A').length
-  const aceValue = aceCount * ACE_VALUE
-  breakdown['Aces (flat, 20/ea)'] = aceValue
-
-  // -- 3 different Aces bonus (near-Aces-Around, suit diversity) -----------
-  const distinctAceSuits = SUITS.filter((s) => n(s, 'A') >= 1).length
-  let threeAcesValue = 0
-  if (distinctAceSuits === 3) {
-    threeAcesValue = trump === Suit.Hearts || trump === Suit.Clubs ? 60 : 50
-    breakdown['3 different Aces bonus'] = threeAcesValue
-  }
-
   const total =
-    runValue +
-    marriageValue +
-    commonValue +
-    dixCount * DIX_VALUE +
-    pinochleValue +
-    aroundValue +
-    aceValue +
-    threeAcesValue
+    runValue + marriageValue + commonValue + dixCount * DIX_VALUE + pinochleValue + noKsBonus + aroundValue
 
   return { total, breakdown, pool }
+}
+
+export interface TrickPotentialResult {
+  total: number
+  breakdown: Record<string, number>
+}
+
+/**
+ * What this hand can win with cards rather than with meld - the stage between
+ * the Base Bid and the competitive adjustment (#277). Six lines, all additive,
+ * all counted per card unless said otherwise:
+ *
+ *   +ACE_VALUE           per Ace, any suit
+ *   +TRUMP_ACE_VALUE     per Ace of trump, ON TOP of the line above
+ *   +EXTRA_TRUMP_VALUE   per trump card past TRUMP_LENGTH_BASELINE
+ *   +PROTECTED_TEN_VALUE per non-trump 10 with both Aces of its suit in hand
+ *   +LOOSE_KING_VALUE    per non-trump King with no Queen of its suit
+ *   +LOOSE_QUEEN_VALUE   per non-trump Queen with no King of its suit
+ *
+ * A trump Ace collecting both Ace lines, and so being worth 40, is deliberate:
+ * Paul kept the two as separate rules and the card really is doing two jobs -
+ * it is a certain trick like any Ace, and it is the card that controls the
+ * trump suit.
+ *
+ * "Not part of a marriage" is read exactly as Paul defined it: no matching K/Q
+ * of the same suit anywhere in the hand. It is a property of the suit rather
+ * than of the individual card, so K-K-Q of one suit pays the marriage and
+ * nothing here - the spare King has a Queen behind it and is not loose by this
+ * test. Arounds are not consulted: a King with no Queen of its suit is loose
+ * whether or not it is also part of Kings Around, because the Around already
+ * paid for a different thing.
+ *
+ * Trump honours are excluded from the last two lines because the Run and Royal
+ * Marriage lines in the Base Bid have already priced them, and trump 10s from
+ * the protected-10 line for the same reason.
+ */
+export function computeTrickPotential(hand: readonly Card[], trump: Suit): TrickPotentialResult {
+  const breakdown: Record<string, number> = {}
+
+  const aceCount = hand.filter((c) => c.rank === 'A').length
+  if (aceCount) breakdown['Aces (flat, 20/ea)'] = aceCount * ACE_VALUE
+
+  const trumpAces = handCount(hand, trump, 'A')
+  if (trumpAces) breakdown['Ace of trump'] = trumpAces * TRUMP_ACE_VALUE
+
+  const extraTrump = Math.max(0, suitLength(hand, trump) - TRUMP_LENGTH_BASELINE)
+  if (extraTrump) breakdown['Trump length (beyond 4)'] = extraTrump * EXTRA_TRUMP_VALUE
+
+  const protectedTens = hand.filter((c) => isProtectedTen(hand, trump, c)).length
+  if (protectedTens) breakdown['10 behind both Aces'] = protectedTens * PROTECTED_TEN_VALUE
+
+  let looseKings = 0
+  let looseQueens = 0
+  for (const suit of SUITS) {
+    if (suit === trump) continue
+    const kings = handCount(hand, suit, 'K')
+    const queens = handCount(hand, suit, 'Q')
+    if (kings && !queens) looseKings += kings
+    if (queens && !kings) looseQueens += queens
+  }
+  if (looseKings) breakdown['Unmarried Kings'] = looseKings * LOOSE_KING_VALUE
+  if (looseQueens) breakdown['Unmarried Queens'] = looseQueens * LOOSE_QUEEN_VALUE
+
+  const total = Object.values(breakdown).reduce((sum, v) => sum + v, 0)
+  return { total, breakdown }
 }
 
 export interface CompetitiveAdjustmentResult {
@@ -456,14 +557,17 @@ export interface MaxBidResult {
 }
 
 /**
- * Base Bid + Competitive adjustment = Max Bid (the ceiling), before the
- * 400-cap / >300-meld-uncap rule is applied.
+ * Base Bid + trick potential + competitive adjustment = Max Bid (the ceiling),
+ * before the 400-cap / >300-meld-uncap rule is applied. The three stages are
+ * what the hand melds, what it takes, and what the scoreboard is asking for;
+ * only the last of them is not about the cards.
  */
 export function computeMaxBid(hand: readonly Card[], trump: Suit, myScore = 0, oppScore = 0): MaxBidResult {
   const { total: baseTotal, breakdown: baseBreakdown } = computeBaseBid(hand, trump)
+  const { total: trickTotal, breakdown: trickBreakdown } = computeTrickPotential(hand, trump)
   const { value: adjTotal, breakdown: adjBreakdown } = computeCompetitiveAdjustment(hand, trump, myScore, oppScore)
-  const breakdown = { ...baseBreakdown, ...adjBreakdown }
-  return { total: baseTotal + adjTotal, breakdown }
+  const breakdown = { ...baseBreakdown, ...trickBreakdown, ...adjBreakdown }
+  return { total: baseTotal + trickTotal + adjTotal, breakdown }
 }
 
 /**

@@ -224,16 +224,95 @@ def score_melds(hand, trump_suit):
 
 
 # ---------------------------------------------------------------------------
-# Base Bid — the hand-strength number bidding decisions are built on.
+# Hand-shape predicates — shared by the valuation and the pass.
+#
+# These say something about the *cards* rather than about a decision, so they
+# are homed above both consumers instead of inside either. #276 put
+# `_is_protected_ten` in the passing section because passing was the only
+# caller; #277 gave the same rule a price in `compute_trick_potential`, and a
+# bidding predicate reached for out of the passing module is exactly the shape
+# that lets two statements of one rule drift apart. One definition, two
+# readers.
+# ---------------------------------------------------------------------------
+
+def _is_protected_ten(hand, trump, card):
+    """Is this a non-trump 10 that the hand's own Aces make a winner?
+
+    Paul's ruling, 2026-09-02, from live play: a non-trump 10 is
+    **protected** when the hand holds BOTH Aces of that suit. Two reasons,
+    either of which is sufficient:
+
+      - **Held**: with both Aces of the suit in this hand, the suit can be
+        played out last and the 10 takes the trick behind them.
+      - **Passed**: a 10 delivered to a partner holding the Ace becomes a
+        20-point trick when the Ace is led and the 10 falls on it.
+
+    Two consequences, and they are one ruling read at two moments. At a
+    *pass* (#276) a protected 10 must not be shed ahead of ordinary
+    filler; which of the two reasons applies there is worth being precise
+    about, because it settles where the card belongs. If *this* hand holds
+    both Aces then the other hand holds none, so passing this 10 cannot
+    buy the drop-on-partner's-Ace trick. All of the value is in keeping
+    the suit intact and cashing it late, which is why every pass path
+    ranks a protected 10 *behind* ordinary filler rather than ahead of it.
+    At a *bid* (#277) the same card is worth PROTECTED_TEN_VALUE, for the
+    first of those two reasons: it is a trick this hand can cash.
+
+    Deliberately narrow, per issue #276. A 10 behind a single Ace is only
+    partially protected and is NOT covered here; trump 10s are run cards
+    and were never in scope. This is a different notion from the
+    `is_protected` lambda in `_bidder_pass_selection`, which means "trump,
+    or Q(S), or J(D)" - i.e. meld significance - and the two must not be
+    folded together.
+    """
+    return (
+        card.rank == "10"
+        and card.suit != trump
+        and _n_of(hand, card.suit, "A") == 2
+    )
+
+
+# ---------------------------------------------------------------------------
+# Base Bid — the hand-strength number bidding decisions are built on, and the
+# two stages that sit on top of it.
+#
 # Distinct from score_melds: this is a *speculative* valuation (near-run,
-# near-double-pinochle, remaining-card trick-taking potential, partner
-# estimate), not the actual guaranteed meld.
+# near-double-pinochle), not the actual guaranteed meld. Three stages, in
+# order, each answering a different question about the same hand:
+#
+#   compute_base_bid              what will this hand meld?
+#   compute_trick_potential       what will it take in tricks?  (#277)
+#   compute_competitive_adjustment what is the scoreboard asking for?
+#
+# compute_max_bid sums the three and capped_bid applies the 400-cap /
+# >300-meld-uncap rule to the sum.
 # ---------------------------------------------------------------------------
 
 RUN_RANKS = ("A", "10", "K", "Q", "J")
 NEAR_RUN_VALUE = 120
 NEAR_DOUBLE_PINOCHLE_VALUE = 225
-ACE_VALUE = 20
+# A Queen of Spades that no spade marriage is asking for is a freer pinochle
+# card, so a hand holding a pinochle and NO King of Spades at all is worth a
+# little more (#277). Paid once for the hand, never per copy: a double
+# pinochle with no K(S) adds 20 and not 40.
+PINOCHLE_NO_KING_OF_SPADES_BONUS = 20
+
+# -- Trick potential (#277). The stage between the Base Bid and the
+# competitive adjustment: what the hand can win with cards rather than meld.
+# `compute_base_bid`'s docstring has always said this belongs somewhere else
+# and named the competitive adjustment as its home, but that layer only ever
+# read the score, so until now nothing priced the tricks at all. It does now,
+# and it is its own stage rather than more lines inside the Base Bid because
+# the two answer different questions - what will this hand meld, and what will
+# it take.
+ACE_VALUE = 20              # every Ace, any suit, flat
+TRUMP_ACE_VALUE = 20        # per copy, ON TOP of the flat Ace above, so a
+                            # trump Ace is worth 40 in total
+TRUMP_LENGTH_BASELINE = 4   # trump beyond the fourth card is length, not shape
+EXTRA_TRUMP_VALUE = 20
+PROTECTED_TEN_VALUE = 20    # see `_is_protected_ten`
+LOOSE_KING_VALUE = 30       # non-trump K with no Queen of its suit behind it
+LOOSE_QUEEN_VALUE = 20      # non-trump Q with no King of its suit behind it
 PARTNER_ESTIMATE_RANGE = (50, 100)  # Proficient draws randomly in this range each bid
 MAX_BID_DEFAULT = 400
 MAX_BID_MELD_THRESHOLD = 300
@@ -354,12 +433,19 @@ def endgame_protection_bid(context, opponents, partner_is_dealer, ceiling):
 
 def compute_base_bid(hand, trump):
     """
-    Pure hand-value Base Bid: meld you have, plus the Run/Double-Pinochle
-    proximity bonuses, plus flat Ace value. Deliberately excludes
-    remaining-card trick-taking potential and partner estimate - those
-    live in compute_competitive_adjustment instead, since they're about
-    context/speculation rather than what the hand itself guarantees.
-    Returns (base_bid_total, breakdown_dict).
+    Pure hand-value Base Bid: the meld you have, plus the Run and
+    Double-Pinochle proximity bonuses. Every line here is about *meld* -
+    what the hand will put face up. What the hand can win in tricks is
+    priced one stage later, in compute_trick_potential, and the score
+    context one stage after that in compute_competitive_adjustment.
+
+    #277 moved the flat Ace line out to that middle stage and deleted the
+    "3 different Aces" bonus, which paid 60 with hearts or clubs trump and
+    50 otherwise. No rule of pinochle makes three Aces worth more when
+    hearts are trump than when spades are, nothing in the repo ever
+    explained the asymmetry, and Paul's rewrite of the valuation omits it.
+
+    Returns (base_bid_total, breakdown_dict, leftover_pool).
     """
     def n(suit, rank):
         return _hand_count(hand, suit, rank)
@@ -461,6 +547,19 @@ def compute_base_bid(hand, trump):
     if pinochle_value:
         breakdown["Pinochle/near-double"] = pinochle_value
 
+    # A Queen of Spades doing no marriage work is a freer pinochle card, so a
+    # hand that holds a pinochle at all and has no King of Spades to pair
+    # against gets a little more (#277). Once for the hand: the reason is
+    # about the absent King, and there is only one absence however many
+    # Queens sit behind it. `pinochle_value` is the "holds a pinochle" test
+    # rather than `pin_count`, and the two agree - the near-double branch
+    # needs three of the four pieces, which cannot be reached without at
+    # least one of each.
+    no_ks_bonus = 0
+    if pinochle_value and n(Suit.SPADES, "K") == 0:
+        no_ks_bonus = PINOCHLE_NO_KING_OF_SPADES_BONUS
+        breakdown["Pinochle (no King of Spades)"] = no_ks_bonus
+
     # -- Arounds ---------------------------------------------------------------
     around_value = 0
     for rank, base in AROUND_VALUES.items():
@@ -476,21 +575,78 @@ def compute_base_bid(hand, trump):
     if around_value:
         breakdown["Arounds"] = around_value
 
-    # -- Aces, flat, ~2 tricks worth each -----------------------------------
-    ace_count = sum(1 for c in hand if c.rank == "A")
-    ace_value = ace_count * ACE_VALUE
-    breakdown["Aces (flat, 20/ea)"] = ace_value
-
-    # -- 3 different Aces bonus (near-Aces-Around, suit diversity) -----------
-    distinct_ace_suits = sum(1 for s in Suit if n(s, "A") >= 1)
-    three_aces_value = 0
-    if distinct_ace_suits == 3:
-        three_aces_value = 60 if trump in (Suit.HEARTS, Suit.CLUBS) else 50
-        breakdown["3 different Aces bonus"] = three_aces_value
-
     total = (run_value + marriage_value + common_value + dix_count * DIX_VALUE
-             + pinochle_value + around_value + ace_value + three_aces_value)
+             + pinochle_value + no_ks_bonus + around_value)
     return total, breakdown, pool  # pool = leftover cards, handed to the adjustment layer
+
+
+def compute_trick_potential(hand, trump):
+    """
+    What this hand can win with cards rather than with meld - the stage
+    between the Base Bid and the competitive adjustment (#277). Six lines,
+    all additive, all counted per card unless said otherwise:
+
+      +ACE_VALUE          per Ace, any suit
+      +TRUMP_ACE_VALUE    per Ace of trump, ON TOP of the line above
+      +EXTRA_TRUMP_VALUE  per trump card past TRUMP_LENGTH_BASELINE
+      +PROTECTED_TEN_VALUE per non-trump 10 with both Aces of its suit in hand
+      +LOOSE_KING_VALUE   per non-trump King with no Queen of its suit
+      +LOOSE_QUEEN_VALUE  per non-trump Queen with no King of its suit
+
+    A trump Ace collecting both Ace lines, and so being worth 40, is
+    deliberate: Paul kept the two as separate rules and the card really is
+    doing two jobs - it is a certain trick like any Ace, and it is the
+    card that controls the trump suit.
+
+    "Not part of a marriage" is read exactly as Paul defined it: no
+    matching K/Q of the same suit anywhere in the hand. It is a property
+    of the suit rather than of the individual card, so K-K-Q of one suit
+    pays the marriage and nothing here - the spare King has a Queen behind
+    it and is not loose by this test. Arounds are not consulted: a King
+    with no Queen of its suit is loose whether or not it is also part of
+    Kings Around, because the Around already paid for a different thing.
+
+    Trump honours are excluded from the last two lines because the Run and
+    Royal Marriage lines in the Base Bid have already priced them, and
+    trump 10s from the protected-10 line for the same reason.
+
+    Returns (total, breakdown_dict).
+    """
+    breakdown = {}
+
+    ace_count = sum(1 for c in hand if c.rank == "A")
+    if ace_count:
+        breakdown["Aces (flat, 20/ea)"] = ace_count * ACE_VALUE
+
+    trump_aces = _hand_count(hand, trump, "A")
+    if trump_aces:
+        breakdown["Ace of trump"] = trump_aces * TRUMP_ACE_VALUE
+
+    extra_trump = max(0, _suit_length(hand, trump) - TRUMP_LENGTH_BASELINE)
+    if extra_trump:
+        breakdown["Trump length (beyond 4)"] = extra_trump * EXTRA_TRUMP_VALUE
+
+    protected_tens = sum(1 for c in hand if _is_protected_ten(hand, trump, c))
+    if protected_tens:
+        breakdown["10 behind both Aces"] = protected_tens * PROTECTED_TEN_VALUE
+
+    loose_kings = 0
+    loose_queens = 0
+    for suit in Suit:
+        if suit == trump:
+            continue
+        kings = _hand_count(hand, suit, "K")
+        queens = _hand_count(hand, suit, "Q")
+        if kings and not queens:
+            loose_kings += kings
+        if queens and not kings:
+            loose_queens += queens
+    if loose_kings:
+        breakdown["Unmarried Kings"] = loose_kings * LOOSE_KING_VALUE
+    if loose_queens:
+        breakdown["Unmarried Queens"] = loose_queens * LOOSE_QUEEN_VALUE
+
+    return sum(breakdown.values()), breakdown
 
 
 def compute_competitive_adjustment(hand, trump, my_score=0, opp_score=0):
@@ -533,13 +689,18 @@ def compute_competitive_adjustment(hand, trump, my_score=0, opp_score=0):
 
 
 def compute_max_bid(hand, trump, my_score=0, opp_score=0):
-    """Base Bid + Competitive adjustment = Max Bid (the ceiling), before
-    the 400-cap / >300-meld-uncap rule is applied."""
+    """Base Bid + trick potential + competitive adjustment = Max Bid (the
+    ceiling), before the 400-cap / >300-meld-uncap rule is applied. The
+    three stages are what the hand melds, what it takes, and what the
+    scoreboard is asking for; only the last of them is not about the
+    cards."""
     base_total, base_breakdown, pool = compute_base_bid(hand, trump)
+    trick_total, trick_breakdown = compute_trick_potential(hand, trump)
     adj_total, adj_breakdown = compute_competitive_adjustment(hand, trump, my_score, opp_score)
     breakdown = dict(base_breakdown)
+    breakdown.update(trick_breakdown)
     breakdown.update(adj_breakdown)
-    return base_total + adj_total, breakdown
+    return base_total + trick_total + adj_total, breakdown
 
 
 def max_bid(hand, trump):
@@ -1027,40 +1188,6 @@ def _breaks_around(hand, card):
     if min(_n_of(hand, s, card.rank) for s in Suit) < 1:
         return False
     return _n_of(hand, card.suit, card.rank) == 1
-
-
-def _is_protected_ten(hand, trump, card):
-    """Is this a non-trump 10 that the hand's own Aces make a winner?
-
-    Paul's ruling, 2026-09-02, from live play: a non-trump 10 is
-    **protected** when the hand holds BOTH Aces of that suit, and a
-    protected 10 must not be shed ahead of ordinary filler. Two reasons,
-    either of which is sufficient:
-
-      - **Held**: with both Aces of the suit in this hand, the suit can be
-        played out last and the 10 takes the trick behind them.
-      - **Passed**: a 10 delivered to a partner holding the Ace becomes a
-        20-point trick when the Ace is led and the 10 falls on it.
-
-    Which of the two applies at a pass decision is worth being precise
-    about, because it settles where the card belongs. If *this* hand holds
-    both Aces then the other hand holds none, so passing this 10 cannot
-    buy the drop-on-partner's-Ace trick. All of the value is in keeping
-    the suit intact and cashing it late, which is why every pass path
-    ranks a protected 10 *behind* ordinary filler rather than ahead of it.
-
-    Deliberately narrow, per issue #276. A 10 behind a single Ace is only
-    partially protected and is NOT covered here; trump 10s are run cards
-    and were never in scope. This is a different notion from the
-    `is_protected` lambda in `_bidder_pass_selection`, which means "trump,
-    or Q(S), or J(D)" - i.e. meld significance - and the two must not be
-    folded together.
-    """
-    return (
-        card.rank == "10"
-        and card.suit != trump
-        and _n_of(hand, card.suit, "A") == 2
-    )
 
 
 def _protects_a_ten(hand, trump, card):

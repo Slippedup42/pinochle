@@ -6,7 +6,7 @@
 // fixed threshold.
 
 import { describe, expect, it, vi } from 'vitest'
-import { type AuctionContext, chooseBid } from './bidding'
+import { type AuctionContext, chooseBid, MAX_BID_DEFAULT } from './bidding'
 import { Card, OPENING_BID, type Rank, Suit } from './card'
 import { evaluateBid, evaluateFold, modelLogit, shouldBid } from './evaluator'
 import { BID_MODEL, FOLD_MODEL, MODEL_PROVENANCE } from './evaluatorModel'
@@ -15,29 +15,38 @@ import { SHIPPED_PARAMS, SHIPPED_SKILL, SKILL_LEVELS, SKILL_PARAMS, type SkillLe
 const RUN_RANKS: readonly Rank[] = ['A', '10', 'K', 'Q', 'J']
 
 /** A full Hearts Run plus a second royal marriage, an off-suit marriage and
- *  filler. Ceiling 360: Run 150 + the extra Royal Marriage 40 + Common Marriage
- *  20 + one Ace 20, plus the 130 baseline competitive adjustment.
+ *  filler. Ceiling 340: a bare trump Run at 150, the trump Ace at 40 (the flat
+ *  Ace line and the Ace-of-trump line both), one trump past the fourth at 20,
+ *  plus the 130 baseline competitive adjustment.
  *
- *  The second King and Queen of Hearts came out under #242, which paid the
- *  marriage the run absorbs and would otherwise have taken this hand to the 400
- *  cap; #273 puts that rule back and they return with it. The pairing with
- *  `middlingHand` below is the entire point of this fixture and it only works
- *  at equal ceilings — pinning both at the cap would make "identical ceiling"
- *  an artefact of clamping instead of a statement about the two hands. */
+ *  Everything but the run and the filler has now been removed twice for the
+ *  same reason, and it is worth stating once. The pairing with `middlingHand`
+ *  below is the entire point of this fixture and it only works at equal
+ *  *uncapped* ceilings — pinning both at 400 would make "identical ceiling" an
+ *  artefact of clamping instead of a statement about the two hands. #242 pushed
+ *  it to the cap by paying the marriage inside the run, and the second K/Q of
+ *  Hearts came out; #273 reversed that and they came back; #277 pushed it to
+ *  the cap again by pricing trump length and the trump Ace, and this time the
+ *  spare K/Q of Hearts and the side marriage in Spades come out for good. What
+ *  is left is a run and eight cards that are worth nothing at all, which is the
+ *  cheapest hand that can hold this role. */
 const strongHand = [
   ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
-  new Card(Suit.Hearts, 'K', 2),
-  new Card(Suit.Hearts, 'Q', 2),
-  new Card(Suit.Spades, 'K', 1),
-  new Card(Suit.Spades, 'Q', 1),
+  new Card(Suit.Clubs, 'J', 1),
   new Card(Suit.Clubs, '9', 1),
   new Card(Suit.Clubs, '9', 2),
   new Card(Suit.Diamonds, '9', 1),
+  new Card(Suit.Diamonds, '9', 2),
+  new Card(Suit.Spades, '9', 1),
+  new Card(Suit.Spades, '9', 2),
 ]
 
-/** Same ceiling (360) as `strongHand`, reached without a Run: five Spades
- *  headed A-10-K-Q, two side marriages, two Aces. The pair is the point — a
- *  threshold on the ceiling cannot tell these two hands apart at any level. */
+/** Same ceiling (340) as `strongHand`, reached without a Run: five Spades
+ *  headed A-K-Q-10 (a near-run) with its Dix, and a side marriage in Hearts.
+ *  The pair is the point — a threshold on the ceiling cannot tell these two
+ *  hands apart at any level. The Jack of Diamonds it used to carry is gone
+ *  along with the second Ace: with the Q(S) in the same hand that was a
+ *  Pinochle, which #277 now pays an extra 20 for holding no King of Spades. */
 const middlingHand = [
   new Card(Suit.Spades, 'A', 1),
   new Card(Suit.Spades, 'K', 1),
@@ -46,11 +55,11 @@ const middlingHand = [
   new Card(Suit.Spades, '9', 1),
   new Card(Suit.Hearts, 'K', 1),
   new Card(Suit.Hearts, 'Q', 1),
-  new Card(Suit.Clubs, 'A', 1),
-  new Card(Suit.Clubs, 'J', 1),
-  new Card(Suit.Diamonds, 'J', 1),
-  new Card(Suit.Diamonds, '9', 1),
+  new Card(Suit.Hearts, 'J', 1),
   new Card(Suit.Hearts, '9', 1),
+  new Card(Suit.Clubs, 'J', 1),
+  new Card(Suit.Clubs, '9', 1),
+  new Card(Suit.Diamonds, '9', 1),
 ]
 
 /** Eight nines and four jacks: no meld, no aces, ceiling 190. */
@@ -123,11 +132,17 @@ describe('the bid model responds to the level, not just the hand', () => {
   })
 
   it('separates two hands of identical ceiling by what the shape can carry', () => {
-    // Both hands value at 360, so `ceiling >= OPENER_THRESHOLD` gives them the
+    // Both hands value at 340, so `ceiling >= OPENER_THRESHOLD` gives them the
     // same answer at every level — that is the limitation being replaced. The
     // evaluator takes both at 300, and at 400 keeps only the one holding a Run.
-    expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(360)
-    expect(evaluateBid(at(middlingHand, OPENING_BID)).ceiling).toBe(360)
+    // Asserted as equality to each other first, because *equal* is the property
+    // and the number has moved three times (#242, #273, #277) without the
+    // property changing.
+    expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(
+      evaluateBid(at(middlingHand, OPENING_BID)).ceiling,
+    )
+    expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(340)
+    expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBeLessThan(MAX_BID_DEFAULT)
 
     expect(shouldBid(at(strongHand, OPENING_BID))).toBe(true)
     expect(shouldBid(at(middlingHand, OPENING_BID))).toBe(true)
@@ -222,9 +237,18 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
   // both changes, which is exactly the property a fixture chosen to sit under
   // a threshold should be resting on.
   const belowThresholdHand = [
-    ...RUN_RANKS.filter((r) => r !== 'A').map((r) => new Card(Suit.Hearts, r, 1)),
+    new Card(Suit.Hearts, 'K', 1),
     new Card(Suit.Hearts, 'K', 2),
+    new Card(Suit.Hearts, 'Q', 1),
     new Card(Suit.Hearts, 'Q', 2),
+    new Card(Suit.Hearts, '10', 1),
+    new Card(Suit.Hearts, '9', 1),
+    new Card(Suit.Clubs, 'K', 1),
+    new Card(Suit.Clubs, 'J', 1),
+    new Card(Suit.Clubs, '9', 1),
+    new Card(Suit.Spades, 'A', 1),
+    new Card(Suit.Spades, '9', 1),
+    new Card(Suit.Diamonds, '9', 1),
   ]
 
   it('runs the evaluator, on every seat the product deals (#115)', () => {
@@ -246,9 +270,11 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
   })
 
   it('separates the two policies on one hand that can be probed with', () => {
-    // Ceiling 290, under OPENER_THRESHOLD, so the static rule passes while the
+    // Ceiling 310, under OPENER_THRESHOLD, so the static rule passes while the
     // evaluator opens — one hand that reads the field's effect directly rather
-    // than asserting on SKILL_PARAMS a second time.
+    // than asserting on SKILL_PARAMS a second time. It is the same twelve-card
+    // hand `bidding.test.ts` calls `belowOpenerHand`; see the note there for
+    // why #277 forced a full hand rather than a six-card sketch.
     withPolicy({ bidPolicy: 'static' }, (level) => {
       expect(chooseBid(0, belowThresholdHand, OPENING_BID - 10, 10, context, level)).toBeNull()
     })
@@ -257,8 +283,9 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
 
   it('opens this hand when the evaluator is consulted directly', () => {
     // The same decision as above with the dial taken out of the picture: two
-    // Royal Marriages are 80 guaranteed meld, and the model takes the contract
-    // on it where a threshold on the ceiling alone does not.
+    // Royal Marriages and the Dix are 90 guaranteed meld behind six trump, and
+    // the model takes the contract on it where a threshold on the ceiling alone
+    // does not.
     expect(
       shouldBid({
         hand: belowThresholdHand,
