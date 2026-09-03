@@ -9,6 +9,7 @@
 // the tiered priority logic for each role.
 
 import { type Card, type Rank, Suit, SUITS } from './card'
+import { isProtectedTen } from './handShape'
 import { scoreMelds } from './melds'
 import { SHIPPED_SKILL, SKILL_PARAMS, type SkillLevel } from './skills'
 
@@ -38,45 +39,15 @@ function breaksAround(hand: readonly Card[], card: Card): boolean {
 }
 
 /**
- * Is this a non-trump 10 that the hand's own Aces make a winner?
- *
- * Paul's ruling, 2026-09-02, from live play: a non-trump 10 is **protected**
- * when the hand holds BOTH Aces of that suit, and a protected 10 must not be
- * shed ahead of ordinary filler. Two reasons, either of which is sufficient:
- *
- * - **Held**: with both Aces of the suit in this hand, the suit can be played
- *   out last and the 10 takes the trick behind them.
- * - **Passed**: a 10 delivered to a partner holding the Ace becomes a
- *   20-point trick when the Ace is led and the 10 falls on it.
- *
- * Which of the two applies at a pass decision is worth being precise about,
- * because it settles where the card belongs. If *this* hand holds both Aces
- * then the other hand holds none, so passing this 10 cannot buy the
- * drop-on-partner's-Ace trick. All of the value is in keeping the suit intact
- * and cashing it late, which is why the tiers below rank a protected 10
- * *behind* ordinary filler rather than ahead of it.
- *
- * Deliberately narrow, per issue #276. A 10 behind a single Ace is only
- * partially protected and is NOT covered here; trump 10s are run cards and
- * were never in scope. This is a different notion from the `isProtected`
- * closure in `bidderPassSelection`, which means "trump, or Q(S), or J(D)" -
- * i.e. meld significance - and the two must not be folded together.
- *
- * Ported from `_is_protected_ten` in `pinochle_engine.py`, which stays
- * authoritative (#213).
- */
-function isProtectedTen(hand: readonly Card[], trump: Suit, card: Card): boolean {
-  return card.rank === '10' && card.suit !== trump && nOf(hand, card.suit, 'A') === 2
-}
-
-/**
  * Is this one of the two Aces that make a 10 of its own suit protected?
  *
- * The corollary of `isProtectedTen`, and not optional. The reason to keep the
- * 10 is that both Aces are behind it, so a pass rule that keeps the 10 while
- * shedding an Ace produces the one outcome that is strictly worse than
- * shedding the 10 was: a bare 10 with nothing left to make it win. A-A-10 of
- * a non-trump suit is a running suit, and the tiers below move it as a unit.
+ * The corollary of `isProtectedTen` (which #277 moved to `handShape.ts`, since
+ * the bid values the same card), and not optional. The reason to keep the 10 is
+ * that both Aces are behind it, so a pass rule that keeps the 10 while shedding
+ * an Ace produces the one outcome that is strictly worse than shedding the 10
+ * was: a bare 10 with nothing left to make it win. A-A-10 of a non-trump suit is
+ * a running suit, and the tiers below move it as a unit. This one stays here: it
+ * is about what survives a pass, and nothing outside passing asks it.
  */
 function protectsATen(hand: readonly Card[], trump: Suit, card: Card): boolean {
   return (

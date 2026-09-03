@@ -316,9 +316,13 @@ tuning baseline for a rule the shipped game already follows. See
 - **Melding is a pure function** (`score_melds`) over a hand and trump
   suit — not a player decision. Doubles (Double Run, Double Pinochle,
   Arounds doubles) replace the single value rather than stacking.
-- **Bid valuation** is layered: `compute_base_bid` (guaranteed +
-  speculative hand value) → `compute_competitive_adjustment`
-  (score-context) → `max_bid`'s 400-cap / >300-meld-uncap rule.
+- **Bid valuation** is layered, in three stages that each ask a
+  different question of the same twelve cards: `compute_base_bid`
+  (what will this hand meld?) → `compute_trick_potential` (what will
+  it take in tricks? — Aces, trump length, 10s standing behind both
+  Aces of their suit, unmarried honours) → `compute_competitive_
+  adjustment` (what is the scoreboard asking for?) → `max_bid`'s
+  400-cap / >300-meld-uncap rule.
 - **`Trick`** owns legal-move filtering and winner resolution, so
   `Player` doesn't need to know the rules.
 - **`PlayTracker`** records which of the two copies of each card have

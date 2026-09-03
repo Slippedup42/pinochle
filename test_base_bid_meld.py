@@ -39,16 +39,20 @@ from pinochle_engine import (
     RUN_RANKS,
     Suit,
     compute_base_bid,
+    compute_trick_potential,
     score_melds,
 )
 
 
 TRUMP = Suit.HEARTS
 
-# The Base Bid lines that describe meld actually held. The flat Ace value and
-# the 3-different-Aces bonus are trick-taking estimates rather than meld, and
-# the two "near" lines are speculative - so every hand below is built to hold
-# neither, which is what lets the remaining lines be compared to the scorer.
+# The Base Bid lines that describe meld actually held. Only the two "near"
+# lines are speculative, and every hand below is built to hold neither, which
+# is what lets the remaining lines be compared to the scorer. #277 took the
+# flat Ace value and the 3-different-Aces bonus out of `compute_base_bid`
+# entirely - the first to `compute_trick_potential`, the second deleted - so
+# this list is now the whole of the breakdown on these hands rather than a
+# filtered subset of it.
 MELD_LINES = (
     "Run/near-run",
     "Royal Marriage",
@@ -83,8 +87,15 @@ def test_a_bare_run_scores_150_and_not_190():
     total, breakdown, _pool = compute_base_bid(BARE_RUN, TRUMP)
     assert breakdown["Run/near-run"] == 150
     assert "Royal Marriage" not in breakdown
-    # 150 + the trump Ace's flat 20. This read 210 between #242 and #273.
-    assert total == 170
+    # The run and nothing else. 210 between #242 and #273, then 170 while the
+    # trump Ace's flat 20 was still a Base Bid line; #277 moved that 20 out to
+    # `compute_trick_potential`, where the same card is now worth 40 - the flat
+    # Ace plus the Ace-of-trump line - and the Base Bid is the meld alone.
+    assert total == 150
+    trick_total, trick_breakdown = compute_trick_potential(BARE_RUN, TRUMP)
+    assert trick_breakdown["Aces (flat, 20/ea)"] == 20
+    assert trick_breakdown["Ace of trump"] == 20
+    assert trick_total == 20 + 20 + 20  # + one trump card past the fourth
 
 
 def test_a_run_and_a_spare_king_queen_score_190():

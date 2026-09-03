@@ -286,13 +286,30 @@ def replay_tricks(hands_after_pass, trump, bid_winner, plays):
     return tricks, trick_points_by_team
 
 
-def record_scenario(index):
-    """Play one seeded round and return it as a JSON-ready dict."""
-    seed = FIRST_SEED + index
-    tiers = TIER_CYCLE[index % len(TIER_CYCLE)]
-    team_scores = SCORE_CYCLE[index % len(SCORE_CYCLE)]
-    dealer = index % 4
+# A conceded round has no trick play to record, and trick play is what this
+# fixture exists for. Player and EasyPlayer never fold, but `Round._concede_
+# phase`'s auto-set rule (#178) fires for every tier: a contract the bidding
+# team's meld cannot reach even by taking all 250 trick points is conceded
+# without a card being led. No seed in this range reached that until #277
+# restructured the bid valuation; three of the forty do now, because the AI
+# buys contracts it cannot make more often than it used to (one of them at 400
+# holding no meld at all). That is a finding about the valuation and not about
+# this recorder, and it is recorded on #277 rather than smoothed over here.
+#
+# What the recorder does about it: the scenario keeps its slot, its tiers, its
+# scores and its dealer, and takes the next seed along this stride. A large
+# stride rather than +1 so that a skipped scenario cannot land on a seed a later
+# scenario already owns, and so only the scenarios that actually auto-set move -
+# walking the seeds sequentially would re-deal all forty to fix three.
+AUTO_SET_SEED_STRIDE = 1000
+# Purely a guard against an engine change that concedes everything; three
+# attempts is already far past what the observed rate would need.
+MAX_SEED_ATTEMPTS = 8
 
+
+def _play_recorded_round(seed, tiers, team_scores, dealer):
+    """One seeded round, played through the real engine. Returns
+    (game, round_, round_scores)."""
     # Both the AI's own randomness (partner estimates, Easy's bid noise) and the
     # shuffle come from this seed, so the scenario replays from its seed alone.
     random.seed(seed)
@@ -307,12 +324,27 @@ def record_scenario(index):
         game.players, game.teams, dealer, deal_rng=random.Random(seed)
     )
     _instrument_plays(game.players, round_.plays)
-    round_scores = round_.run()
+    return game, round_, round_.run()
 
-    assert not round_.conceded, (
-        "a conceded round has no trick play to replay - Player/EasyPlayer never "
-        "concede, so reaching this means the tier wiring changed"
-    )
+
+def record_scenario(index):
+    """Play one seeded round and return it as a JSON-ready dict."""
+    tiers = TIER_CYCLE[index % len(TIER_CYCLE)]
+    team_scores = SCORE_CYCLE[index % len(SCORE_CYCLE)]
+    dealer = index % 4
+
+    for attempt in range(MAX_SEED_ATTEMPTS):
+        seed = FIRST_SEED + index + attempt * AUTO_SET_SEED_STRIDE
+        game, round_, round_scores = _play_recorded_round(
+            seed, tiers, team_scores, dealer
+        )
+        if not round_.conceded:
+            break
+    else:
+        raise AssertionError(
+            f"scenario {index} conceded at every seed tried - see "
+            "AUTO_SET_SEED_STRIDE above"
+        )
 
     bid_winner = game.players.index(round_.bid_winner)
     partner = (bid_winner + 2) % 4

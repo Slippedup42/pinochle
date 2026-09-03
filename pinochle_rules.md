@@ -272,7 +272,8 @@ passing, first-legal-move play. That has not been true since the
 Proficient tier landed. What they actually do:
 
 - `choose_bid` — Proficient bidding on the layered Base Bid valuation
-  (`best_base_bid` → `compute_competitive_adjustment` → `max_bid`'s
+  (`best_base_bid`, which sums `compute_base_bid` → `compute_trick_
+  potential` → `compute_competitive_adjustment` and applies `max_bid`'s
   cap), plus positional and score-context rules: endgame protection
   (below), the opener threshold, the `DEFENSIVE_PUSH_FLOOR` response to
   a minimum opener, and backing off once a partner is carrying the
@@ -289,6 +290,18 @@ Proficient tier landed. What they actually do:
   worth sits in that band. The constant carries both A/B runs.
 - `choose_trump` — the same per-suit Base Bid comparison, so trump
   follows real speculative hand strength rather than raw card count.
+  The middle stage is #277's, Paul's rewrite of the valuation of
+  2026-09-02: every Ace at 20, every Ace *of trump* at another 20 on
+  top of that, every trump card past the fourth at 20, every non-trump
+  10 standing behind both Aces of its suit at 20 (the valuation
+  counterpart of #276's pass rule, reading the same predicate), every
+  unmarried non-trump King at 30 and every unmarried non-trump Queen at
+  20. "Unmarried" means no matching K/Q of the same suit, and trump
+  honours are excluded because the Run and Royal Marriage lines have
+  already priced them. The same change gave a pinochle hand holding no
+  King of Spades 20 more, once, and deleted a "3 different Aces" bonus
+  that paid more with hearts or clubs trump than with spades or
+  diamonds — an asymmetry no rule of pinochle supports.
 - `choose_pass_cards` — role-aware (bidder vs. partner) and split by
   trump category (Spades/Diamonds vs. Hearts/Clubs), via
   `_bidder_pass_selection` / `_partner_pass_selection`.

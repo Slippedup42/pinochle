@@ -159,10 +159,28 @@ def test_mirroring_cancels_seat_advantage_exactly_for_a_deterministic_config():
 # 5. Positive control.
 # ---------------------------------------------------------------------------
 
+# The positive control needs a real difference to find, and how many deals it
+# takes to find one is a property of the AI rather than of the harness. It was
+# 40 pairs until #277 restructured the bid valuation; the gap between
+# Proficient and Easy narrowed sharply there, because Easy prices a hand at
+# `score_melds` plus a flat 60 and so did not move at all, while Proficient's
+# ceiling rose about 60 points on the average hand and it now buys contracts it
+# cannot make. At 300 pairs on seed 9 the split went from 396-204 before that
+# change to 321-279 after it, which no longer reaches significance.
+#
+# So this is re-sized rather than re-seeded, and the size was chosen on power
+# and not by hunting for a seed that passes: at 800 pairs the check holds on
+# every one of seeds 9, 1, 2, 4 and 12, at p = 0.001, 3e-14, 0.04, 0.0001 and
+# 0.0005. It costs about 15 seconds. The narrowing itself is a finding on
+# #277's PR and is not something this file should be papering over - if a later
+# change widens the gap again, this number should come back down.
+CONTROL_PAIRS = 800
+
+
 def test_a_clearly_stronger_config_is_detected():
     """A harness that never reports a difference would pass every test above."""
     report = run_ab(
-        team_config(Player), team_config(EasyPlayer), n_pairs=40,
+        team_config(Player), team_config(EasyPlayer), n_pairs=CONTROL_PAIRS,
         label_a="Proficient", label_b="Easy", seed=9,
     )
     assert report.wins_a > report.wins_b
