@@ -19,7 +19,7 @@ and forgetting to re-export is a TypeScript error rather than a silent NaN.
 Why the fixture is generated here rather than written by hand. The whole risk
 in #114 is that the TS side computes a *slightly different* feature vector than
 the Python side fitted on - most of all `base_bid_ceiling`, which is not a
-stored column but a re-derivation of `compute_max_bid`/`capped_bid` (the same
+stored column but a re-derivation of `compute_max_bid` (the same
 number `bidding.ts` calls `bestBaseBid`). A hand-written fixture would be
 someone's belief about what Python returns; this one is what Python actually
 returned, recorded per hand alongside the trump it picked, every feature, the
@@ -68,7 +68,8 @@ FIXTURE_TS_PATH = os.path.join(ENGINE_DIR, "evaluatorParity.fixture.ts")
 
 # How many rows of `rollout_dataset.csv` become parity cases. Big enough that a
 # feature that is wrong only for an uncommon hand shape (a double run, a hand
-# whose meld clears 300 and so uncaps the 400 ceiling) is very likely to appear,
+# whose ceiling runs far past the 400 the cap used to stop it at) is very
+# likely to appear,
 # small enough that the generated file stays reviewable. Rows are taken at a
 # fixed stride through the dataset rather than at random, so the fixture is a
 # spread over real auctions and re-running the export reproduces it exactly.
@@ -309,7 +310,7 @@ FIXTURE_MODULE_DOC = """\
 // different feature vector than `fit_evaluator.py` fitted on, and nobody
 // noticing until the AI plays oddly months later. The feature most likely to
 // diverge is `base_bid_ceiling` — it is not a stored dataset column but a
-// re-derivation of `compute_max_bid` + `capped_bid`, i.e. the number
+// re-derivation of `compute_max_bid`, i.e. the number
 // `bidding.ts` computes as `bestBaseBid`, whose port slipped once already
 // (#118, NEAR_RUN_VALUE / NEAR_DOUBLE_PINOCHLE_VALUE). Every case therefore
 // records the trump Python's `best_base_bid` chose as well as the ceiling, so a

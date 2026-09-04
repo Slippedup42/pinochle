@@ -30,13 +30,14 @@ buys none of that back for four tenths of a point. `--compare` prints the
 baselines that argument rests on rather than asking anyone to take it on trust.
 
 Two features are not read from the CSV. `base_bid_ceiling` is recomputed here
-from the row's `hand` column via `compute_max_bid`/`capped_bid`, and since #273
+from the row's `hand` column via `compute_max_bid`, and since #273
 `meld_total` is recomputed through `score_melds` for the reason its own
 docstring gives. That is not a
 label leak and not expensive: it is exactly the quantity `bidding.ts` already
 computes as `bestBaseBid` and compares against `OPENER_THRESHOLD`, so #114 gets
 it for free. It carries the non-linear part of the valuation - run and marriage
-values, the competitive adjustment, the 400-cap - that no linear combination of
+values, the trick potential, the competitive adjustment - that no linear
+combination of
 `meld_total`, `ace_count` and `trump_length` can express, and it is worth about
 eight points of decision agreement on its own.
 
@@ -57,7 +58,6 @@ import math
 from pinochle_engine import (
     OPENER_THRESHOLD,
     Suit,
-    capped_bid,
     compute_max_bid,
     score_melds,
 )
@@ -90,7 +90,7 @@ BID_FEATURES = [
     "score_diff",
     "partner_has_bid",
     "partner_has_passed",
-    "base_bid_ceiling",     # compute_max_bid + the cap rule — `bestBaseBid` in bidding.ts
+    "base_bid_ceiling",     # compute_max_bid, unclamped (#283) — `bestBaseBid` in bidding.ts
     "ceiling_minus_bid",    # how far the valuation clears the level under consideration
 ]
 
@@ -136,9 +136,9 @@ FOLD_L2 = 0.003
 
 def base_bid_ceiling(hand, trump, our_score=0, their_score=0):
     """
-    The Base Bid valuation of `hand` in `trump`, after the competitive
-    adjustment and the 400-cap rule — i.e. the number `OPENER_THRESHOLD` is
-    compared against.
+    The Base Bid valuation of `hand` in `trump`, after the trick potential
+    and the competitive adjustment — i.e. the number `OPENER_THRESHOLD` is
+    compared against. Nothing clamps it since #283 removed the 400 cap.
 
     Named trump rather than searched, because by the time a row exists the trump
     is already decided: on a bid row it is `best_base_bid`'s pick recorded in the
@@ -146,7 +146,7 @@ def base_bid_ceiling(hand, trump, our_score=0, their_score=0):
     Re-searching would value a contract nobody is playing.
     """
     total, _breakdown = compute_max_bid(hand, trump, our_score, their_score)
-    return capped_bid(hand, trump, total)
+    return total
 
 
 def meld_total(hand, trump):
@@ -226,7 +226,7 @@ def fold_features(row):
     scores withheld, so a ceiling carrying a competitive adjustment would be the
     one place a score could leak back into a model of a score-independent
     quantity. (It happens to make no difference to five-fold agreement on this
-    dataset — the adjustment is small next to the cap — but "happens not to
+    dataset — the adjustment is small next to the ceiling — but "happens not to
     matter here" is not a reason to ship the coupling.)
     """
     hand = decode_hand(row["hand"])

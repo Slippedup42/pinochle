@@ -31,16 +31,17 @@ from pinochle_engine import (
     THIRD_BIDDER_FLOOR,
     Team,
     best_base_bid,
-    max_bid,
 )
 
 
-# A trump Run plus a second Royal Marriage and an off-suit Ace: ceiling 360.
-# It was 360 before #242, 400 (the MAX_BID_DEFAULT cap) between #242 and #273,
-# and 360 again now that the Run absorbs the Royal Marriage inside it - a
-# number that has moved twice under this fixture without the hand changing,
-# which is why the comments here are checked against the engine by
-# test_fixture_hands_sit_where_the_tests_assume rather than trusted.
+# A trump Run plus a second Royal Marriage and an off-suit Ace: ceiling 440.
+# It was 360 before #242, 400 (the old MAX_BID_DEFAULT cap) between #242 and
+# #273, 360 again once the Run absorbed the Royal Marriage inside it, 400 again
+# when #277 added a trick-potential stage that pushed it back into the cap, and
+# 440 now that #283 has removed the cap and let it say what it is worth. Five
+# numbers, one unchanged hand, which is why the comments here are checked
+# against the engine by test_fixture_hands_sit_where_the_tests_assume rather
+# than trusted.
 STRONG_HAND = [
     Card(Suit.HEARTS, "A", 1),
     Card(Suit.HEARTS, "10", 1),
@@ -83,9 +84,8 @@ JUST_UNDER_HAND = [
 
 
 def _ceiling(hand, my_score=0, opp_score=0):
-    trump, base, _ = best_base_bid(hand, my_score, opp_score)
-    cap = max_bid(hand, trump)
-    return base if cap is None else min(base, cap)
+    _trump, ceiling, _ = best_base_bid(hand, my_score, opp_score)
+    return ceiling
 
 
 def _seat(hand, my_score=0, opp_score=0):

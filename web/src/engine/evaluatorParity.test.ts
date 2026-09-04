@@ -18,7 +18,7 @@
 // cards alone and compared.
 
 import { describe, expect, it } from 'vitest'
-import { cappedBid, computeMaxBid } from './bidding'
+import { computeMaxBid } from './bidding'
 import { Card, type CopyId, RANKS, type Rank, type Suit, SUITS } from './card'
 import { evaluateBid, evaluateFold } from './evaluator'
 import { BID_MODEL, FOLD_MODEL } from './evaluatorModel'
@@ -121,7 +121,7 @@ describe('fold model parity with Python', () => {
       // Recomputed straight from the valuation functions, not read back out of
       // `evaluateFold`, so this check would still fail if `evaluateFold` were
       // changed to pass the live score into the competitive adjustment.
-      expect(cappedBid(hand, trump, computeMaxBid(hand, trump, 0, 0).total)).toBe(c.ceiling)
+      expect(computeMaxBid(hand, trump, 0, 0).total).toBe(c.ceiling)
     }
   })
 

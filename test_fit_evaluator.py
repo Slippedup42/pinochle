@@ -23,7 +23,7 @@ costs a couple of seconds and several tests need the same one.
 import json
 import math
 
-from pinochle_engine import OPENER_THRESHOLD, Suit, capped_bid, compute_max_bid
+from pinochle_engine import OPENER_THRESHOLD, Suit, compute_max_bid
 from generate_rollout_dataset import BID_DECISION, FOLD_DECISION, decode_hand
 from fit_evaluator import (
     BID_FEATURES,
@@ -107,7 +107,7 @@ def test_the_ceiling_feature_is_the_engine_valuation_not_a_reimplementation():
     hand, trump = decode_hand(row["hand"]), Suit(row["trump"])
     total, _breakdown = compute_max_bid(hand, trump, int(row["our_score"]),
                                         int(row["their_score"]))
-    assert bid_features(row)["base_bid_ceiling"] == float(capped_bid(hand, trump, total))
+    assert bid_features(row)["base_bid_ceiling"] == float(total)
 
 
 def test_ceiling_minus_bid_is_the_difference_it_claims_to_be():

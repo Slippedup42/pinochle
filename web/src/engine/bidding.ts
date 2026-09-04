@@ -21,10 +21,9 @@
 // Two layers. Valuation, in three stages that each ask a different question
 // of the same hand: computeBaseBid (what will it meld?) ->
 // computeTrickPotential (what will it take? — #277) ->
-// computeCompetitiveAdjustment (what is the scoreboard asking for?) -> the
-// 400-cap / >300-meld-uncap rule (maxBid / cappedBid). bestBaseBid searches
-// all 4 trump candidates and applies the cap to find the winning trump +
-// ceiling.
+// computeCompetitiveAdjustment (what is the scoreboard asking for?). The sum
+// of the three is the ceiling and nothing clamps it (#283). bestBaseBid
+// searches all 4 trump candidates for the winning trump + ceiling.
 // Decision: chooseBid/chooseTrump wrap that valuation with the stateful
 // auction rules (endgame protection, 3rd-bidder-opens-cheap, when to raise
 // vs. pass) - ported from Player.choose_bid / Player.choose_trump. This
@@ -114,8 +113,25 @@ export const LOOSE_QUEEN_VALUE = 20
 // estimate). Not consumed by the pure valuation functions below — ported
 // for parity with the Python constant block, same as there.
 export const PARTNER_ESTIMATE_RANGE: readonly [number, number] = [50, 100]
-export const MAX_BID_DEFAULT = 400
-export const MAX_BID_MELD_THRESHOLD = 300
+// There is no cap on the ceiling. `MAX_BID_DEFAULT = 400` and
+// `MAX_BID_MELD_THRESHOLD = 300` used to be the two constants here that made
+// one (#283): every hand stopped at 400 unless its *guaranteed* meld
+// (`scoreMelds`, not the speculative Base Bid) cleared 300, in which case
+// `maxBid` returned null and the raw valuation passed through.
+//
+// The Double Run is the shape that makes that wrong. It is worth 1500, more
+// than the whole game — but it only exists if this hand names trump. Lose the
+// auction and those ten cards are ten ordinary cards scoring nothing as a run,
+// so a hand holding one has to be able to keep bidding until it wins, and a
+// flat 400 can hand the contract to an opponent while the AI sits on a game it
+// was not allowed to bid for. The cap's other job was to restrain a
+// speculative valuation, and Paul's judgement is that this is not worth the
+// cost, since there is no bluffing behaviour here for a cap to restrain.
+//
+// This does not make the AI bid higher on an ordinary hand, and nobody should
+// read it as licence to: `chooseBid` raises to `currentBid + minIncrement`,
+// never to its ceiling. The ceiling is a limit, not a target. What is gone is
+// an artificial stop when the opponents push past 400.
 
 // -- The two static bidding thresholds. Both are guesses, and both are
 // superseded by the fitted evaluator wherever `bidPolicy` reads `'distilled'`
@@ -156,8 +172,8 @@ export const ENDGAME_OPP_SCORE_CAP = GAME_WIN_SCORE - 550
  * The one hand check in the rule, and the only thing that puts a bid back on
  * the table while the trigger holds.
  *
- * This is the Max Bid **ceiling** — Base Bid plus the competitive adjustment,
- * capped — and not the Base Bid. In the score band this rule fires in,
+ * This is the Max Bid **ceiling** — all three valuation stages summed — and
+ * not the Base Bid. In the score band this rule fires in,
  * `computeCompetitiveAdjustment` returns +100, so the effective bar is a Base
  * Bid a little over 100 and few hands fail it. That is a deliberate choice
  * rather than an oversight: Paul was shown the comparison and picked the
@@ -206,11 +222,11 @@ export const ENDGAME_RESCUE_CEILING = 200
  *
  * Both runs predate #242, which raised every hand holding a trump Run by 40,
  * and #273, which put it back — so on the run/marriage question the valuation
- * is once again the one that was measured. What #273 did change under these
- * figures is the >300-meld uncap in `maxBid`, since the scorer now pays 40
- * less on a run. The two mechanisms are independent and the gap between the
- * arms is far larger than either shift, so the direction stands; the exact
- * figures are of the valuation as it was that day.
+ * is once again the one that was measured. They also predate #277, which added
+ * a whole trick-potential stage, and #283, which removed the 400 cap the
+ * valuation used to run into. The gap between the arms is far larger than any
+ * of those shifts and the direction stands, but the exact figures are of the
+ * valuation as it was that day and a re-measurement is owed.
  */
 export const THIRD_BIDDER_FLOOR = 200
 
@@ -557,10 +573,10 @@ export interface MaxBidResult {
 }
 
 /**
- * Base Bid + trick potential + competitive adjustment = Max Bid (the ceiling),
- * before the 400-cap / >300-meld-uncap rule is applied. The three stages are
- * what the hand melds, what it takes, and what the scoreboard is asking for;
- * only the last of them is not about the cards.
+ * Base Bid + trick potential + competitive adjustment = Max Bid, the ceiling,
+ * full stop — nothing clamps this number (#283). The three stages are what the
+ * hand melds, what it takes, and what the scoreboard is asking for; only the
+ * last of them is not about the cards.
  */
 export function computeMaxBid(hand: readonly Card[], trump: Suit, myScore = 0, oppScore = 0): MaxBidResult {
   const { total: baseTotal, breakdown: baseBreakdown } = computeBaseBid(hand, trump)
@@ -570,21 +586,13 @@ export function computeMaxBid(hand: readonly Card[], trump: Suit, myScore = 0, o
   return { total: baseTotal + trickTotal + adjTotal, breakdown }
 }
 
-/**
- * Bid ceiling for this hand/trump: 400 by default, uncapped (null) if
- * actual guaranteed meld (scoreMelds, not the padded Base Bid) exceeds 300.
- */
-export function maxBid(hand: readonly Card[], trump: Suit): number | null {
-  const { total: actualMeld } = scoreMelds(hand, trump)
-  if (actualMeld > MAX_BID_MELD_THRESHOLD) return null
-  return MAX_BID_DEFAULT
-}
-
-export function cappedBid(hand: readonly Card[], trump: Suit, baseBidValue: number): number {
-  const cap = maxBid(hand, trump)
-  if (cap === null) return baseBidValue
-  return Math.min(baseBidValue, cap)
-}
+// `maxBid` and `cappedBid` used to sit here, and #283 collapsed both rather
+// than hollowing them out: with nothing ever capped, `cappedBid` was a
+// function that returned its argument, and `maxBid` was a function that
+// returned null whose only remaining effect was a dead `cap === null` branch
+// at each of its call sites — exactly the shape that invites a later reader to
+// restore the cap by filling the branch back in. `computeMaxBid` is the
+// ceiling now, and every caller says so in one line.
 
 export interface BestBidResult {
   trump: Suit
@@ -593,17 +601,17 @@ export interface BestBidResult {
 }
 
 /**
- * Searches all 4 trump candidates, returns the best {trump, capped
- * ceiling, breakdown}. Ceiling = Base Bid + Competitive adjustment, then
- * the 400-cap / >300-meld-uncap rule is applied.
+ * Searches all 4 trump candidates, returns the best {trump, ceiling,
+ * breakdown}. Ceiling = the whole `computeMaxBid` sum for the best trump,
+ * unclamped (#283) — so the suit named here is the one this hand is genuinely
+ * worth most in, rather than the first suit that happened to reach a cap.
  */
 export function bestBaseBid(hand: readonly Card[], myScore = 0, oppScore = 0): BestBidResult {
   let best: BestBidResult | null = null
   for (const t of SUITS) {
     const { total, breakdown } = computeMaxBid(hand, t, myScore, oppScore)
-    const capped = cappedBid(hand, t, total)
-    if (best === null || capped > best.total) {
-      best = { trump: t, total: capped, breakdown }
+    if (best === null || total > best.total) {
+      best = { trump: t, total, breakdown }
     }
   }
   // SUITS always has 4 entries, so best is always assigned above.
@@ -612,7 +620,7 @@ export function bestBaseBid(hand: readonly Card[], myScore = 0, oppScore = 0): B
 
 // -- Auction decision wrapper — given the current bid, the minimum legal
 // raise, and the auction's running state, decide whether to open/raise/
-// pass. Sits on top of bestBaseBid/maxBid above: those answer "what's this
+// pass. Sits on top of bestBaseBid above: it answers "what's this
 // hand worth," this answers "given what's happened in the auction so far,
 // do I act on that valuation." --------------------------------------------
 
@@ -721,9 +729,7 @@ export function chooseBid(
   const myScore = context.scores[myTeam]
   const oppScore = context.scores[opponentTeam]
 
-  const { trump, total: baseBid } = bestBaseBid(hand, myScore, oppScore)
-  const cap = maxBid(hand, trump)
-  const ceiling = cap === null ? baseBid : Math.min(baseBid, cap)
+  const { total: ceiling } = bestBaseBid(hand, myScore, oppScore)
 
   const partner = partnerOf(player)
   const partnerIsDealer = partner === context.dealer
@@ -889,10 +895,7 @@ export function chooseBid(
   }
 
   // Opponent currently holds the bid.
-  let competitiveCeiling = partnerHasBid ? Math.max(ceiling, 330) : ceiling
-  if (cap !== null) {
-    competitiveCeiling = Math.min(competitiveCeiling, cap)
-  }
+  const competitiveCeiling = partnerHasBid ? Math.max(ceiling, 330) : ceiling
 
   const nextBid = currentBid + minIncrement
 

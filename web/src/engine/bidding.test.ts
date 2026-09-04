@@ -5,7 +5,6 @@ import {
   ACE_VALUE,
   type AuctionContext,
   bestBaseBid,
-  cappedBid,
   chooseBid,
   chooseTrump,
   computeBaseBid,
@@ -18,8 +17,6 @@ import {
   EXTRA_TRUMP_VALUE,
   LOOSE_KING_VALUE,
   LOOSE_QUEEN_VALUE,
-  maxBid,
-  MAX_BID_DEFAULT,
   NEAR_DOUBLE_PINOCHLE_VALUE,
   NEAR_RUN_VALUE,
   OPENER_THRESHOLD,
@@ -418,31 +415,51 @@ describe('computeCompetitiveAdjustment', () => {
   })
 })
 
-describe('maxBid / cappedBid', () => {
-  it('caps at 400 when actual meld is 300 or below', () => {
-    const hand = [new Card(trump, 'K', 1), new Card(trump, 'Q', 1)] // Royal Marriage = 40
-    expect(maxBid(hand, trump)).toBe(MAX_BID_DEFAULT)
-    expect(cappedBid(hand, trump, 900)).toBe(MAX_BID_DEFAULT)
-  })
-
-  it('uncaps (null) when actual guaranteed meld exceeds 300', () => {
+// -- No ceiling on the ceiling (#283) ---------------------------------------
+//
+// This block replaces the three `maxBid` / `cappedBid` cases that pinned the
+// 400 cap and the >300-meld exemption that let a few hands past it. They are
+// deleted because the behaviour they described is gone, not because they went
+// red: there is no longer a number for them to assert.
+describe('the ceiling is not capped (#283)', () => {
+  it('lets an ordinary hand value above 400 instead of stopping there', () => {
+    // A trump Run, a second Royal Marriage and an off-suit Ace. Its guaranteed
+    // meld is nowhere near the 300 the old exemption wanted, so this is exactly
+    // the hand the cap used to bind: worth 440 and allowed to say 400.
     const hand = [
-      new Card(Suit.Spades, 'Q', 1),
-      new Card(Suit.Spades, 'Q', 2),
-      new Card(Suit.Diamonds, 'J', 1),
-      new Card(Suit.Diamonds, 'J', 2),
-    ] // Double Pinochle = 300, not > 300
-    expect(maxBid(hand, Suit.Hearts)).toBe(MAX_BID_DEFAULT)
+      ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
+      new Card(Suit.Hearts, 'K', 2),
+      new Card(Suit.Hearts, 'Q', 2),
+      new Card(Suit.Spades, 'A', 1),
+    ]
+    expect(scoreMelds(hand, Suit.Hearts).total).toBeLessThan(300)
+    const { trump: t, total } = bestBaseBid(hand)
+    expect(total).toBeGreaterThan(400)
+    expect(total).toBe(computeMaxBid(hand, t, 0, 0).total)
   })
 
-  it('leaves the bid unclamped below the cap', () => {
-    const hand = [new Card(trump, 'K', 1)]
-    expect(cappedBid(hand, trump, 350)).toBe(350)
+  it('gives a hand holding a Double Run no ceiling at all', () => {
+    // The shape the cap was wrong about. A Double Run melds 1500 — more than
+    // the whole game — but only if this hand names trump, so it has to be able
+    // to keep bidding until it wins the auction. Asserted against the meld
+    // rather than against a literal ceiling, because the ceiling is a sum of
+    // three stages that have each moved under this file before.
+    const hand = [
+      ...RUN_RANKS.flatMap((r) => [new Card(Suit.Hearts, r, 1), new Card(Suit.Hearts, r, 2)]),
+      new Card(Suit.Spades, '9', 1),
+      new Card(Suit.Clubs, '9', 1),
+    ]
+    const doubleRunMeld = scoreMelds(hand, Suit.Hearts).total
+    expect(doubleRunMeld).toBe(1500)
+    const { trump: t, total } = bestBaseBid(hand)
+    expect(t).toBe(Suit.Hearts)
+    expect(total).toBeGreaterThanOrEqual(doubleRunMeld)
+    expect(total).toBe(computeMaxBid(hand, Suit.Hearts, 0, 0).total)
   })
 })
 
 describe('bestBaseBid', () => {
-  it('picks the trump suit with the highest capped ceiling', () => {
+  it('picks the trump suit with the highest ceiling', () => {
     const hand = [
       ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
       new Card(Suit.Spades, '9', 1),
@@ -452,11 +469,10 @@ describe('bestBaseBid', () => {
     expect(bestTrump).toBe(Suit.Hearts)
   })
 
-  it('matches computeMaxBid + cappedBid for the winning trump', () => {
+  it('matches computeMaxBid exactly for the winning trump', () => {
     const hand = [new Card(Suit.Clubs, 'K', 1), new Card(Suit.Clubs, 'Q', 1), new Card(Suit.Diamonds, 'A', 1)]
     const { trump: bestTrump, total } = bestBaseBid(hand, 100, 50)
-    const { total: rawTotal } = computeMaxBid(hand, bestTrump, 100, 50)
-    expect(total).toBe(cappedBid(hand, bestTrump, rawTotal))
+    expect(total).toBe(computeMaxBid(hand, bestTrump, 100, 50).total)
   })
 })
 
@@ -538,11 +554,7 @@ describe('chooseBid', () => {
    *  trump Run up by 40 and took one of these fixtures out of the band it was
    *  chosen for, and #273 moved it back down again. That is the failure mode
    *  this closes, twice over now. */
-  const ceilingOf = (hand: readonly Card[]): number => {
-    const { trump: suit, total } = bestBaseBid(hand, 0, 0)
-    const cap = maxBid(hand, suit)
-    return cap === null ? total : Math.min(total, cap)
-  }
+  const ceilingOf = (hand: readonly Card[]): number => bestBaseBid(hand, 0, 0).total
 
   describe('without a context (fallback)', () => {
     it('passes when the coin flip lands under 0.6', () => {
@@ -800,11 +812,8 @@ describe('endgame protection (#256)', () => {
   // competitive adjustment and nothing else.
   const poorHand = [new Card(Suit.Hearts, '9', 1)]
 
-  const ceilingOf = (hand: readonly Card[], ourScore: number, theirScore: number): number => {
-    const { trump: t, total } = bestBaseBid(hand, ourScore, theirScore)
-    const cap = maxBid(hand, t)
-    return cap === null ? total : Math.min(total, cap)
-  }
+  const ceilingOf = (hand: readonly Card[], ourScore: number, theirScore: number): number =>
+    bestBaseBid(hand, ourScore, theirScore).total
 
   const ctx = (overrides: Partial<AuctionContext> = {}): AuctionContext => ({
     everBid: false,
@@ -932,7 +941,6 @@ describe('parity with the Python reference engine (#118)', () => {
     expect(NEAR_RUN_VALUE).toBe(120)
     expect(NEAR_DOUBLE_PINOCHLE_VALUE).toBe(225)
     expect(ACE_VALUE).toBe(20)
-    expect(MAX_BID_DEFAULT).toBe(400)
   })
 })
 

@@ -6,7 +6,7 @@
 // fixed threshold.
 
 import { describe, expect, it, vi } from 'vitest'
-import { type AuctionContext, chooseBid, MAX_BID_DEFAULT } from './bidding'
+import { type AuctionContext, chooseBid } from './bidding'
 import { Card, OPENING_BID, type Rank, Suit } from './card'
 import { evaluateBid, evaluateFold, modelLogit, shouldBid } from './evaluator'
 import { BID_MODEL, FOLD_MODEL, MODEL_PROVENANCE } from './evaluatorModel'
@@ -137,12 +137,13 @@ describe('the bid model responds to the level, not just the hand', () => {
     // evaluator takes both at 300, and at 400 keeps only the one holding a Run.
     // Asserted as equality to each other first, because *equal* is the property
     // and the number has moved three times (#242, #273, #277) without the
-    // property changing.
+    // property changing. The companion assertion that both sit under the 400
+    // cap went with the cap itself (#283): with nothing clamped, two hands
+    // cannot be made falsely equal by both hitting a ceiling.
     expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(
       evaluateBid(at(middlingHand, OPENING_BID)).ceiling,
     )
     expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(340)
-    expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBeLessThan(MAX_BID_DEFAULT)
 
     expect(shouldBid(at(strongHand, OPENING_BID))).toBe(true)
     expect(shouldBid(at(middlingHand, OPENING_BID))).toBe(true)

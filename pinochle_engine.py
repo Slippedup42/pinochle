@@ -284,8 +284,8 @@ def _is_protected_ten(hand, trump, card):
 #   compute_trick_potential       what will it take in tricks?  (#277)
 #   compute_competitive_adjustment what is the scoreboard asking for?
 #
-# compute_max_bid sums the three and capped_bid applies the 400-cap /
-# >300-meld-uncap rule to the sum.
+# compute_max_bid sums the three, and that sum is the ceiling. Nothing caps
+# it (#283).
 # ---------------------------------------------------------------------------
 
 RUN_RANKS = ("A", "10", "K", "Q", "J")
@@ -314,8 +314,25 @@ PROTECTED_TEN_VALUE = 20    # see `_is_protected_ten`
 LOOSE_KING_VALUE = 30       # non-trump K with no Queen of its suit behind it
 LOOSE_QUEEN_VALUE = 20      # non-trump Q with no King of its suit behind it
 PARTNER_ESTIMATE_RANGE = (50, 100)  # Proficient draws randomly in this range each bid
-MAX_BID_DEFAULT = 400
-MAX_BID_MELD_THRESHOLD = 300
+# There is no cap on the ceiling. MAX_BID_DEFAULT = 400 and
+# MAX_BID_MELD_THRESHOLD = 300 used to be the two constants here that made one
+# (#283): every hand stopped at 400 unless its *guaranteed* meld (score_melds,
+# not the speculative Base Bid) cleared 300, in which case `max_bid` returned
+# None and the raw valuation passed through.
+#
+# The Double Run is the shape that makes that wrong. It is worth 1500, more
+# than the whole game - but it only exists if this hand names trump. Lose the
+# auction and those ten cards are ten ordinary cards scoring nothing as a run,
+# so a hand holding one has to be able to keep bidding until it wins, and a
+# flat 400 can hand the contract to an opponent while the AI sits on a game it
+# was not allowed to bid for. The cap's other job was to restrain a
+# speculative valuation, and Paul's judgement is that this is not worth the
+# cost, since there is no bluffing behaviour here for a cap to restrain.
+#
+# This does not make the AI bid higher on an ordinary hand, and nobody should
+# read it as licence to: `choose_bid` raises to `current_bid + min_increment`,
+# never to its ceiling. The ceiling is a limit, not a target. What is gone is
+# an artificial stop when the opponents push past 400.
 OPENER_THRESHOLD = 320  # minimum Base Bid to justify opening at all
 # Minimum ceiling to justify a defensive push against an opening bid of 300.
 # Hands at or above this floor should almost always raise a 300 opener,
@@ -337,8 +354,8 @@ DEFENSIVE_PUSH_FLOOR = 200
 ENDGAME_SCORE_FLOOR = GAME_WIN_SCORE - 250
 ENDGAME_OPP_SCORE_CAP = GAME_WIN_SCORE - 550
 # The one hand check in the rule, and the only thing that puts a bid back on
-# the table while the trigger holds. This is the Max Bid *ceiling* (Base Bid
-# plus the competitive adjustment, capped), not the Base Bid: in the score
+# the table while the trigger holds. This is the Max Bid *ceiling* (all three
+# valuation stages summed), not the Base Bid: in the score
 # band this rule fires in `compute_competitive_adjustment` returns +100, so
 # the effective bar is a Base Bid a little over 100 and few hands fail it.
 # That is a deliberate choice rather than an oversight - if the rescue turns
@@ -382,11 +399,11 @@ ENDGAME_RESCUE_CEILING = 200
 #
 # Both runs predate #242, which raised every hand holding a trump Run by 40,
 # and #273, which put it back - so on the run/marriage question the valuation
-# is once again the one that was measured. What #273 did change under these
-# figures is `max_bid`'s >300-meld uncap, since the scorer now pays 40 less on
-# a run. The two mechanisms are independent and the gap between the arms is far
-# larger than either shift, so the direction stands; the exact figures are of
-# the valuation as it was that day.
+# is once again the one that was measured. They also predate #277, which added
+# a whole trick-potential stage, and #283, which removed the 400 cap the
+# valuation used to run into. The gap between the arms is far larger than any
+# of those shifts and the direction stands, but the exact figures are of the
+# valuation as it was that day and a re-measurement is owed.
 THIRD_BIDDER_FLOOR = 200
 
 
@@ -689,11 +706,10 @@ def compute_competitive_adjustment(hand, trump, my_score=0, opp_score=0):
 
 
 def compute_max_bid(hand, trump, my_score=0, opp_score=0):
-    """Base Bid + trick potential + competitive adjustment = Max Bid (the
-    ceiling), before the 400-cap / >300-meld-uncap rule is applied. The
-    three stages are what the hand melds, what it takes, and what the
-    scoreboard is asking for; only the last of them is not about the
-    cards."""
+    """Base Bid + trick potential + competitive adjustment = Max Bid, the
+    ceiling, full stop - nothing clamps this number (#283). The three
+    stages are what the hand melds, what it takes, and what the scoreboard
+    is asking for; only the last of them is not about the cards."""
     base_total, base_breakdown, pool = compute_base_bid(hand, trump)
     trick_total, trick_breakdown = compute_trick_potential(hand, trump)
     adj_total, adj_breakdown = compute_competitive_adjustment(hand, trump, my_score, opp_score)
@@ -703,32 +719,25 @@ def compute_max_bid(hand, trump, my_score=0, opp_score=0):
     return base_total + trick_total + adj_total, breakdown
 
 
-def max_bid(hand, trump):
-    """Bid ceiling for this hand/trump: 400 by default, uncapped (None) if
-    actual guaranteed meld (score_melds, not the padded Base Bid) exceeds 300."""
-    actual_meld, _ = score_melds(hand, trump)
-    if actual_meld > MAX_BID_MELD_THRESHOLD:
-        return None
-    return MAX_BID_DEFAULT
-
-
-def capped_bid(hand, trump, base_bid_value):
-    cap = max_bid(hand, trump)
-    if cap is None:
-        return base_bid_value
-    return min(base_bid_value, cap)
+# `max_bid` and `capped_bid` used to sit here, and #283 collapsed both rather
+# than hollowing them out: with nothing ever capped, `capped_bid` was a
+# function that returned its argument, and `max_bid` was a function that
+# returned None whose only remaining effect was a dead `if cap is None` branch
+# at each of its three call sites - exactly the shape that invites a later
+# reader to restore the cap by filling the branch back in. `compute_max_bid`
+# is the ceiling now, and every caller says so in one line.
 
 
 def best_base_bid(hand, my_score=0, opp_score=0):
-    """Searches all 4 trump candidates, returns (trump, capped_ceiling, breakdown).
-    Ceiling = Base Bid + Competitive adjustment, then the 400-cap /
-    >300-meld-uncap rule is applied."""
+    """Searches all 4 trump candidates, returns (trump, ceiling, breakdown).
+    Ceiling = the whole `compute_max_bid` sum for the best trump, unclamped
+    (#283) - so the suit named here is the one this hand is genuinely worth
+    most in, rather than the first suit that happened to reach a cap."""
     best_trump, best_total, best_breakdown = None, -1, None
     for t in Suit:
         total, b = compute_max_bid(hand, t, my_score, opp_score)
-        capped = capped_bid(hand, t, total)
-        if capped > best_total:
-            best_trump, best_total, best_breakdown = t, capped, b
+        if total > best_total:
+            best_trump, best_total, best_breakdown = t, total, b
     return best_trump, best_total, best_breakdown
 
 
@@ -2317,9 +2326,7 @@ class Player:
         opp_team = next(t for t in context["teams"] if t is not self.team)
         opp_score = opp_team.score
 
-        trump, base_bid, _ = best_base_bid(self.hand, my_score, opp_score)
-        cap = max_bid(self.hand, trump)
-        ceiling = base_bid if cap is None else min(base_bid, cap)
+        _trump, ceiling, _ = best_base_bid(self.hand, my_score, opp_score)
 
         partner = next(p for p in self.team.players if p is not self)
         is_dealer = (self is context["dealer"])
@@ -2382,8 +2389,6 @@ class Player:
         # Opponent currently holds the bid.
         partner_has_bid = any(p is partner for p, _ in context["bid_history"])
         effective_ceiling = max(ceiling, 330) if partner_has_bid else ceiling
-        if cap is not None:
-            effective_ceiling = min(effective_ceiling, cap)
 
         next_bid = current_bid + min_increment
 
@@ -2897,7 +2902,7 @@ class GeneralStrategy(Player):
         my_score = self.team.score if self.team is not None else 0
         opp_team = next((t for t in context["teams"] if t is not self.team), None)
         opp_score = opp_team.score if opp_team is not None else 0
-        trump, base_bid, _ = best_base_bid(self.hand, my_score, opp_score)
+        trump, ceiling, _ = best_base_bid(self.hand, my_score, opp_score)
 
         # Endgame protection (#256) is a hard rule in front of the simulation,
         # not an input to it. `Player.choose_bid` applies it for the skill
@@ -2911,8 +2916,6 @@ class GeneralStrategy(Player):
             partner = None if self.team is None else next(
                 (p for p in self.team.players if p is not self), None
             )
-            cap = max_bid(self.hand, trump)
-            ceiling = base_bid if cap is None else min(base_bid, cap)
             return endgame_protection_bid(
                 context,
                 opp_team.players if opp_team is not None else [],
@@ -2924,7 +2927,7 @@ class GeneralStrategy(Player):
         # spirit as the Auto-SET guard elsewhere in this epic: a hand
         # whose static ceiling can't even clear the game's own
         # forced-bid floor is never going to out-EV a pass.
-        if base_bid < FORCED_BID:
+        if ceiling < FORCED_BID:
             return None
 
         next_bid = OPENING_BID if not context["ever_bid"] else current_bid + min_increment
