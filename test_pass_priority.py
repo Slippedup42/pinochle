@@ -18,8 +18,8 @@ Six things, in the order they matter:
   3. The duplicates the spread declined are not lost: they come back at
      the leftover-trump tier, behind a side Ace and ahead of the dix.
   4. The partner's last tier is J, then 10, then Q, then K - increasing
-     cost to give away - with the protected 10 (#276) held back behind
-     the King.
+     cost to give away - with NO exception for the protected 10 of #276,
+     which is the part a later reader is most likely to "fix" back.
   5. The bidder ships a spare K/Q before a non-trump 10 and before J/9
      filler; that tier moved from sixth to second.
   6. The bidder never sends an Ace back short of a hand with nothing
@@ -116,23 +116,26 @@ def test_partner_last_tier_goes_jack_ten_queen_king():
     assert "KC" not in _names(chosen), "the King is the last thing to go"
 
 
-def test_partner_last_tier_holds_a_protected_ten_behind_the_king():
-    """A reading of #280 rather than something Paul stated, flagged in the
-    PR so it is easy to reverse: within the last tier a 10 with both Aces
-    of its suit behind it (#276) sorts *behind* the King rather than with
-    the ordinary 10s.
+def test_partner_last_tier_has_no_protected_ten_exception():
+    """A-A-10 of a side suit goes as a unit: both Aces at the Ace tier, then
+    the 10 at its ordinary place in the last tier, ahead of the Queen and
+    the King.
 
-    The hand is trimmed to the six cards that make the point - a bigger one
-    reaches the void tier, which does not consult the protected-10 rule and
-    would ship the whole club suit before this tier ran at all.
+    #280 first shipped the opposite - the protected 10 (#276) held back
+    behind the King - and it was wrong. Every tier above this one runs to
+    exhaustion, so reaching this tier means the Ace tier has already sent
+    both Aces to the bidder. Keeping the 10 here leaves the partner a bare
+    10 and denies it to the hand that now holds the Aces that protect it.
+    Protection is a property of what remains after the pass.
     """
     hand = [
         C(Suit.CLUBS, "A"), C(Suit.CLUBS, "A", 2), C(Suit.CLUBS, "10"),
         C(Suit.CLUBS, "K"), C(Suit.CLUBS, "Q"), C(Suit.HEARTS, "9"),
     ]
-    chosen = _partner_pass_selection(hand, Suit.HEARTS, "HC", 5)
-    assert _names(chosen) == ["9H", "AC", "AC", "KC", "QC"], _names(chosen)
-    assert "10C" not in _names(chosen), "the King goes before the protected 10"
+    chosen = _partner_pass_selection(hand, Suit.HEARTS, "HC", 4)
+    assert _names(chosen) == ["10C", "9H", "AC", "AC"], _names(chosen)
+    assert "KC" not in _names(chosen) and "QC" not in _names(chosen), (
+        "the 10 follows its Aces, ahead of the Queen and the King")
 
 
 # ---------------------------------------------------------------------------

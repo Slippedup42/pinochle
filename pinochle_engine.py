@@ -1270,22 +1270,24 @@ def _take_spread(pool, chosen, count, predicate, rank_order):
 # they make marriages, this is also why keeping a Q is better." So: a Jack
 # is neither a counter nor a marriage card and costs nothing, a 10 is a
 # counter, a Queen carries a marriage, and a King is both.
+#
+# There is deliberately NO exception here for the protected 10 of #276, and
+# the reason is worth stating because the instinct to add one is strong and
+# will come back. Every tier above this one runs to exhaustion - `_take`
+# stops only when the pass is full, and if the pass were full this tier
+# would never run at all - so reaching it means the non-trump Ace tier has
+# already sent *every* Ace this hand had. `_is_protected_ten` reads the
+# hand as it was dealt, so by now it is answering a question about a hand
+# that no longer exists: both Aces are in the bidder's hand, not this one.
+# Holding the 10 back would leave the partner a bare 10 and deny the bidder
+# the one card those two Aces would protect over there. That is the mirror
+# of #276's own lesson - protection is a property of what *remains* after
+# the pass, not of the hand you started with.
 _PARTNER_FILLER_ORDER = {"J": 0, "10": 1, "Q": 2, "K": 3}
-
-
-def _partner_filler_order(hand, trump, card):
-    # The protected 10 is the exception, and it is a reading of #280 rather
-    # than something Paul stated: a 10 with both Aces of its suit behind it
-    # is a trick this hand can still cash (#276), and the Ace tier above has
-    # already declined to break that group up, so shipping the 10 out from
-    # under the pair produces exactly the bare-10 outcome #276 exists to
-    # prevent. It sorts behind the King instead of with the ordinary 10s.
-    if card.rank == "10" and _is_protected_ten(hand, trump, card):
-        return 4
-    # 5 is unreachable in practice - trump, Aces and 9s are all gone by the
-    # time this tier runs. It is here so the tier can double as the
-    # catch-all that guarantees `count` gets filled.
-    return _PARTNER_FILLER_ORDER.get(card.rank, 5)
+# The default is unreachable in practice - trump, Aces and 9s are all gone
+# by the time this tier runs - and is here so the tier can double as the
+# catch-all that guarantees `count` gets filled.
+_PARTNER_FILLER_LAST = 4
 
 
 def _partner_pass_selection(hand, trump, category, count):
@@ -1309,7 +1311,7 @@ def _partner_pass_selection(hand, trump, category, count):
     10 and the J fill the run's other ranks without breaking a K-Q pair
     this hand can still score. And tiers 2, 3 and 5 between them prefer a
     spread over duplicates: see `_take_spread` for why, and
-    `_partner_filler_order` for tier 9's order.
+    `_PARTNER_FILLER_ORDER` for tier 9's order.
     """
     pool = list(hand)
     chosen = []
@@ -1357,7 +1359,7 @@ def _partner_pass_selection(hand, trump, category, count):
     # Everything else, cheapest to give away first. Doubles as the
     # catch-all: the predicate matches any card, so `count` is always filled.
     _take(pool, chosen, count, lambda c: True,
-          sort_key=lambda c: _partner_filler_order(hand, trump, c))
+          sort_key=lambda c: _PARTNER_FILLER_ORDER.get(c.rank, _PARTNER_FILLER_LAST))
 
     return chosen[:count]
 

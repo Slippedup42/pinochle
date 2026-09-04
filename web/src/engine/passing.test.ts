@@ -362,8 +362,10 @@ describe('the 3-card pass is invariant across skill levels (#196)', () => {
  *
  * The tiers themselves are stated in `partnerPassSelection` and
  * `bidderPassSelection`; what is pinned here is the handful of orderings a later
- * reader could plausibly "fix" back to what they were, plus the bidder tiers
- * that were deleted on purpose and must not come back as a bug fix.
+ * reader could plausibly "fix" back to what they were - including the
+ * protected-10 exception that is deliberately absent from the partner's last
+ * tier - plus the bidder tiers that were deleted on purpose and must not come
+ * back as a bug fix.
  *
  * Mirrors `test_pass_priority.py` case for case - Python stays authoritative for
  * the tiers (#213) and a one-sided edit here is the #118 bug class.
@@ -453,11 +455,13 @@ describe('pass priority (#280)', () => {
       expect(names(chosen)).toEqual([`10${Suit.Clubs}`, `J${Suit.Clubs}`, `Q${Suit.Clubs}`])
     })
 
-    // A reading of #280 rather than something Paul stated, flagged in the PR so
-    // it is easy to reverse. The hand is trimmed to the six cards that make the
-    // point - a bigger one reaches the void tier, which does not consult the
-    // protected-10 rule and would ship the whole club suit before this tier ran.
-    it('holds a protected 10 (#276) back behind the King in that last tier', () => {
+    // No exception for the protected 10 of #276, and that is the piece a later
+    // reader is most likely to "fix" back. Every tier above this one runs to
+    // exhaustion, so reaching it means the Ace tier already sent both Aces to
+    // the bidder: keeping the 10 here leaves the partner a bare 10 and denies
+    // it to the hand that now holds the Aces protecting it. #280 shipped the
+    // hold-back first and reversed it.
+    it('sends A-A-10 of a side suit as a unit, the 10 at its ordinary place', () => {
       const hand = [
         new Card(Suit.Clubs, 'A', 1),
         new Card(Suit.Clubs, 'A', 2),
@@ -466,15 +470,16 @@ describe('pass priority (#280)', () => {
         new Card(Suit.Clubs, 'Q', 1),
         new Card(Suit.Hearts, '9', 1),
       ]
-      const chosen = partnerPassSelection(hand, Suit.Hearts, 'HC', 5)
+      const chosen = partnerPassSelection(hand, Suit.Hearts, 'HC', 4)
       expect(names(chosen)).toEqual([
+        `10${Suit.Clubs}`,
         `9${Suit.Hearts}`,
         `A${Suit.Clubs}`,
         `A${Suit.Clubs}`,
-        `K${Suit.Clubs}`,
-        `Q${Suit.Clubs}`,
       ])
-      expect(names(chosen)).not.toContain(`10${Suit.Clubs}`)
+      // the 10 follows its Aces, ahead of the Queen and the King
+      expect(names(chosen)).not.toContain(`K${Suit.Clubs}`)
+      expect(names(chosen)).not.toContain(`Q${Suit.Clubs}`)
     })
   })
 
