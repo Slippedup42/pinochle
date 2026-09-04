@@ -255,8 +255,17 @@ with `protectsATen` in `passing.ts`, applied in `bidderPassSelection` and
 `choosePassCards`. The predicate itself sits above both consumers on each
 side because #277 gave the same card a *price* as well as a pass rank
 (`compute_trick_potential` / `computeTrickPotential`, 20 a protected 10),
-and one rule stated twice is one rule that can drift. Unmeasured — #270
-holds the A/B until the queue is drained.
+and one rule stated twice is one rule that can drift.
+
+#280 considered the partner's last pass tier as one more reader and
+deliberately left it out. Every tier above that one runs to exhaustion, so
+by the time it runs the partner's Aces have already gone to the bidder and
+the predicate is answering a question about a hand that no longer exists —
+holding the 10 back would leave a bare 10 here and deny it to the hand that
+now holds both Aces. Protection is a property of what *remains* after the
+pass, which is this rule's own lesson read the other way round.
+
+Unmeasured — #270 holds the A/B until the queue is drained.
 
 ### Knapsack triage across competing melds
 
