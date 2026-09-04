@@ -360,5 +360,108 @@ normal here (see `ROADMAP.md` on null results being recorded and shipped
 disabled); an arm with no such note is drift. A field left with one
 member is neither — `OpeningPolicy` was that after #221 retired its
 losing arm, and #222 removed the field, because a field nothing can vary
-measures nothing. #223 is writing down when retiring an arm is the right
-move.
+measures nothing. When an arm stops being justified is the other half of
+this convention, and it is the section below.
+
+## Retiring a policy arm
+
+The section above is how an arm arrives; this is how one leaves. Without
+a rule for leaving, "shipped disabled" and "permanent" are the same
+state: the count of production branches no player can reach rises with
+every measurement the project runs, and a reader of `skills.ts` has to
+hold six policy vocabularies to understand one shipped configuration.
+Epic #215 adopted the rule below and #221 is its first application — so
+far its only one.
+
+Retire an arm when **all four** hold:
+
+1. at least two seeds recorded,
+2. measured negative or null,
+3. no shipped configuration selects it — since #222 that means
+   `SHIPPED_PARAMS`, not the five `SKILL_PARAMS` slots,
+4. nothing open is baselined against it.
+
+**Four conditions, but 4 is the one that decides.** The first three you
+read off `web/README.md` and `skills.ts` in a few minutes, and any arm
+anyone is considering deleting has usually met them for months.
+`playPolicy: 'simple'` is what shows the list is not four equal hurdles:
+two seeds at -228 and -221 per deal against `'cascade'` (#156), selected
+by no shipped configuration, one unreachable branch in each of
+`chooseLeadCard` and `chooseFollowCard`. Identical in shape to
+`openingPolicy: 'walk'` on every count, and it stays, on condition 4
+alone.
+
+**Check condition 4 against the tracker as it is today, not against the
+docstring's own claim.** The three sites that justify `'simple'` —
+`PlayPolicy` in `skills.ts`, `PLAY_AB_POLICIES` in `abRun.ts`, and the
+lead gate in `tracker.ts` — all name epic #152 in the present tense, and
+#152 closed on 2026-08-02 with every child closed. An arm's
+justification is a claim about open work, so it can go stale on its own
+in a way the rest of this file's docstring rules cannot. A stale
+citation is not a satisfied condition 4; it is the cue to go and find
+out what the live claim is. For `'simple'` that is #270's
+re-measurement scope, which names `playPolicy` — whether that is enough
+is a call for the issue, not for this file.
+
+### Retire the introducing commit, not the arm's name
+
+`git show --stat` on the commit that introduced the arm is the reliable
+list of what to remove. Grep is not: the arm's string finds the union
+member, its constants and the branch it gates, and misses whatever the
+same commit added elsewhere for that branch's sake. #204 (`8048d4b`)
+added a `threshold` parameter to `shouldBid` in `evaluator.ts` purely so
+the walk loop could ask it, and nothing else has ever passed one; #221
+found it because `evaluator.ts` was in the stat, and returned the
+function to its pre-#204 shape. Read the stat as a list of candidates
+rather than a delete list — a file in it may have grown other callers
+since.
+
+### The measurement stays; only the code goes
+
+Retiring an arm is not retracting its result, and the instinct to delete
+both together is strong enough to be worth naming. The numbers keep
+their `web/README.md` section. What changes there is the tense: say that
+the arm was deleted, by which issue, what went with it, and — the part
+easiest to forget — **the commit range the runs are still reproducible
+from**. A deletion normally takes the arm's `*_AB_POLICIES` entry and
+its `cli.ts` command with it, so the recorded numbers stop being
+reproducible from `main` on the day it lands, and a kept result nobody
+can re-run and nobody can locate is unfalsifiable rather than settled.
+`web/README.md`'s "What the opener puts on the table (`openingPolicy`,
+#204)" is the worked example: it names #221, lists what went, points at
+`8048d4b..`, and gives the reason in its own words — "a reader who
+wonders whether this engine has ever tried naming a higher opening level
+should find the answer here rather than an absence."
+
+Leave the one-line version at the code site that would otherwise invite
+the same question again. `chooseBid`'s opening branch in `bidding.ts`
+carries it, so the question cannot be reopened from the code alone
+without meeting the number that closed it.
+
+### What is left behind
+
+- **The field, when the union is down to one member.** A field nothing
+  can vary measures nothing and is no longer a dial. Clearing it touches
+  every `SKILL_PARAMS` row and every `*_AB_POLICIES` map, which is why
+  #221 left `OpeningPolicy` one-member and #222 removed it in a diff
+  that was rewriting those rows anyway. Do both in one PR, or say in the
+  PR why not.
+- **Tests: delete them, do not weaken them.** A test asserting the arm's
+  own behaviour has nothing left to assert. A test asserting something
+  across both arms is the one to stop over — check whether the narrowed
+  type now makes it a compile-time fact, and say which in the PR.
+- **The other engine.** An arm ported from Python has a Python side, and
+  `CLAUDE.md` makes Python authoritative for ported rules constants, so
+  retiring only the TypeScript half is a divergence rather than a
+  cleanup. #221 had nothing to do there because #204 was TypeScript-only
+  — check rather than assume.
+
+This is a different rule from Part 1's `pytest.mark.xfail(strict=True)`
+exception, and they are filed apart deliberately. They rhyme: both
+describe a deliberately abnormal state that has to expire rather than
+settle in, and both keep the record of the state after the code for it
+is gone. But #225's marker was self-clearing because its condition was
+read from the artefact it guarded, so nobody had to remember it;
+retirement is a judgement about open work that no artefact can make for
+you, which is exactly why condition 4 needs a person and a tracker.
+Writing them as one rule would imply an arm can retire itself.
