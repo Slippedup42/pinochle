@@ -267,6 +267,16 @@ Browser side, epic **#104** (#112 → #115), strictly sequential:
   `DEFENSIVE_PUSH_FLOOR = 200` buys a great many cheap contracts the
   model declines: a third fewer contracts taken, 63.7% made against
   54.6%.
+  **That +227 is history, not a current figure, and the shortfall is not
+  a regression** (#269). Re-measured 2026-09-01 with clean self-tests it
+  reads +22 and +45 per deal on two seeds, because the static arm it is
+  measured against has been tightened repeatedly since — its make-rate
+  went 54.6% to ~67% while the model's went 63.7% to ~69%. The evaluator
+  did not get worse; the baseline got fixed. The full explanation, and
+  the standing notice that the whole A/B record predates #273's meld
+  scoring correction and four unmeasured bidding changes, is at the head
+  of `web/README.md`'s "Measuring the AI" section. Re-measurement is
+  #270.
 - `easy` and `medium` keep the thresholds on purpose — the evaluator
   distils *skill 5*, so wiring it into `easy` would delete the tier
   rather than calibrate it. **Overtaken by #215:** the three selectable
