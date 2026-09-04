@@ -667,13 +667,25 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
     expect(screen.queryByRole('button', { name: 'Concede hand' })).toBeNull()
     expect(onComplete).not.toHaveBeenCalled()
 
-    driveUntil(() => onComplete.mock.calls.length > 0)
+    const actions = driveUntil(() => onComplete.mock.calls.length > 0)
+
+    // The guard that makes the title of this test true, and the one #261
+    // learned the hard way is missing without it. `trickWinners` reaching 12
+    // and the points reaching 250 are both satisfied by a claim, which
+    // *awards* the remainder rather than skipping it — so on their own they
+    // cannot tell ten resumed tricks from one resumed trick and nine claimed
+    // ones. Ten, not twelve: this mount restarts from a checkpoint taken after
+    // trick two, so the human has ten cards left to click, one per remaining
+    // trick.
+    expect(actions.filter((action) => action === 'play')).toHaveLength(10)
+    expect(actions).not.toContain('claim')
 
     // A resumed hand is one hand: the restored tricks and the played-on ones
     // add up to a whole round, with every trick point accounted for exactly
     // once. Double-counting or dropping the restored half would show here.
     expect(onComplete).toHaveBeenCalledOnce()
     const result = onComplete.mock.calls[0][0] as TrickPlayResult
+    expect(result.claim).toBeUndefined()
     expect(result.trickWinners).toHaveLength(12)
     expect(result.trickWinners.slice(0, 2)).toEqual(snapshot.trickWinners)
     expect(result.trickPointsByTeam[0] + result.trickPointsByTeam[1]).toBe(250)
