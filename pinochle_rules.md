@@ -273,8 +273,9 @@ Proficient tier landed. What they actually do:
 
 - `choose_bid` — Proficient bidding on the layered Base Bid valuation
   (`best_base_bid`, which sums `compute_base_bid` → `compute_trick_
-  potential` → `compute_competitive_adjustment` and applies `max_bid`'s
-  cap), plus positional and score-context rules: endgame protection
+  potential` → `compute_competitive_adjustment` and caps nothing —
+  #283 removed the 400 ceiling), plus positional and score-context
+  rules: endgame protection
   (below), the opener threshold, the `DEFENSIVE_PUSH_FLOOR` response to
   a minimum opener, and backing off once a partner is carrying the
   auction, and a positional open by the third bidder — two passes in,

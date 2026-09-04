@@ -30,7 +30,7 @@
 // alternative — hoisting the Base Bid valuation into a third module — would
 // move 250 lines that nothing else in this change touches.
 
-import { bestBaseBid, cappedBid, computeMaxBid } from './bidding'
+import { bestBaseBid, computeMaxBid } from './bidding'
 import { type Card, type Suit, SUITS } from './card'
 import { BID_MODEL, FOLD_MODEL, type LogisticModelData } from './evaluatorModel'
 import { scoreMelds } from './melds'
@@ -140,9 +140,9 @@ export interface Evaluation {
  * model twice — once as `score_diff` and once through the competitive
  * adjustment inside the ceiling — and both were present at fit time.
  *
- * `bestBaseBid` returns the capped ceiling of its winning suit, which is by
- * construction `capped_bid(hand, argmax_trump, compute_max_bid(...))`, i.e.
- * exactly Python's `base_bid_ceiling` at that trump.
+ * `bestBaseBid` returns the ceiling of its winning suit, which is by
+ * construction `compute_max_bid(hand, argmax_trump, ...)` — nothing clamps it
+ * since #283 — i.e. exactly Python's `base_bid_ceiling` at that trump.
  */
 export function evaluateBid(situation: BidSituation): Evaluation {
   const { trump, total: ceiling } = bestBaseBid(situation.hand, situation.ourScore, situation.theirScore)
@@ -201,7 +201,7 @@ export interface FoldSituation {
  */
 export function evaluateFold(situation: FoldSituation): Evaluation {
   const { hand, trump } = situation
-  const ceiling = cappedBid(hand, trump, computeMaxBid(hand, trump, 0, 0).total)
+  const ceiling = computeMaxBid(hand, trump, 0, 0).total
   const features: Record<string, number> = {
     ...handShapeFeatures(hand, trump),
     bid: situation.bid,

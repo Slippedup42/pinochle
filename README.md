@@ -202,8 +202,8 @@ is where the next round of strategy work will run. See
   set of real hands scored by the *Python* model. The fixture is what
   `evaluatorParity.test.ts` fails against when the two sides compute
   different features — most of all `base_bid_ceiling`, which is not a
-  stored column but a re-derivation of `compute_max_bid`/`capped_bid`
-  and is worth eight points of decision agreement on its own. Both files
+  stored column but a re-derivation of `compute_max_bid` and is worth
+  eight points of decision agreement on its own. Both files
   are regenerated, never edited; `--check` fails the Python suite if
   they have drifted from the model, which is the only place that drift
   is visible (a stale model module and a stale fixture agree with each
@@ -321,8 +321,8 @@ tuning baseline for a rule the shipped game already follows. See
   (what will this hand meld?) → `compute_trick_potential` (what will
   it take in tricks? — Aces, trump length, 10s standing behind both
   Aces of their suit, unmarried honours) → `compute_competitive_
-  adjustment` (what is the scoreboard asking for?) → `max_bid`'s
-  400-cap / >300-meld-uncap rule.
+  adjustment` (what is the scoreboard asking for?). The sum of the
+  three is the ceiling and nothing caps it (#283).
 - **`Trick`** owns legal-move filtering and winner resolution, so
   `Player` doesn't need to know the rules.
 - **`PlayTracker`** records which of the two copies of each card have

@@ -32,7 +32,6 @@ from pinochle_engine import (
     Suit,
     Team,
     best_base_bid,
-    max_bid,
 )
 
 
@@ -65,10 +64,9 @@ JUNK_HAND = [
 def _ceiling(hand, my_score, opp_score):
     """The same Max Bid ceiling `Player.choose_bid` computes, so the fixtures
     above can be asserted against the floor rather than assumed to sit where
-    the comment says."""
-    trump, base, _ = best_base_bid(hand, my_score, opp_score)
-    cap = max_bid(hand, trump)
-    return base if cap is None else min(base, cap)
+    the comment says. One line since #283 removed the cap it used to apply."""
+    _trump, ceiling, _ = best_base_bid(hand, my_score, opp_score)
+    return ceiling
 
 
 def _table(hand, my_score, opp_score):
