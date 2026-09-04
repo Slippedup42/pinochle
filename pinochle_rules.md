@@ -137,6 +137,75 @@ Diamonds, you score 300, not 80.
 
 Doubles **replace** the single value (10×), they don't stack on top of it.
 
+## Ending a Hand Early
+
+A hand normally runs meld, then 12 tricks, then scoring. Three rules can cut it
+short. Two of them fire in the same window — after meld is declared, before the
+first card is led — and end the hand with no trick played at all. The third,
+**claiming the rest**, happens during trick play and is described under Phase 4.
+
+**Whichever of the two ends it, a hand that stops before the first lead is
+scored the same way:**
+
+- The bidding team forfeits its meld and scores **−bid**, exactly as if it had
+  gone set.
+- The defending team keeps its meld and scores **no trick points**, because no
+  trick was played.
+- The round is over and scored; the dealer rotates and the game-win / −1000
+  checks apply as after any other hand.
+
+That second line is the whole point, and it is the reason ending early can beat
+playing on. The bidding team takes −bid either way — a contract that is going
+down is worth the same whether it is thrown in or played out. What changes is
+the defenders, who collect up to 250 points of tricks if the hand is played and
+none if it is not. Ending early does not save the hand; it stops the opponents
+being paid for winning it.
+
+### Conceding
+
+- Offered to the **ContractWinner only**. Their partner cannot concede a
+  contract they did not take, and the defenders have nothing to concede.
+- Offered **once**, after meld and before the first lead. The ContractWinner
+  leads the first trick, so the window closes the moment they play a card.
+- It is a judgement, not arithmetic: the ContractWinner may always play on.
+
+**The human is offered it in TypeScript only.** In the PWA it is the "Concede
+hand" button (`TrickPlayFlow.tsx`'s `canConcede`), behind a confirmation that
+names the −bid. `pinochle_engine.py` opens the same window in
+`Round._concede_phase` and puts the question to the bid winner's `decide_fold`,
+so an AI seat concedes there on the same terms — but the Python CLI's human seat
+is never asked, because `HumanPlayer` does not override `decide_fold`.
+
+### Auto-SET
+
+Some contracts are lost before a card is led, and this is the arithmetic that
+says so. Every trick point that exists in one round is **250** — 24 counters at
+10 apiece, plus the 10 for the last trick (Phase 5). So when the bidding team's
+meld plus that 250 is still **less than** the bid, winning all 12 tricks would
+not reach the contract. The hand ends there, scored as above, and no card is
+played.
+
+Worked through: melded 40 against a bid of 300. The most that team can reach is
+40 + 250 = 290, and 290 is short of 300, so the hand is over. Melded 50 against
+300 reaches exactly 300, which *makes* the contract — the shortfall has to be
+strict, and a hand that can still get there by an exact 250-point sweep is
+played out and given the chance.
+
+Three things follow from stating it this way, and each is a question the rule
+gets asked:
+
+- **It is a rule of the game, not AI behaviour.** It applies to every
+  ContractWinner, the human included, and nobody is asked, because there is
+  nothing to decide. Both engines check it *before* any concede judgement — a
+  contract that is arithmetically dead must never reach a decision that could
+  talk it into playing on.
+- **Playing it out could only cost more.** The bidding team is already at −bid
+  and cannot climb out of it; the defenders are the only side with anything left
+  to win. That is the concede argument above with the judgement taken out.
+- **The forced bid of 250 can never auto-SET.** A team with no meld at all
+  reaches exactly 250, which is not short of 250. A dealer stuck with a contract
+  they never chose always gets to play it.
+
 ## Phase 4: Trick-Taking
 
 12 tricks are played, one card per player per trick. The ContractWinner
@@ -190,6 +259,11 @@ Both conditions are checked only between tricks, for the seat about to lead:
 being on lead is what lets the claimer choose the suit every time, so no card of
 theirs ever meets anything above it.
 
+A claim also needs at least **two** tricks left to skip. With one trick to go
+there is nothing to shorten — the last card is played, and the claim and the
+play come to the same score — so the shortcut is not offered and the trick is
+played out.
+
 **TypeScript only.** `pinochle_engine.py` plays every trick out. The shortcut is
 outcome-neutral by construction, so the two engines still agree on every score —
 and `playTrickTakingPhase`, which is what the parity tests replay Python rounds
@@ -209,6 +283,9 @@ through, deliberately does not apply it.
   **−bid** for the round (they "go set").
 - The defending team always scores their own meld + trick points,
   regardless of what happens to the bidding team.
+- A hand that ended before the first lead — a concede or an auto-SET — is
+  scored by the rule in "Ending a Hand Early" instead: the bidding team
+  forfeits its meld and takes −bid, and the defenders score meld alone.
 
 ## Game Win / Loss
 
