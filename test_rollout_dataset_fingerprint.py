@@ -11,16 +11,25 @@ measures, every label becomes a description of an engine that no longer exists,
 and the whole chain stays green, because each link agrees with the link above
 it and none of them agrees with the engine.
 
-That test is currently EXPECTED TO FAIL, and the failure is the point. The
-committed dataset was labelled at ff236ef, before #273 corrected meld scoring
-and before #277 restructured the bid valuation, so this engine really does
-label differently and the stamp really does say so. It is marked `xfail` on the
-presence of the stamp's own `known_mismatch` block rather than on a hand-set
-flag here, so #226 flips it to a hard failure by the only act that legitimately
-clears it - regenerating the dataset, which rewrites the stamp without that
-block. `strict=True` closes the other direction: if the engine ever agrees with
-a stamp that says it should not, that is a stamp someone edited instead of
-earning, and the suite says so.
+That test was EXPECTED TO FAIL when this file landed, and #226 has since
+cleared it. The dataset it guarded had been labelled at ff236ef, before #273
+corrected meld scoring and before #277 restructured the bid valuation, so the
+engine really did label differently and the stamp said so in a `known_mismatch`
+block. The guard was carried as a strict `xfail` keyed on the presence of that
+block rather than on a flag set here, precisely so that regenerating - the only
+act that legitimately clears it - would drop the block and turn the marker off
+without anyone having to remember to delete it. #226 regenerated, `build_meta`
+wrote a stamp with no block, and the marker is gone. What is left is an
+ordinary test, which is the state this file was always aiming at.
+
+The shape is worth remembering rather than reinventing, because the same
+situation will recur the next time a Python change lands ahead of the ~13
+minutes it costs to re-label: hand-write a `known_mismatch` block into the
+stamp saying what moved and why, restore the marker keyed on that block, and it
+will clear itself again on the regeneration. `strict=True` is what makes it
+safe in the other direction - if the engine agrees with a stamp asserting that
+it should not, the stamp was edited rather than earned, and the suite reports
+XPASS(strict) rather than a quiet pass.
 
 The rest of the file is about making that one test trustworthy: that the digest
 moves when a label moves, that it does not move when a float wobbles below the
@@ -33,8 +42,6 @@ source in the first place.
 import functools
 import json
 import os
-
-import pytest
 
 from generate_rollout_dataset import (
     DEFAULT_DATASET_PATH,
@@ -57,7 +64,6 @@ META_PATH = os.path.join(REPO_ROOT, DEFAULT_META_PATH)
 DATASET_PATH = os.path.join(REPO_ROOT, DEFAULT_DATASET_PATH)
 
 META = read_meta(META_PATH)
-KNOWN_MISMATCH = META.get("known_mismatch")
 
 
 @functools.lru_cache(maxsize=1)
@@ -67,22 +73,10 @@ def measured():
     return measure_fingerprint(META["fingerprint"]["run"])
 
 
-_XFAIL_REASON = (
-    "the committed rollout_dataset.csv is knowingly stale - the stamp says so in "
-    f"its own known_mismatch block, tracked by issue #{(KNOWN_MISMATCH or {}).get('issue')}. "
-    "If this XPASSes: the engine now agrees with a stamp that asserts it should not, "
-    "which means the stamp was edited rather than earned. Regenerate the dataset "
-    "(`python generate_rollout_dataset.py --games 100 --samples 150 --seed 112 "
-    "--max-rows 2000`), which rewrites the stamp and drops the block, and this "
-    "marker disappears with it."
-)
-
-
 # ---------------------------------------------------------------------------
 # The guard.
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(KNOWN_MISMATCH is not None, strict=True, reason=_XFAIL_REASON)
 def test_this_engine_labels_the_fingerprint_run_the_way_the_stamp_says_it_does():
     """
     Would this engine label the dataset differently than the engine that
@@ -315,8 +309,10 @@ def test_a_known_mismatch_block_is_quoted_back_in_the_report():
 
 
 def test_a_matching_digest_under_a_known_mismatch_block_says_to_delete_the_block():
-    """The state #226 lands in if it re-stamps without clearing the exception:
-    digests agree, and the stamp still claims they should not."""
+    """The state #226 would have landed in had it re-stamped without clearing
+    the exception: digests agree, and the stamp still claims they should not.
+    Watched before the marker came off - with this stamp planted, the guard
+    reported XPASS(strict) and the suite failed."""
     known = {"issue": 226, "reason": "stale"}
     ok, report = format_check_report(
         _stamp(digest="abc", rows=115, known_mismatch=known),
@@ -346,8 +342,9 @@ def test_an_incomparable_stamp_says_so_instead_of_reporting_a_mismatch():
 
 def test_a_freshly_built_stamp_carries_no_exception_block():
     """`known_mismatch` is hand-written and clears itself on regeneration -
-    that is what makes the xfail above flip rather than linger. If `build_meta`
-    ever carried the block forward, the exception would outlive its reason."""
+    which is what let #226 drop the marker above by regenerating rather than by
+    editing this file. If `build_meta` ever carried the block forward, the
+    exception would outlive its reason."""
     meta = build_meta("rollout_dataset.csv", {"games": 4}, 2000,
                       _fake_measurement(), commit="a" * 40)
     assert "known_mismatch" not in meta

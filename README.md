@@ -185,10 +185,11 @@ is where the next round of strategy work will run. See
   answer *would this engine label the dataset differently* — a
   behavioural stamp rather than a hash of the label path's source, which
   would have fired on code moves and on functions no rollout calls.
-  **That check is red on purpose right now**: the committed dataset was
-  labelled at `ff236ef`, before #273's meld correction and #277's
-  valuation restructure, so the stamp carries a `known_mismatch` block
-  saying so and #226 is the regeneration that clears it.
+  That check was red on purpose when it landed — the committed dataset
+  had been labelled at `ff236ef`, before #273's meld correction and
+  #277's valuation restructure, and the stamp carried a
+  `known_mismatch` block saying so. #226 regenerated it, and the stamp
+  now records `5db8eb4` with no exception block and `--check` exits 0.
 - [`fit_evaluator.py`](fit_evaluator.py) — fits the cheap evaluator epic
   #104 wants to ship to that dataset (issue #113), and reports how often
   it reaches the rollout's *decision* rather than how close it gets to
@@ -196,14 +197,17 @@ is where the next round of strategy work will run. See
   running, melds unknown) and a fold row (auction over, both melds face
   up) are different problems sharing one table. Held out the last 25% of
   rows in capture order — a shuffled split would scatter one deal's rows
-  across the boundary. Held-out decision agreement is 85.5% on bid rows
-  against 74.3% for the shipped `ceiling >= OPENER_THRESHOLD` rule, and
-  92.0% on fold rows against 81.6% for never conceding; disagreements sit
-  almost entirely where the rollout's own two EVs are within sampling
-  noise of each other, not on any hand class. Nothing heavier than
-  logistic regression was warranted: a 150-tree gradient-boosted ensemble
-  on the same features scored 86.7% five-fold against the linear model's
-  86.3% ± 1.9%. Output is `rollout_evaluator.json`, the artifact #114
+  across the boundary. On the dataset #226 regenerated, held-out
+  decision agreement is 82.6% on bid rows against 74.0% for the shipped
+  `ceiling >= OPENER_THRESHOLD` rule, and 97.5% on fold rows against
+  88.9% for never conceding; disagreements sit almost entirely where the
+  rollout's own two EVs are within sampling noise of each other, not on
+  any hand class. Nothing heavier than logistic regression was
+  warranted: a 150-tree gradient-boosted ensemble on the same features
+  scored 86.7% five-fold against the linear model's 86.3% ± 1.9% — that
+  comparison was run on the pre-#226 dataset and has not been repeated,
+  and it is a statement about model families rather than about a
+  particular fit. Output is `rollout_evaluator.json`, the artifact #114
   exports to TypeScript.
 - [`export_evaluator.py`](export_evaluator.py) — carries that artifact
   into the PWA (issue #114). Generates two files under

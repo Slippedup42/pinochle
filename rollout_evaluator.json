@@ -8,50 +8,50 @@
   "labelled_configuration": "GeneralStrategy skill 5, as configured in pinochle_engine.py:\n  hand_valuation       rollout_ev\n  bid_samples          50\n  defence_samples      20\n  fold_samples         50\n  use_auction_evidence False\n  use_win_probability  False\n  live bid path        choose_bid_vs_defence (bid_ev_differential vs defend_ev, 20 samples)\n  live fold path       should_fold (score differential)",
   "metrics": {
     "bid": {
-      "cross_validated_agreement": 0.824773413897281,
+      "cross_validated_agreement": 0.8329459843638949,
       "cross_validated_folds": [
-        0.8429003021148036,
-        0.8126888217522659,
-        0.8157099697885196,
-        0.8126888217522659,
-        0.8398791540785498
+        0.8656716417910447,
+        0.817910447761194,
+        0.8328358208955224,
+        0.8328358208955224,
+        0.8154761904761905
       ],
-      "cross_validated_spread": 0.01364542572886551,
-      "holdout_agreement": 0.8285024154589372,
+      "cross_validated_spread": 0.017901139547127867,
+      "holdout_agreement": 0.8257756563245824,
       "holdout_disagreement_direction": {
-        "agreed": 343,
+        "agreed": 346,
         "false_negative": 42,
-        "false_positive": 29
+        "false_positive": 31
       },
-      "holdout_majority_baseline": 0.572463768115942,
-      "holdout_mean_regret": 13.152012560386474,
-      "rows": 1655,
-      "test_rows": 414,
-      "train_agreement": 0.8283642224012893,
-      "train_rows": 1241
+      "holdout_majority_baseline": 0.5226730310262531,
+      "holdout_mean_regret": 11.195069928400956,
+      "rows": 1676,
+      "test_rows": 419,
+      "train_agreement": 0.8361177406523469,
+      "train_rows": 1257
     },
     "fold": {
-      "cross_validated_agreement": 0.9362318840579711,
+      "cross_validated_agreement": 0.9630288461538463,
       "cross_validated_folds": [
-        0.9420289855072463,
-        0.9420289855072463,
-        0.927536231884058,
-        0.9420289855072463,
-        0.927536231884058
+        0.984375,
+        0.9846153846153847,
+        0.9230769230769231,
+        0.9538461538461539,
+        0.9692307692307692
       ],
-      "cross_validated_spread": 0.007099970268936725,
-      "holdout_agreement": 0.9195402298850575,
+      "cross_validated_spread": 0.022980769230769218,
+      "holdout_agreement": 0.9753086419753086,
       "holdout_disagreement_direction": {
-        "agreed": 80,
-        "false_negative": 5,
-        "false_positive": 2
+        "agreed": 79,
+        "false_negative": 1,
+        "false_positive": 1
       },
-      "holdout_majority_baseline": 0.8160919540229885,
-      "holdout_mean_regret": 3.0030655172413794,
-      "rows": 345,
-      "test_rows": 87,
-      "train_agreement": 0.9573643410852714,
-      "train_rows": 258
+      "holdout_majority_baseline": 0.8888888888888888,
+      "holdout_mean_regret": 0.7596716049382719,
+      "rows": 324,
+      "test_rows": 81,
+      "train_agreement": 0.9711934156378601,
+      "train_rows": 243
     }
   },
   "models": {
@@ -72,23 +72,23 @@
         "base_bid_ceiling",
         "ceiling_minus_bid"
       ],
-      "intercept": -6.803979799902088,
+      "intercept": -1.7880291285585528,
       "kind": "logistic",
       "threshold": 0.5,
       "weights": [
-        0.001979112336703743,
-        0.1646845285387867,
-        1.2117663339950528,
-        0.3253515478666479,
-        1.6441881677733934,
-        -0.33818051357767637,
-        -1.4334545080110905,
-        -0.009830478252295554,
-        0.0002885546880904971,
-        -0.34736010027290265,
-        -0.0716807025181629,
-        0.007300544407793197,
-        0.008252827653031229
+        0.008209684626992458,
+        0.3831471911349723,
+        1.3076567326278066,
+        0.48327692318863225,
+        0.9001127736725427,
+        -0.44408360709588285,
+        -2.1474845156320628,
+        -0.030547412800173472,
+        0.00014665272100630728,
+        -0.16219837129064088,
+        0.07102233954572583,
+        0.0063672404328047535,
+        0.00789943505538682
       ]
     },
     "fold": {
@@ -109,24 +109,24 @@
         "tricks_needed",
         "fold_cost"
       ],
-      "intercept": -2.1455477427600202,
+      "intercept": 8.523722235984886,
       "kind": "logistic",
       "threshold": 0.5,
       "weights": [
-        -0.006608557448355503,
-        -0.4038546862663516,
-        -1.262043444899405,
-        -0.3590452180531683,
-        -0.6815043477462482,
-        -0.6707590005877615,
-        0.005986292613749415,
-        0.028782865756897237,
-        -0.019027142681201363,
-        -0.007031205008859219,
-        -0.001161852981190404,
-        -0.003417837861705246,
-        0.02271700900411537,
-        0.0042061298084644354
+        -0.008251924512268537,
+        -1.3994621869248505,
+        -1.1211275591215628,
+        -0.7418084999375847,
+        -0.5335094432908574,
+        -0.08489695890781623,
+        -0.6798584076406218,
+        0.010921290099819009,
+        -0.017048823275325413,
+        -0.0020566489087021664,
+        -0.006368075057638706,
+        -0.007448490015127003,
+        0.019200141427966957,
+        0.0016156908787789497
       ]
     }
   },
