@@ -99,25 +99,27 @@ def test_the_two_aces_are_protected_with_the_ten_they_hold_up():
 # web/src/engine/passing.ts is the shipped port; passing.test.ts mirrors
 # these three cases.
 #
-# Trump is SPADES so the category is D/S and every J/9 in the hand is
-# trump - which strips out the safe-filler tier that would otherwise fill
-# all three slots before the 10s tier is ever reached, and leaves the
-# spare K/Q as the "ordinary filler" the 10 has to outlast.
+# Trump is SPADES so the category is D/S and the Q(S)/J(D) tier stays out
+# of it. Every King and Queen in the hand is married and no rank is around,
+# so #280's spare-K/Q tier - which now runs *ahead* of the 10s - takes
+# nothing, and the ordinary filler the 10 has to outlast is the safe J/9
+# tier below it.
 # ---------------------------------------------------------------------------
 
 TRUMP_S = Suit.SPADES
 
-_SIDE_SUITS = [C(Suit.HEARTS, "A"), C(Suit.HEARTS, "K"),
-               C(Suit.DIAMONDS, "A"), C(Suit.DIAMONDS, "K")]
+_SIDE_SUITS = [C(Suit.HEARTS, "A"), C(Suit.HEARTS, "K"), C(Suit.HEARTS, "Q"),
+               C(Suit.HEARTS, "9"),
+               C(Suit.DIAMONDS, "A"), C(Suit.DIAMONDS, "K"),
+               C(Suit.DIAMONDS, "Q"), C(Suit.DIAMONDS, "9")]
 
 
 def _bidder_hand(club_aces):
-    hand = [C(Suit.CLUBS, "10"), C(Suit.CLUBS, "K")]
+    hand = [C(Suit.CLUBS, "10"), C(Suit.CLUBS, "K"), C(Suit.CLUBS, "Q"),
+            C(Suit.CLUBS, "J")]
     hand += [C(Suit.CLUBS, "A", i + 1) for i in range(club_aces)]
     hand += _SIDE_SUITS
-    trump_filler = [C(Suit.SPADES, "A"), C(Suit.SPADES, "10"), C(Suit.SPADES, "10", 2),
-                    C(Suit.SPADES, "Q"), C(Suit.SPADES, "Q", 2), C(Suit.SPADES, "J"),
-                    C(Suit.SPADES, "J", 2), C(Suit.SPADES, "9"), C(Suit.SPADES, "9", 2)]
+    trump_filler = [C(Suit.SPADES, "A"), C(Suit.SPADES, "10"), C(Suit.SPADES, "J")]
     hand += trump_filler[:15 - len(hand)]
     assert len(hand) == 15, len(hand)
     return hand
@@ -125,7 +127,7 @@ def _bidder_hand(club_aces):
 
 def test_bidder_pass_keeps_a_ten_behind_both_aces():
     """Both Aces of clubs in hand: the 10C wins once the suit is played out
-    last, so the bidder ships spare Kings instead. Passing it could not buy
+    last, so the bidder ships J/9 rags instead. Passing it could not buy
     the Ace-drop trick anyway - both Aces are here, so the partner has
     none of them."""
     chosen = _bidder_pass_selection(_bidder_hand(2), TRUMP_S, "DS", 3)
@@ -147,24 +149,11 @@ def test_bidder_pass_unchanged_with_no_ace_of_the_suit():
     assert "10C" in _names(chosen), _names(chosen)
 
 
-def test_bidder_pass_pro_move_does_not_strip_a_protected_ten():
-    """The duplicate-AS/AD pro move ships one of a pair of Aces. It stands
-    down when that pair is holding a 10 of the same suit up (#276) -
-    shipping half the pair would leave a bare 10, the one outcome worse
-    than either whole answer."""
-    trump = Suit.DIAMONDS
-    hand = [
-        C(Suit.SPADES, "10"), C(Suit.SPADES, "A"), C(Suit.SPADES, "A", 2),
-        C(Suit.SPADES, "K"), C(Suit.HEARTS, "A"), C(Suit.HEARTS, "K"),
-        C(Suit.CLUBS, "A"), C(Suit.CLUBS, "K"),
-        C(Suit.DIAMONDS, "A"), C(Suit.DIAMONDS, "10"), C(Suit.DIAMONDS, "10", 2),
-        C(Suit.DIAMONDS, "Q"), C(Suit.DIAMONDS, "J"), C(Suit.DIAMONDS, "9"),
-        C(Suit.DIAMONDS, "9", 2),
-    ]
-    assert len(hand) == 15
-    chosen = _bidder_pass_selection(hand, trump, "DS", 3)
-    assert "AS" not in _names(chosen), _names(chosen)
-    assert "10S" not in _names(chosen), _names(chosen)
+# The fourth case here used to be the duplicate-AS/AD pro move standing
+# down when that pair was holding a 10 up. #280 deleted the pro move
+# itself - deliberately, and it may come back - so there is nothing left
+# for that case to assert: the bidder no longer sends an Ace back at all
+# short of a hand with nothing unprotected in it.
 
 
 # ---------------------------------------------------------------------------

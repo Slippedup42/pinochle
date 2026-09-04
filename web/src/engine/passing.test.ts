@@ -52,21 +52,12 @@ describe('bidderPassSelection', () => {
     expect(chosen[0].suit).not.toBe(Suit.Spades)
   })
 
-  it('H/C pro move (Queens Around + Pinochle + a trump run card) withholds QS/JD', () => {
-    const hand = [
-      new Card(Suit.Hearts, 'Q', 1), // trump Q -> Queens Around piece + run card
-      new Card(Suit.Spades, 'Q', 1), // Queens Around piece + Pinochle piece
-      new Card(Suit.Diamonds, 'Q', 1), // Queens Around piece
-      new Card(Suit.Clubs, 'Q', 1), // Queens Around piece
-      new Card(Suit.Diamonds, 'J', 1), // Pinochle piece
-      new Card(Suit.Clubs, '9', 1), // safe filler
-    ]
-    const chosen = bidderPassSelection(hand, Suit.Hearts, 'HC', 1)
-    expect(chosen.some((c) => c.suit === Suit.Spades && c.rank === 'Q')).toBe(false)
-    expect(chosen.some((c) => c.suit === Suit.Diamonds && c.rank === 'J')).toBe(false)
-  })
-
-  it('without the pro move, H/C still sends QS/JD first', () => {
+  // The Queens-Around-plus-pinochle-plus-a-run-card exception that used to
+  // withhold QS/JD here was deleted by #280, deliberately - Paul: "I took them
+  // out on purpose. I want to see the play before I add pro moves." The hand
+  // that used to trigger it is now the one asserting the tier is unconditional;
+  // see the #280 block at the foot of this file.
+  it('H/C sends QS/JD first', () => {
     const hand = [new Card(Suit.Spades, 'Q', 1), new Card(Suit.Diamonds, 'J', 1), new Card(Suit.Clubs, '9', 1)]
     const chosen = bidderPassSelection(hand, Suit.Hearts, 'HC', 1)
     expect(chosen).toHaveLength(1)
@@ -167,10 +158,11 @@ describe('choosePassCards', () => {
  * strictly worse than the behaviour this replaces.
  *
  * Mirrors `test_protected_tens.py`, which covers the Python-only tier-0/tier-1
- * and return-pass paths as well. Trump is spades in the fixtures below so that
- * every J/9 in the hand is trump: that strips out the safe-filler tier which
- * would otherwise fill all three slots before the 10s tier is reached, and
- * leaves the spare K/Q as the ordinary filler the 10 has to outlast.
+ * and return-pass paths as well. Trump is spades in the fixtures below so the
+ * Q(S)/J(D) tier stays out of it; every King and Queen in the hand is married
+ * and no rank is around, so #280's spare-K/Q tier - which now runs *ahead* of
+ * the 10s - takes nothing, and the ordinary filler the 10 has to outlast is the
+ * safe J/9 tier below it.
  */
 describe('a 10 behind both Aces of its suit is protected (#276)', () => {
   const names = (cards: readonly Card[]) => cards.map((c) => `${c.rank}${c.suit}`).sort()
@@ -179,30 +171,39 @@ describe('a 10 behind both Aces of its suit is protected (#276)', () => {
   const SIDE_SUITS = [
     new Card(Suit.Hearts, 'A', 1),
     new Card(Suit.Hearts, 'K', 1),
+    new Card(Suit.Hearts, 'Q', 1),
+    new Card(Suit.Hearts, '9', 1),
     new Card(Suit.Diamonds, 'A', 1),
     new Card(Suit.Diamonds, 'K', 1),
+    new Card(Suit.Diamonds, 'Q', 1),
+    new Card(Suit.Diamonds, '9', 1),
   ]
   const TRUMP_FILLER = [
     new Card(Suit.Spades, 'A', 1),
     new Card(Suit.Spades, '10', 1),
-    new Card(Suit.Spades, '10', 2),
-    new Card(Suit.Spades, 'Q', 1),
-    new Card(Suit.Spades, 'Q', 2),
     new Card(Suit.Spades, 'J', 1),
-    new Card(Suit.Spades, 'J', 2),
-    new Card(Suit.Spades, '9', 1),
-    new Card(Suit.Spades, '9', 2),
   ]
 
   /** 15-card bidder hand holding the 10 of clubs and `clubAces` Aces of clubs. */
   const bidderHand = (clubAces: number): Card[] => {
-    const hand = [new Card(Suit.Clubs, '10', 1), new Card(Suit.Clubs, 'K', 1)]
+    const hand = [
+      new Card(Suit.Clubs, '10', 1),
+      new Card(Suit.Clubs, 'K', 1),
+      new Card(Suit.Clubs, 'Q', 1),
+      new Card(Suit.Clubs, 'J', 1),
+    ]
     hand.push(...CLUB_ACES.slice(0, clubAces))
     hand.push(...SIDE_SUITS)
     hand.push(...TRUMP_FILLER.slice(0, 15 - hand.length))
     expect(hand).toHaveLength(15)
     return hand
   }
+
+  // A fourth case here used to assert that the duplicate-AS/AD pro move stood
+  // down when that pair was holding a 10 up. #280 deleted the pro move itself -
+  // deliberately, and it may come back - so there is nothing left for that case
+  // to assert: the bidder no longer sends an Ace back at all short of a hand
+  // with nothing unprotected in it.
 
   it('keeps a 10 with both Aces of its suit behind it, and keeps the Aces too', () => {
     const chosen = names(bidderPassSelection(bidderHand(2), Suit.Spades, 'DS', 3))
@@ -218,29 +219,6 @@ describe('a 10 behind both Aces of its suit is protected (#276)', () => {
   it('is unchanged for a 10 with no Ace of its suit - still the first thing thrown', () => {
     const chosen = names(bidderPassSelection(bidderHand(0), Suit.Spades, 'DS', 3))
     expect(chosen).toContain(`10${Suit.Clubs}`)
-  })
-
-  it('stands the duplicate-Ace pro move down when that pair is holding a 10 up', () => {
-    const hand = [
-      new Card(Suit.Spades, '10', 1),
-      new Card(Suit.Spades, 'A', 1),
-      new Card(Suit.Spades, 'A', 2),
-      new Card(Suit.Spades, 'K', 1),
-      new Card(Suit.Hearts, 'A', 1),
-      new Card(Suit.Hearts, 'K', 1),
-      new Card(Suit.Clubs, 'A', 1),
-      new Card(Suit.Clubs, 'K', 1),
-      new Card(Suit.Diamonds, 'A', 1),
-      new Card(Suit.Diamonds, '10', 1),
-      new Card(Suit.Diamonds, '10', 2),
-      new Card(Suit.Diamonds, 'Q', 1),
-      new Card(Suit.Diamonds, 'J', 1),
-      new Card(Suit.Diamonds, '9', 1),
-      new Card(Suit.Diamonds, '9', 2),
-    ]
-    const chosen = names(bidderPassSelection(hand, Suit.Diamonds, 'DS', 3))
-    expect(chosen).not.toContain(`A${Suit.Spades}`)
-    expect(chosen).not.toContain(`10${Suit.Spades}`)
   })
 
   describe("choosePassCards' simplified bidder branch", () => {
@@ -376,5 +354,209 @@ describe('the 3-card pass is invariant across skill levels (#196)', () => {
       const counts = SKILLS.map((skill) => choosePassCards(hand, PASS_COUNT, Suit.Spades, isBidder, skill).length)
       expect(new Set(counts)).toEqual(new Set([3]))
     }
+  })
+})
+
+/**
+ * Issue #280 - Paul's rework of both pass priority lists, 2026-09-02.
+ *
+ * The tiers themselves are stated in `partnerPassSelection` and
+ * `bidderPassSelection`; what is pinned here is the handful of orderings a later
+ * reader could plausibly "fix" back to what they were, plus the bidder tiers
+ * that were deleted on purpose and must not come back as a bug fix.
+ *
+ * Mirrors `test_pass_priority.py` case for case - Python stays authoritative for
+ * the tiers (#213) and a one-sided edit here is the #118 bug class.
+ */
+describe('pass priority (#280)', () => {
+  const names = (cards: readonly Card[]) => cards.map((c) => `${c.rank}${c.suit}`).sort()
+
+  describe('partner -> bidder', () => {
+    // The acceptance test for the whole issue. Paul: "do not send KKQ of trump
+    // if you have other trump J or better. The goal is for a Run so you want to
+    // send a spread." The second King fills no slot of the bidder's run that the
+    // first one has not already filled; the Jack fills one nothing else can.
+    it('sends a spread of trump rather than duplicates: K-K-Q-J sends K, Q, J', () => {
+      const hand = [
+        new Card(Suit.Hearts, 'K', 1),
+        new Card(Suit.Hearts, 'K', 2),
+        new Card(Suit.Hearts, 'Q', 1),
+        new Card(Suit.Hearts, 'J', 1),
+        new Card(Suit.Spades, 'A', 1),
+        new Card(Suit.Spades, '10', 1),
+        new Card(Suit.Spades, 'K', 1),
+        new Card(Suit.Clubs, 'Q', 1),
+        new Card(Suit.Clubs, 'J', 1),
+        new Card(Suit.Clubs, '9', 1),
+        new Card(Suit.Diamonds, '10', 1),
+        new Card(Suit.Diamonds, '9', 1),
+      ]
+      const chosen = partnerPassSelection(hand, Suit.Hearts, 'HC', 3)
+      expect(names(chosen)).toEqual([`J${Suit.Hearts}`, `K${Suit.Hearts}`, `Q${Suit.Hearts}`])
+      expect(chosen.filter((c) => c.rank === 'K')).toHaveLength(1) // the spare King stays home
+    })
+
+    // Paul: "really if you have enough Trump you might keep the Royal Marriage."
+    it('sends trump A/10/J before breaking up the royal marriage', () => {
+      const hand = [
+        new Card(Suit.Clubs, 'A', 1),
+        new Card(Suit.Clubs, '10', 1),
+        new Card(Suit.Clubs, 'J', 1),
+        new Card(Suit.Clubs, 'K', 1),
+        new Card(Suit.Clubs, 'Q', 1),
+        new Card(Suit.Spades, 'A', 1),
+        new Card(Suit.Spades, 'K', 1),
+        new Card(Suit.Spades, '9', 1),
+        new Card(Suit.Hearts, '10', 1),
+        new Card(Suit.Hearts, '9', 1),
+        new Card(Suit.Diamonds, 'K', 1),
+        new Card(Suit.Diamonds, 'J', 1),
+      ]
+      const chosen = partnerPassSelection(hand, Suit.Clubs, 'HC', 3)
+      expect(names(chosen)).toEqual([`10${Suit.Clubs}`, `A${Suit.Clubs}`, `J${Suit.Clubs}`])
+    })
+
+    // The spread is a deferral, not a discard: the declined duplicate waits
+    // behind the side Ace and ahead of the dix, which scores its 10 for the team
+    // wherever it sits.
+    it('picks the declined duplicate back up after a side Ace, ahead of the dix', () => {
+      const hand = [
+        new Card(Suit.Hearts, 'K', 1),
+        new Card(Suit.Hearts, 'K', 2),
+        new Card(Suit.Hearts, '9', 1),
+        new Card(Suit.Spades, 'A', 1),
+        new Card(Suit.Clubs, 'Q', 1),
+        new Card(Suit.Clubs, 'J', 1),
+        new Card(Suit.Clubs, '10', 1),
+        new Card(Suit.Diamonds, 'K', 1),
+        new Card(Suit.Diamonds, 'Q', 1),
+        new Card(Suit.Diamonds, 'J', 1),
+        new Card(Suit.Diamonds, '10', 1),
+        new Card(Suit.Diamonds, '9', 1),
+      ]
+      const chosen = partnerPassSelection(hand, Suit.Hearts, 'HC', 3)
+      expect(names(chosen)).toEqual([`A${Suit.Spades}`, `K${Suit.Hearts}`, `K${Suit.Hearts}`])
+      expect(names(chosen)).not.toContain(`9${Suit.Hearts}`)
+    })
+
+    // Increasing cost to give away. Paul: "You do not want to pass points, 10
+    // and K, and K are even worse because they make marriages, this is also why
+    // keeping a Q is better."
+    it('ends on J, then 10, then Q, then K', () => {
+      const hand = [
+        new Card(Suit.Clubs, 'K', 1),
+        new Card(Suit.Clubs, 'Q', 1),
+        new Card(Suit.Clubs, '10', 1),
+        new Card(Suit.Clubs, 'J', 1),
+      ]
+      const chosen = partnerPassSelection(hand, Suit.Hearts, 'HC', 3)
+      expect(names(chosen)).toEqual([`10${Suit.Clubs}`, `J${Suit.Clubs}`, `Q${Suit.Clubs}`])
+    })
+
+    // A reading of #280 rather than something Paul stated, flagged in the PR so
+    // it is easy to reverse. The hand is trimmed to the six cards that make the
+    // point - a bigger one reaches the void tier, which does not consult the
+    // protected-10 rule and would ship the whole club suit before this tier ran.
+    it('holds a protected 10 (#276) back behind the King in that last tier', () => {
+      const hand = [
+        new Card(Suit.Clubs, 'A', 1),
+        new Card(Suit.Clubs, 'A', 2),
+        new Card(Suit.Clubs, '10', 1),
+        new Card(Suit.Clubs, 'K', 1),
+        new Card(Suit.Clubs, 'Q', 1),
+        new Card(Suit.Hearts, '9', 1),
+      ]
+      const chosen = partnerPassSelection(hand, Suit.Hearts, 'HC', 5)
+      expect(names(chosen)).toEqual([
+        `9${Suit.Hearts}`,
+        `A${Suit.Clubs}`,
+        `A${Suit.Clubs}`,
+        `K${Suit.Clubs}`,
+        `Q${Suit.Clubs}`,
+      ])
+      expect(names(chosen)).not.toContain(`10${Suit.Clubs}`)
+    })
+  })
+
+  describe('bidder -> partner', () => {
+    // The spare K/Q tier moved from sixth to second, ahead of the non-trump 10s
+    // and the J/9 rags - the reverse of the old list.
+    it('ships a spare King before a non-trump 10 and before J/9 filler', () => {
+      const hand = [
+        new Card(Suit.Spades, 'A', 1),
+        new Card(Suit.Spades, '10', 1),
+        new Card(Suit.Spades, 'K', 1),
+        new Card(Suit.Spades, 'Q', 1),
+        new Card(Suit.Hearts, 'A', 1),
+        new Card(Suit.Hearts, 'K', 1),
+        new Card(Suit.Clubs, 'A', 1),
+        new Card(Suit.Clubs, '10', 1),
+        new Card(Suit.Clubs, 'J', 1),
+        new Card(Suit.Diamonds, 'A', 1),
+        new Card(Suit.Diamonds, '10', 1),
+        new Card(Suit.Diamonds, '9', 1),
+      ]
+      const chosen = bidderPassSelection(hand, Suit.Spades, 'DS', 3)
+      expect(names(chosen)).toEqual([`10${Suit.Clubs}`, `10${Suit.Diamonds}`, `K${Suit.Hearts}`])
+    })
+
+    // The duplicate-AS/AD pro move was the only route by which an Ace was ever
+    // sent back, and #280 deleted it on purpose. This hand has no J/9 filler and
+    // no non-trump 10, which is exactly where that tier used to fire.
+    it('never returns an Ace while anything else is free', () => {
+      const hand = [
+        new Card(Suit.Spades, '10', 1),
+        new Card(Suit.Spades, 'K', 1),
+        new Card(Suit.Spades, 'Q', 1),
+        new Card(Suit.Spades, 'J', 1),
+        new Card(Suit.Diamonds, 'A', 1),
+        new Card(Suit.Diamonds, 'A', 2),
+        new Card(Suit.Hearts, 'K', 1),
+        new Card(Suit.Hearts, 'Q', 1),
+        new Card(Suit.Hearts, 'A', 1),
+        new Card(Suit.Clubs, 'K', 1),
+        new Card(Suit.Clubs, 'Q', 1),
+        new Card(Suit.Clubs, 'A', 1),
+      ]
+      const chosen = bidderPassSelection(hand, Suit.Spades, 'DS', 3)
+      expect(chosen.some((c) => c.rank === 'A')).toBe(false)
+    })
+
+    // The Queens-Around-plus-pinochle-plus-a-run-card exception is gone,
+    // deliberately: this is the hand that used to trigger it.
+    it('sends QS/JD unconditionally in Hearts or Clubs', () => {
+      const hand = [
+        new Card(Suit.Hearts, 'Q', 1),
+        new Card(Suit.Spades, 'Q', 1),
+        new Card(Suit.Diamonds, 'Q', 1),
+        new Card(Suit.Clubs, 'Q', 1),
+        new Card(Suit.Diamonds, 'J', 1),
+        new Card(Suit.Clubs, '9', 1),
+      ]
+      const chosen = bidderPassSelection(hand, Suit.Hearts, 'HC', 1)
+      expect(names(chosen)).toEqual([`Q${Suit.Spades}`])
+    })
+
+    // The last-resort tier, for the degenerate all-trump hand where nothing safe
+    // is left. In Spades or Diamonds those same two cards can be a pinochle card
+    // or sit in the run, so that hand skips the tier and sheds in hand order.
+    it('sheds low trump only in Hearts or Clubs', () => {
+      const wholeSuit = (suit: Suit) =>
+        (['A', '10', 'K', 'Q', 'J', '9'] as const).flatMap((rank) => [
+          new Card(suit, rank, 1),
+          new Card(suit, rank, 2),
+        ])
+
+      expect(names(bidderPassSelection(wholeSuit(Suit.Hearts), Suit.Hearts, 'HC', 3))).toEqual([
+        `9${Suit.Hearts}`,
+        `J${Suit.Hearts}`,
+        `J${Suit.Hearts}`,
+      ])
+      expect(names(bidderPassSelection(wholeSuit(Suit.Spades), Suit.Spades, 'DS', 3))).toEqual([
+        `10${Suit.Spades}`,
+        `A${Suit.Spades}`,
+        `A${Suit.Spades}`,
+      ])
+    })
   })
 })

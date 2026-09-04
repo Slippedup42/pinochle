@@ -1230,13 +1230,86 @@ def _take(pool, chosen, count, predicate, sort_key=lambda c: 0):
         pool.remove(c)
 
 
+# Inside the trump tiers, a spread beats duplicates. The bidder is building
+# a Run - A-10-K-Q-J of the trump suit - so three distinct trump ranks are
+# worth far more to them than two copies of one rank, which fills a single
+# slot of that run and leaves the rest of it open. Paul, 2026-09-02: "do
+# not send KKQ of trump if you have other trump J or better. The goal is
+# for a Run so you want to send a spread."
+_TRUMP_RUN_ORDER = {"A": 0, "10": 1, "K": 2, "Q": 3, "J": 4}
+
+
+def _take_spread(pool, chosen, count, predicate, rank_order):
+    """Like `_take`, in rank order, but at most one card of any one rank.
+
+    K-K-Q-J of trump sends K, Q and J and keeps the spare King. Nothing is
+    thrown away by declining that second King: the leftover-trump tier
+    picks the duplicates back up further down the list, once the side Aces
+    have had their turn.
+
+    `seen` is per-call rather than read off `chosen`, deliberately - the
+    two trump tiers that use this cover disjoint ranks (A/10/J and K/Q) so
+    they have nothing to share, while the Q(S) an earlier tier may already
+    have sent is a Queen of another suit entirely and must not block the
+    Queen of trump.
+    """
+    seen = set()
+    for c in sorted([c for c in pool if predicate(c)], key=lambda c: rank_order[c.rank]):
+        if len(chosen) >= count:
+            return
+        if c.rank in seen:
+            continue
+        seen.add(c.rank)
+        chosen.append(c)
+        pool.remove(c)
+
+
+# The partner's last tier, once trump, Aces and 9s have all gone: J, then
+# 10, then Q, then K, in increasing cost to give away. Paul, 2026-09-02:
+# "You do not want to pass points, 10 and K, and K are even worse because
+# they make marriages, this is also why keeping a Q is better." So: a Jack
+# is neither a counter nor a marriage card and costs nothing, a 10 is a
+# counter, a Queen carries a marriage, and a King is both.
+_PARTNER_FILLER_ORDER = {"J": 0, "10": 1, "Q": 2, "K": 3}
+
+
+def _partner_filler_order(hand, trump, card):
+    # The protected 10 is the exception, and it is a reading of #280 rather
+    # than something Paul stated: a 10 with both Aces of its suit behind it
+    # is a trick this hand can still cash (#276), and the Ace tier above has
+    # already declined to break that group up, so shipping the 10 out from
+    # under the pair produces exactly the bare-10 outcome #276 exists to
+    # prevent. It sorts behind the King instead of with the ordinary 10s.
+    if card.rank == "10" and _is_protected_ten(hand, trump, card):
+        return 4
+    # 5 is unreachable in practice - trump, Aces and 9s are all gone by the
+    # time this tier runs. It is here so the tier can double as the
+    # catch-all that guarantees `count` gets filled.
+    return _PARTNER_FILLER_ORDER.get(card.rank, 5)
+
+
 def _partner_pass_selection(hand, trump, category, count):
     """
-    Partner's send-to-bidder priority:
-      D/S: QS, JD -> K/Q trump -> trump A/10/J -> non-trump aces
-           (non-duplicate first) -> 9 of trump -> other 9s
-      H/C: K/Q trump -> trump A/10/J -> non-trump aces
-           (non-duplicate first) -> 9 of trump -> other 9s
+    Partner's send-to-bidder priority (Paul's rework, #280):
+
+      1. Q(S)/J(D) - D/S category only
+      2. Trump A, 10, J - at most one of each rank
+      3. Trump K, Q - at most one of each rank
+      4. Non-trump Aces, singletons before pairs
+      5. Whatever trump is left above the 9, highest first
+      6. The 9 of trump (the dix)
+      7. Void building
+      8. Any 9
+      9. J, then 10, then Q, then K
+
+    Two of those orderings are not self-evident. A/10/J comes before K/Q
+    because the partner may want to keep the royal marriage - Paul: "really
+    if you have enough Trump you might keep the Royal Marriage." Three
+    slots are often used up before tier 3 is reached at all, and the A, the
+    10 and the J fill the run's other ranks without breaking a K-Q pair
+    this hand can still score. And tiers 2, 3 and 5 between them prefer a
+    spread over duplicates: see `_take_spread` for why, and
+    `_partner_filler_order` for tier 9's order.
     """
     pool = list(hand)
     chosen = []
@@ -1246,14 +1319,24 @@ def _partner_pass_selection(hand, trump, category, count):
               lambda c: (c.suit == Suit.SPADES and c.rank == "Q")
               or (c.suit == Suit.DIAMONDS and c.rank == "J"))
 
-    _take(pool, chosen, count, lambda c: c.suit == trump and c.rank in ("K", "Q"))
+    _take_spread(pool, chosen, count,
+                 lambda c: c.suit == trump and c.rank in ("A", "10", "J"),
+                 {"A": 0, "10": 1, "J": 2})
 
-    trump_order = {"A": 0, "10": 1, "J": 2}
-    _take(pool, chosen, count, lambda c: c.suit == trump and c.rank in ("A", "10", "J"),
-          sort_key=lambda c: trump_order[c.rank])
+    # King before Queen for the same reason tier 9 gives a Queen away before
+    # a King: of the two, the King is the more expensive card to be left
+    # holding, so it is the better one to have gone.
+    _take_spread(pool, chosen, count,
+                 lambda c: c.suit == trump and c.rank in ("K", "Q"),
+                 {"K": 0, "Q": 1})
 
     _take(pool, chosen, count, lambda c: c.suit != trump and c.rank == "A",
           sort_key=lambda c: 0 if _n_of(hand, c.suit, "A") == 1 else 1)
+
+    # The duplicate trump the two spread tiers declined, highest first -
+    # ahead of the dix, which scores its 10 for the team wherever it sits.
+    _take(pool, chosen, count, lambda c: c.suit == trump and c.rank != "9",
+          sort_key=lambda c: _TRUMP_RUN_ORDER[c.rank])
 
     _take(pool, chosen, count, lambda c: c.suit == trump and c.rank == "9")
 
@@ -1270,7 +1353,11 @@ def _partner_pass_selection(hand, trump, category, count):
                 pool.remove(c)
 
     _take(pool, chosen, count, lambda c: c.rank == "9")
-    _take(pool, chosen, count, lambda c: True)  # fallback
+
+    # Everything else, cheapest to give away first. Doubles as the
+    # catch-all: the predicate matches any card, so `count` is always filled.
+    _take(pool, chosen, count, lambda c: True,
+          sort_key=lambda c: _partner_filler_order(hand, trump, c))
 
     return chosen[:count]
 
@@ -1300,29 +1387,37 @@ def _find_void_opportunity(hand, trump, is_protected, remaining_count):
 
 def _bidder_pass_selection(hand, trump, category, count):
     """
-    Bidder's send-back-to-partner priority, matching the documented tiers:
+    Bidder's send-back-to-partner priority (Paul's rework, #280):
 
-      D/S: (protect trump/JD/QS) -> safe non-trump J/9 filler (not
-           breaking marriage/around) -> non-trump 10s -> duplicate AS/AD
-           (pro move) -> random non-trump J/9, no safety check (true
-           last resort before touching anything else) -> spare K/Q ->
-           any unprotected non-ace -> any unprotected -> protected
+      1. Q(S)/J(D) - H/C category only, unconditional
+      2. Void building
+      3. Spare K/Q doing no meld work
+      4. Non-trump 10s, unprotected ones only (#276)
+      5. Non-trump J/9 that breaks no marriage and no around
+      6. Any unprotected non-Ace
+      7. Any unprotected card
+      8. Trump 9s and Js - H/C category only
+      9. Anything left
 
-      H/C: QS/JD (unless the 60-queens+pinochle+1-run-card pro move
-           applies) -> safe non-trump J/9 filler -> non-trump 10s ->
-           random non-trump J/9 -> spare K/Q -> any unprotected non-ace
-           -> any unprotected -> protected
+    The bidder does not send an Ace back. Nothing above tier 7 can pick
+    one up, and tier 7 only fires on a hand with nothing unprotected left
+    in it at all. #280 removed the one tier that ever did so on purpose -
+    Paul: "I took them out on purpose. I want to see the play before I add
+    pro moves."
 
-    Aces are never passed except via the explicit pro-move tier (D/S
-    only) - they're too valuable to give away speculatively.
+    Tier 8 is the all-trump-and-Aces hand: when nothing safe is left, the
+    low trump goes rather than a card the bid is counting on. H/C only,
+    because with Spades or Diamonds trump a trump J or 9 can be a pinochle
+    card or sit in the run. It is placed ahead of the take-anything tier
+    rather than after it - after it, it could never run, since by then
+    every remaining card is protected.
 
     The "non-trump 10s" tier means *unprotected* 10s only (#276). A 10
     with both Aces of its suit behind it is a winner the bidder can cash
     by playing that suit out last, not a liability, so it is held out of
-    that tier - along with the void tier and the duplicate-Ace pro move,
-    the two other places a piece of that A-A-10 group could leave early -
-    and reaches the shed list only at "any unprotected non-ace", behind
-    every J/9 rag and behind a spare K/Q doing no meld work. See
+    that tier - and out of the void tier, the other place a piece of that
+    A-A-10 group could leave early - and reaches the shed list only at
+    "any unprotected non-ace", behind every J/9 rag. See
     `_is_protected_ten` for the rule and Paul's reasoning.
     """
     pool = list(hand)
@@ -1335,16 +1430,12 @@ def _bidder_pass_selection(hand, trump, category, count):
     )
 
     if category == "HC":
-        _, breakdown = score_melds(hand, trump)
-        has_queens_around = any(k.startswith("Q") and "Around" in k for k in breakdown)
-        has_pinochle = "Pinochle" in breakdown or "Double Pinochle" in breakdown
-        has_run_card = any(_n_of(hand, trump, r) >= 1 for r in ("A", "10", "K", "Q", "J"))
-        pro_move = has_queens_around and has_pinochle and has_run_card
-
-        if not pro_move:
-            _take(pool, chosen, count,
-                  lambda c: (c.suit == Suit.SPADES and c.rank == "Q")
-                  or (c.suit == Suit.DIAMONDS and c.rank == "J"))
+        # Unconditional since #280. The exception this used to carry - keep
+        # them when the hand holds Queens Around plus a pinochle plus a run
+        # card - was removed deliberately, not lost.
+        _take(pool, chosen, count,
+              lambda c: (c.suit == Suit.SPADES and c.rank == "Q")
+              or (c.suit == Suit.DIAMONDS and c.rank == "J"))
 
     # Void opportunity: fully emptying a suit unlocks immediate trump
     # control, which beats scattering the same number of cards - check
@@ -1361,42 +1452,39 @@ def _bidder_pass_selection(hand, trump, category, count):
                 chosen.append(c)
                 pool.remove(c)
 
+    # Spare K/Q not currently doing meld work (only QS is inherently
+    # protected - KS and other K/Q are fair game here). #280 moved this
+    # ahead of the 10s and the J/9 filler: a King or Queen in no marriage
+    # and no around is scoring nothing in this hand, and it may well find
+    # the card that marries it in the partner's.
+    _take(pool, chosen, count,
+          lambda c: not is_protected(c) and c.rank in ("K", "Q")
+          and not _breaks_marriage(hand, c) and not _breaks_around(hand, c))
+
+    # Non-trump 10s - but not one that both Aces of its suit make a winner
+    # (#276); that one falls through to the "any unprotected non-ace" tier,
+    # behind the J/9 filler this bidder can spend more cheaply.
+    _take(pool, chosen, count,
+          lambda c: not is_protected(c) and c.rank == "10"
+          and not _is_protected_ten(hand, trump, c))
+
     # Safe filler: non-trump J/9, only if it doesn't break a marriage/around
     _take(pool, chosen, count,
           lambda c: not is_protected(c) and c.rank in ("J", "9")
           and not _breaks_marriage(hand, c) and not _breaks_around(hand, c))
 
-    # Non-trump 10s - but not one that both Aces of its suit make a winner
-    # (#276); that one falls through to the "any unprotected non-ace" tier,
-    # behind the J/9 filler and the spare K/Q this bidder can spend more
-    # cheaply.
-    _take(pool, chosen, count,
-          lambda c: not is_protected(c) and c.rank == "10"
-          and not _is_protected_ten(hand, trump, c))
-
-    if category == "DS":
-        # Pro move: duplicate AS/AD - unless that pair is what is holding a
-        # 10 of the same suit up (#276). Shipping one of them turns a kept
-        # winner into a bare 10, which is worse than either whole answer.
-        _take(pool, chosen, count,
-              lambda c: c.rank == "A" and c.suit in (Suit.SPADES, Suit.DIAMONDS)
-              and _n_of(hand, c.suit, "A") == 2
-              and not _protects_a_ten(hand, trump, c))
-
-    # Random J/9 - true last resort within this family, no safety check
-    _take(pool, chosen, count, lambda c: not is_protected(c) and c.rank in ("J", "9"))
-
-    # Spare K/Q not currently doing meld work (only QS is inherently
-    # protected - KS and other K/Q are fair game here)
-    _take(pool, chosen, count,
-          lambda c: not is_protected(c) and c.rank in ("K", "Q")
-          and not _breaks_marriage(hand, c) and not _breaks_around(hand, c))
-
-    # Any unprotected non-ace (Aces stay off-limits outside the pro move)
+    # Any unprotected non-ace (Aces stay off-limits until the tier below)
     _take(pool, chosen, count, lambda c: not is_protected(c) and c.rank != "A")
 
     # Any unprotected card at all, including Aces if truly nothing else is left
     _take(pool, chosen, count, lambda c: not is_protected(c))
+
+    if category == "HC":
+        # Nothing safe is left: the hand is trump and Aces. Low trump goes
+        # before the run and the marriages do. H/C only - a trump J or 9 in
+        # Spades or Diamonds can be a pinochle card or a run card.
+        _take(pool, chosen, count,
+              lambda c: c.suit == trump and c.rank in ("J", "9"))
 
     # True last resort: protected cards
     _take(pool, chosen, count, lambda c: True)

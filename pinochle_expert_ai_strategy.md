@@ -252,7 +252,11 @@ Implemented in `pinochle_engine.py` as `_is_protected_ten` /
 `_return_pass_pool_priority` and both simplified `choose_pass_cards`
 bidder branches; and in `web/src/engine/handShape.ts` as `isProtectedTen`,
 with `protectsATen` in `passing.ts`, applied in `bidderPassSelection` and
-`choosePassCards`. The predicate itself sits above both consumers on each
+`choosePassCards`. #280 added one more reader on each side, the *partner's*
+last pass tier (`_partner_filler_order` / `partnerFillerOrder`), where a
+protected 10 sorts behind the King — a reading of #276 rather than
+something Paul stated, flagged on that PR as the piece to reverse first if
+he disagrees. The predicate itself sits above both consumers on each
 side because #277 gave the same card a *price* as well as a pass rank
 (`compute_trick_potential` / `computeTrickPotential`, 20 a protected 10),
 and one rule stated twice is one rule that can drift. Unmeasured — #270
