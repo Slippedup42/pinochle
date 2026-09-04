@@ -58,11 +58,24 @@ re-running anything.
     python generate_rollout_dataset.py --games 200 --samples 150 --seed 112 \
         --out rollout_dataset.csv
     python generate_rollout_dataset.py --config      # print the live config and exit
+    python generate_rollout_dataset.py --check       # would this engine label differently?
+
+Staleness (#225, epic #185). A dataset that cannot report its own staleness is
+a dataset the whole distillation chain quietly keeps trusting, so generating
+one also writes `rollout_dataset.meta.json` beside it: the commit, the args,
+and a digest of how this engine labels a fixed four-game re-run. `--check`
+re-runs that and compares. See the fingerprint section below for why the stamp
+is a re-label rather than a hash of the source.
 """
 
 import argparse
 import csv
+import hashlib
+import json
+import os
 import random
+import subprocess
+import sys
 import time
 
 from pinochle_engine import (
@@ -525,21 +538,320 @@ def generate_dataset(n_games, num_samples, seed, skill_level=DEFAULT_SKILL_LEVEL
     return label_situations(situations, num_samples, seed, progress_every=progress_every)
 
 
+def csv_value(value):
+    """
+    One cell, as the CSV carries it.
+
+    Floats are rounded to 4 places: a rollout label carries nowhere near 17
+    significant digits of information, and full repr noise makes the file churn
+    on every regeneration for reasons that have nothing to do with the AI
+    changing. The fingerprint below hashes the output of this function rather
+    than the raw floats, so the digest inherits the same tolerance - two runs
+    that differ only in the last bits of a mean over 150 samples are the same
+    engine and must produce the same stamp.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return str(round(value, 4))
+    return str(value)
+
+
 def write_dataset(rows, path):
-    """CSV, one header row, `COLUMNS` order. Floats are rounded to 4 places:
-    a rollout label carries nowhere near 17 significant digits of information,
-    and full repr noise makes the file churn on every regeneration for reasons
-    that have nothing to do with the AI changing."""
+    """CSV, one header row, `COLUMNS` order, cells via `csv_value`."""
     with open(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=COLUMNS)
         writer.writeheader()
         for row in rows:
-            writer.writerow({
-                key: ("" if row[key] is None
-                      else round(row[key], 4) if isinstance(row[key], float)
-                      else row[key])
-                for key in COLUMNS
-            })
+            writer.writerow({key: csv_value(row[key]) for key in COLUMNS})
+
+
+# ---------------------------------------------------------------------------
+# The behavioural fingerprint (#225, epic #185).
+#
+# The failure being guarded is that this dataset cannot report its own
+# staleness. A change to trick play moves what a rollout measures; every label
+# in `rollout_dataset.csv` then describes an engine that no longer exists; the
+# evaluator stays fitted to it and the browser keeps bidding with it; and
+# nothing anywhere goes red. The stamp beside the CSV is what makes that
+# visible.
+#
+# What is stamped is a RE-LABEL, not a hash of the source. That was settled on
+# #185 and is not reopened here. The label path is the base-`Player`
+# pass/trick-play set — roughly forty functions spread across
+# `pinochle_engine.py` and `pinochle_rollout.py` — so a hand-kept list of them
+# rots exactly the way the dataset does, and a coarser "all of trick play"
+# digest would have fired on #168's `_expert_follow_card_honest`, a function no
+# rollout ever calls. A guard that cries wolf is a guard someone switches off.
+# Re-labelling four seeded games answers the only question that matters —
+# *would this engine label differently* — where hashing source can only
+# approximate it.
+#
+# Two consequences of that choice, both deliberate:
+#
+#   A pure code move cannot change the digest. #214 splits
+#   `pinochle_engine.py` behind a re-export shim; if that split is honest the
+#   fingerprint is untouched, which makes this an incidental check on it. A
+#   source hash would have fired on the move and said nothing about behaviour.
+#
+#   The digest covers labels, not features. A change that moved only a cheap
+#   feature column, with every label unchanged, would not fire here. What does
+#   fire is a change in composition: a run that captures a different set of
+#   decision points hashes differently, and the row count is reported on its
+#   own so that case is distinguishable from labels moving under a fixed set.
+#
+# Four fresh games rather than a re-label of sampled committed rows, because
+# labelling seeds from (seed, index) rather than from a stream: a short run is
+# a genuine prefix of a long one and not merely a similar-looking sample.
+# ---------------------------------------------------------------------------
+
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+DEFAULT_DATASET_PATH = "rollout_dataset.csv"
+DEFAULT_META_PATH = "rollout_dataset.meta.json"
+
+# Bump when `canonical_label_text` changes shape. A digest taken under an older
+# version is not comparable to one taken under this one, and the check says so
+# rather than reporting a mismatch it cannot explain.
+FINGERPRINT_VERSION = 1
+
+# The fixed re-run. Small enough to sit inside the test suite, large enough to
+# reach both decision points across a spread of contract levels.
+FINGERPRINT_RUN = {
+    "games": 4,
+    "samples": 150,
+    "seed": 112,
+    "skill": DEFAULT_SKILL_LEVEL,
+}
+
+
+def canonical_label_text(rows):
+    """
+    The exact text the digest is taken over: the label columns, in
+    `LABEL_COLUMNS` order, rendered the way the CSV renders them.
+
+    Written out as text rather than hashed field by field so a human chasing a
+    mismatch can dump this for two revisions and diff them, and so the version
+    line makes an incompatible format change loud instead of silent.
+    """
+    lines = [f"generate_rollout_dataset fingerprint v{FINGERPRINT_VERSION}",
+             ",".join(LABEL_COLUMNS)]
+    lines.extend(",".join(csv_value(row[column]) for column in LABEL_COLUMNS)
+                 for row in rows)
+    return "\n".join(lines) + "\n"
+
+
+def fingerprint_rows(rows):
+    return hashlib.sha256(canonical_label_text(rows).encode("utf-8")).hexdigest()
+
+
+def measure_fingerprint(run=None, progress_every=0):
+    """
+    Play and label the fixed run, and report what the stamp records about it
+    plus the wall clock it cost. The expensive half of `--check`, and the only
+    half that touches the engine.
+    """
+    run = dict(FINGERPRINT_RUN if run is None else run)
+    start = time.perf_counter()
+    rows = generate_dataset(
+        run["games"], run["samples"], run["seed"],
+        skill_level=run["skill"], progress_every=progress_every,
+    )
+    return {
+        "run": run,
+        "rows": len(rows),
+        "digest": fingerprint_rows(rows),
+        "seconds": time.perf_counter() - start,
+    }
+
+
+def git_commit():
+    """The commit being stamped, or None outside a checkout. Recorded so a
+    future mismatch can be bisected instead of guessed at."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT,
+            capture_output=True, text=True, check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def build_meta(dataset_path, dataset_args, dataset_rows, measurement, commit=None):
+    """
+    The stamp: what produced the dataset, and how the engine that produced it
+    labels the fixed run.
+
+    Deliberately carries no `known_mismatch` block. That block is written by
+    hand, only when a dataset is knowingly left behind the engine, and it
+    vanishes the moment the dataset is regenerated — which is the point:
+    regeneration is the only thing that clears the exception.
+    """
+    return {
+        "_comment": (
+            "Generated by generate_rollout_dataset.py. Describes rollout_dataset.csv: "
+            "which engine labelled it, and how that engine labelled a fixed four-game "
+            "re-run. `python generate_rollout_dataset.py --check` re-labels that run "
+            "and compares. See issue #225 (epic #185)."
+        ),
+        "dataset": os.path.basename(dataset_path),
+        "dataset_rows": dataset_rows,
+        "generated_by": {
+            "commit": git_commit() if commit is None else commit,
+            "args": dataset_args,
+        },
+        "fingerprint": {
+            "what": (
+                "sha256 over the rounded label columns of a fixed re-run, in row order "
+                "- a behavioural stamp on the labelling path, not a hash of its source"
+            ),
+            "algorithm": "sha256",
+            "version": FINGERPRINT_VERSION,
+            "columns": list(LABEL_COLUMNS),
+            "run": measurement["run"],
+            "rows": measurement["rows"],
+            "digest": measurement["digest"],
+        },
+    }
+
+
+def read_meta(path=DEFAULT_META_PATH):
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def write_meta(meta, path=DEFAULT_META_PATH):
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(meta, handle, indent=2)
+        handle.write("\n")
+
+
+def meta_path_for(dataset_path, meta_path=None):
+    """The stamp lives beside the CSV and is named after it, so the pair moves
+    together and an experimental `--out` cannot overwrite the committed stamp."""
+    if meta_path is not None:
+        return meta_path
+    root, _ext = os.path.splitext(dataset_path)
+    return root + ".meta.json"
+
+
+def format_check_report(meta, measurement):
+    """
+    `(ok, report)`. The report is the whole value of this check when it fails.
+
+    A bare "fingerprint mismatch" gets read as "the check is broken", and the
+    next person switches it off — the same failure mode the fingerprint design
+    was chosen to avoid. So the text says what a mismatch MEANS: this engine
+    would label the dataset differently than the engine that produced it, and
+    therefore `rollout_dataset.csv`, the `rollout_evaluator.json` fitted to it
+    and the `evaluatorModel.ts` exported from that all describe an engine that
+    is no longer in the tree. The dataset is wrong; the check is not.
+    """
+    recorded = meta["fingerprint"]
+    lines = []
+
+    if recorded.get("version") != FINGERPRINT_VERSION:
+        return False, "\n".join([
+            f"fingerprint format v{recorded.get('version')} in the stamp, "
+            f"v{FINGERPRINT_VERSION} in generate_rollout_dataset.py.",
+            "The two digests are not comparable, so this says nothing about the "
+            "engine either way. Re-stamp by regenerating the dataset.",
+        ])
+
+    if list(recorded.get("columns", [])) != list(LABEL_COLUMNS):
+        return False, "\n".join([
+            "the stamp covers different label columns than this generator writes:",
+            f"  stamped: {', '.join(recorded.get('columns', []))}",
+            f"  current: {', '.join(LABEL_COLUMNS)}",
+            "The two digests are not comparable, so this says nothing about the "
+            "engine either way. Re-stamp by regenerating the dataset.",
+        ])
+
+    ok = recorded["digest"] == measurement["digest"]
+    run = measurement["run"]
+    lines.append(
+        f"fixed re-run: --games {run['games']} --samples {run['samples']} "
+        f"--seed {run['seed']} --skill {run['skill']} "
+        f"-> {measurement['rows']} rows in {measurement['seconds']:.1f}s"
+    )
+    lines.append(f"  stamped digest  {recorded['digest']}")
+    lines.append(f"  this engine     {measurement['digest']}")
+
+    if ok:
+        lines.append("")
+        lines.append(
+            "This engine labels the fixed run exactly as the engine that produced "
+            f"{meta['dataset']} did, so the dataset still describes the AI that ships."
+        )
+        if meta.get("known_mismatch"):
+            lines.append("")
+            lines.append(
+                "The stamp nevertheless carries a `known_mismatch` block, which "
+                "describes a state that no longer exists. Either the dataset was "
+                "regenerated without clearing the block, or the block was written "
+                "for a disagreement that has since been undone. Delete it - an "
+                "exception nobody removes is how a guard stops meaning anything."
+            )
+        return True, "\n".join(lines)
+
+    if recorded.get("rows") != measurement["rows"]:
+        lines.append(
+            f"  row count moved: {recorded.get('rows')} stamped, "
+            f"{measurement['rows']} now - the capture pass is reaching a different "
+            "set of decision points, so the dataset's composition has changed and "
+            "not only its labels."
+        )
+
+    lines += [
+        "",
+        "WHAT THIS MEANS. This engine would label the rollout dataset differently "
+        "than the engine that produced it did. That makes rollout_dataset.csv a "
+        "description of an AI that is no longer in the tree - and so, downstream, "
+        "the rollout_evaluator.json fitted to it and the "
+        "web/src/engine/evaluatorModel.ts exported from that. The browser is "
+        "bidding with a model of an older engine. Nothing here is wrong with the "
+        "check: a mismatch is this guard doing its job.",
+        "",
+        "The stamped dataset was generated at commit "
+        f"{(meta.get('generated_by') or {}).get('commit') or 'unknown'}; the change "
+        "is somewhere in `git log` between there and HEAD.",
+        "",
+        "THE FIX is to regenerate and refit, which is issue #226 (epic #185): "
+        "regenerate rollout_dataset.csv, refit rollout_evaluator.json, re-export "
+        "evaluatorModel.ts, then re-measure the bidding baseline (#227). "
+        "Regenerating rewrites this stamp as a side effect, so the two cannot "
+        "drift apart again. Do NOT re-stamp without regenerating - that records "
+        "the disagreement as if it were agreement, which is worse than no stamp.",
+    ]
+
+    known = meta.get("known_mismatch")
+    if known:
+        lines += [
+            "",
+            "THIS MISMATCH IS ALREADY KNOWN, and the stamp says so:",
+            "  " + str(known.get("reason", "")).strip().replace("\n", "\n  "),
+            f"  tracked by issue #{known.get('issue')}",
+        ]
+
+    return False, "\n".join(lines)
+
+
+def check_dataset_meta(meta_path=DEFAULT_META_PATH, progress_every=0):
+    """
+    Read the stamp, re-label the fixed run, compare. Returns `(ok, report)` for
+    a caller that wants an exit code.
+
+    `ok` here is stricter than `format_check_report`'s, which answers only "do
+    the digests agree". A stamp whose digest agrees while still carrying a
+    `known_mismatch` block contradicts itself, and a self-contradicting stamp
+    is exactly as useless as a stale one, so it fails too.
+    """
+    meta = read_meta(meta_path)
+    run = meta.get("fingerprint", {}).get("run") or FINGERPRINT_RUN
+    measurement = measure_fingerprint(run, progress_every=progress_every)
+    ok, report = format_check_report(meta, measurement)
+    return ok and not meta.get("known_mismatch"), report
 
 
 # ---------------------------------------------------------------------------
@@ -651,14 +963,35 @@ def main():
                         help=f"GeneralStrategy skill level to seat (default: {DEFAULT_SKILL_LEVEL})")
     parser.add_argument("--max-rows", type=int, default=None,
                         help="cap the dataset, trimming situations before any rollout is paid for")
-    parser.add_argument("--out", default="rollout_dataset.csv", help="output CSV path")
+    parser.add_argument("--out", default=DEFAULT_DATASET_PATH, help="output CSV path")
+    parser.add_argument("--meta", default=None,
+                        help="path for the fingerprint stamp (default: alongside --out)")
     parser.add_argument("--config", action="store_true",
                         help="print the live configuration the labels would describe, and exit")
+    parser.add_argument("--check", action="store_true",
+                        help="re-label the fixed fingerprint run and exit non-zero if it "
+                             "disagrees with the committed stamp; writes nothing")
+    parser.add_argument("--fingerprint", action="store_true",
+                        help="run the fixed fingerprint re-label and print the digest, "
+                             "writing nothing")
     args = parser.parse_args()
 
     print(describe_live_configuration(args.skill))
     if args.config:
-        return
+        return 0
+
+    if args.fingerprint:
+        measurement = measure_fingerprint()
+        print(f"\n{measurement['rows']} rows in {measurement['seconds']:.1f}s")
+        print(f"digest {measurement['digest']}")
+        return 0
+
+    if args.check:
+        meta_path = meta_path_for(args.out, args.meta)
+        print(f"\nchecking {os.path.basename(meta_path)} against this engine...")
+        ok, report = check_dataset_meta(meta_path)
+        print(report)
+        return 0 if ok else 1
 
     start = time.perf_counter()
     rows = generate_dataset(
@@ -673,6 +1006,25 @@ def main():
     print("Spot-check:")
     print(format_spot_check(spot_check(rows)))
 
+    # Stamping is part of generating, not a separate step someone can forget.
+    # An unstamped regeneration is how the dataset lost track of its engine in
+    # the first place, and a stamp written at any other moment describes a
+    # different engine than the one that produced the rows above it.
+    meta_path = meta_path_for(args.out, args.meta)
+    print(f"\nfingerprinting the engine that just labelled those rows "
+          f"(--games {FINGERPRINT_RUN['games']} --seed {FINGERPRINT_RUN['seed']})...")
+    measurement = measure_fingerprint()
+    meta = build_meta(
+        args.out,
+        {"games": args.games, "samples": args.samples, "seed": args.seed,
+         "skill": args.skill, "max_rows": args.max_rows},
+        len(rows), measurement,
+    )
+    write_meta(meta, meta_path)
+    print(f"{measurement['rows']} rows in {measurement['seconds']:.1f}s, "
+          f"digest {measurement['digest']} -> {meta_path}")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

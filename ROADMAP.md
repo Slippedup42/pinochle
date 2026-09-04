@@ -23,6 +23,16 @@ suite when the committed fixture goes stale. What is actually open:
   The human call has been made: children #225 (fingerprint the dataset
   and add `generate_rollout_dataset.py --check`), #226 (regenerate,
   refit, re-export), #227 (re-measure the bidding baseline after).
+  #225 has landed and it answered the question immediately:
+  `rollout_dataset.meta.json` records how the engine at `ff236ef`
+  labelled a fixed four-game re-run (93 rows), and this engine labels
+  the same run as 115 rows with a different digest. So the dataset,
+  `rollout_evaluator.json` fitted to it and `evaluatorModel.ts` exported
+  from that all describe an engine that predates #273's meld correction
+  and #277's valuation restructure. **Until #226 regenerates, the guard
+  is red by design** — carried as a strict `xfail` keyed on the stamp's
+  own `known_mismatch` block, so regenerating (which rewrites the stamp
+  without that block) flips it to a hard failure with no test edit.
 - **#214** — splitting `pinochle_engine.py`, which this document has
   carried as open while the tracker carried #3 as wont-fix.
 - **#211** — `web/src/ab/stats.ts` is a hand-port of `ab_harness.py`'s
