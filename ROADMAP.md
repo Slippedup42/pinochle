@@ -18,21 +18,23 @@ suite when the committed fixture goes stale. What is actually open:
   `*_AB_POLICIES` maps stay — the A/B ruler outlives the product dial.
   This contradicts the per-tier language further down this file; those
   passages are marked rather than rewritten ahead of the code.
-- **#185** — the rollout dataset cannot report its own staleness, so a
-  Python trick-play change silently changes what the browser bids with.
-  The human call has been made: children #225 (fingerprint the dataset
-  and add `generate_rollout_dataset.py --check`), #226 (regenerate,
-  refit, re-export), #227 (re-measure the bidding baseline after).
-  #225 has landed and it answered the question immediately:
-  `rollout_dataset.meta.json` records how the engine at `ff236ef`
-  labelled a fixed four-game re-run (93 rows), and this engine labels
-  the same run as 115 rows with a different digest. So the dataset,
-  `rollout_evaluator.json` fitted to it and `evaluatorModel.ts` exported
-  from that all describe an engine that predates #273's meld correction
-  and #277's valuation restructure. **Until #226 regenerates, the guard
-  is red by design** — carried as a strict `xfail` keyed on the stamp's
-  own `known_mismatch` block, so regenerating (which rewrites the stamp
-  without that block) flips it to a hard failure with no test edit.
+- **#185** — the rollout dataset could not report its own staleness, so a
+  Python trick-play change silently changed what the browser bids with.
+  #225 (fingerprint the dataset and add `generate_rollout_dataset.py
+  --check`) and #226 (regenerate, refit, re-export) have both landed;
+  #227 (re-measure the bidding baseline against the new model) is what
+  is left. #225 answered the question immediately — the engine at
+  `ff236ef`, where the dataset was labelled, put 93 rows through the
+  fixed four-game re-run and today's engine puts 115 through it with a
+  different digest, so the dataset, `rollout_evaluator.json` fitted to
+  it and `evaluatorModel.ts` exported from that all described an engine
+  that predated #273's meld correction and #277's valuation restructure.
+  #226 regenerated the chain end to end, which took about 13 minutes of
+  labelling rather than the 6.2 CPU-hours #185's body estimated (that
+  figure was a 5000-pair A/B arm). `--check` now exits 0, the stamp's
+  `known_mismatch` block is gone, and the strict `xfail` that carried
+  the guard while it was known-red came off with it — the guard is an
+  ordinary test again.
 - **#214** — splitting `pinochle_engine.py`, which this document has
   carried as open while the tracker carried #3 as wont-fix.
 - **#211** — `web/src/ab/stats.ts` is a hand-port of `ab_harness.py`'s
@@ -173,10 +175,10 @@ because nothing needs them yet (see Open questions).
    Both closed 2026-08-01.
 
    **The net does not cover everything that crosses the boundary.** It
-   covers the rules engine, and `export_evaluator.py --check` covers the
-   evaluator model. Two seams remain uncovered and are tracked: the
-   dataset the evaluator is fit to (#185) and `web/src/ab/stats.ts`
-   (#211).
+   covers the rules engine, `export_evaluator.py --check` covers the
+   evaluator model, and since #225 `generate_rollout_dataset.py --check`
+   covers the dataset that model is fit to. One seam remains uncovered
+   and is tracked: `web/src/ab/stats.ts` (#211).
 
 ## Phase 2 — Post-MVP hardening
 

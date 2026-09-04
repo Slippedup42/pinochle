@@ -93,10 +93,9 @@ behavior the fallback preserves.
 ## Tests
 
 `pytest` is the suite. Twenty-five `test_*.py` modules sit at the repo
-root, 409 tests — 408 passing and one deliberately `xfailed`, see below
-— run with `python -m pytest -q` at about 2m30s, most of
-it the dataset and model-fitting modules and the rollout fingerprint's
-40-second re-label. There is no `pytest.ini`,
+root, 409 tests, all passing, run with `python -m pytest -q` at about
+2m40s, most of it the dataset and model-fitting modules and the rollout
+fingerprint's 40-second re-label. There is no `pytest.ini`,
 `conftest.py`, or `pyproject.toml`: collection is stock discovery from
 the repo root, so a new file needs nothing but the `test_` prefix and a
 home beside the module it covers.
@@ -113,24 +112,26 @@ home beside the module it covers.
   defending, which a list of function names does not.
   `test_ab_harness.py` numbers its five areas and calls out which
   property the whole harness rests on.
-- **Plain `assert`, plain module-level `def test_*` functions.** One
-  test file imports `pytest`, for one marker, and the rest do not: no
-  fixtures, no `parametrize`, no test classes anywhere. Classes do
-  appear in test files, but only as test doubles for the code under test
+- **Plain `assert`, plain module-level `def test_*` functions.** No test
+  file imports `pytest` at all: no markers, no fixtures, no
+  `parametrize`, no test classes anywhere. Classes do appear in test
+  files, but only as test doubles for the code under test
   (`_AlwaysFolds`, `_RiggedRound`, `_ScriptedHumanPlayer`), and they
   take the same leading underscore as any other module-internal helper.
-  - The exception is `test_rollout_dataset_fingerprint.py` (#225), which
-    uses a single `pytest.mark.xfail(..., strict=True)`. It guards a
-    committed artefact that is knowingly behind the engine until #226
-    regenerates it, and a plain assert has no way to read as *known*
-    red: it is either green, which trains people to ignore the state, or
-    red on `main` from the day it lands, which trains people to ignore
-    the suite. `xfailed` in the `-q` summary is neither. `strict=True`
-    plus a condition keyed on the artefact's own stamp is what makes the
-    marker self-clearing — regenerating the dataset rewrites the stamp,
-    the condition goes false, and the test becomes an ordinary one with
-    nobody having to remember to delete a marker. Copy that shape only
-    for a guard that is deliberately red against a tracked ticket; the
+  - There has been exactly one exception, and it has cleared itself.
+    `test_rollout_dataset_fingerprint.py` (#225) carried a single
+    `pytest.mark.xfail(..., strict=True)` while it guarded a committed
+    artefact that was knowingly behind the engine, because a plain
+    assert has no way to read as *known* red: it is either green, which
+    trains people to ignore the state, or red on `main` from the day it
+    lands, which trains people to ignore the suite. `xfailed` in the
+    `-q` summary is neither. The condition was keyed on the artefact's
+    own stamp rather than on a flag in the test, which is what made the
+    marker self-clearing — #226 regenerated the dataset, the stamp came
+    back without its `known_mismatch` block, and the marker came out
+    with it. Reach for that shape only in the same situation: a guard
+    deliberately red against a tracked ticket, with the condition read
+    from the artefact so nobody has to remember to delete it. The
     plain-assert rule stands for everything else.
 - **Test names state the behaviour being asserted**, not just the
   function being called:

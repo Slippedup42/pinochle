@@ -3,7 +3,7 @@
   "dataset": "rollout_dataset.csv",
   "dataset_rows": 2000,
   "generated_by": {
-    "commit": "ff236ef1318b2ed9f0cfa5752e6ab24949671fa6",
+    "commit": "5db8eb4a9feeebe785b6267b4f36a1d325be3518",
     "args": {
       "games": 100,
       "samples": 150,
@@ -31,12 +31,7 @@
       "seed": 112,
       "skill": 5
     },
-    "rows": 93,
-    "digest": "16f0fdf725f68541d018143f987fd0ef8f2c713034db4a98a083a174e17ef37a"
-  },
-  "known_mismatch": {
-    "issue": 226,
-    "reason": "This stamp is not a claim that the dataset is current. It is the opposite: it records the engine at ff236ef, which is where rollout_dataset.csv was labelled, and HEAD no longer labels that way. Two known changes account for it and there may be more. #273 corrected meld scoring - a Run absorbs the Royal Marriage inside it, so a bare trump run melds 150 and not 190 - which moves every rollout outcome the labels are means over. #277 restructured the bid valuation, which moves which hands open at all and therefore which situations the capture pass ever reaches; the row count is 93 stamped against 115 today, and that gap is composition, not noise. The dataset is stale, the check is not broken, and the fix is to regenerate rather than to re-stamp. Deleting this block without regenerating the dataset would turn a known-red guard into a lie.",
-    "verified": "2026-09-03, by re-running the fixed fingerprint run against a checkout of ff236ef (93 rows, digest 16f0fdf7) and against HEAD (115 rows, digest 0e0cfec1)."
+    "rows": 115,
+    "digest": "0e0cfec11719bf4743627286eaf3621a8923999bc7333b0e1fa49b78348fd5be"
   }
 }

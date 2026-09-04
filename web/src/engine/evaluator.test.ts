@@ -134,12 +134,21 @@ describe('the bid model responds to the level, not just the hand', () => {
   it('separates two hands of identical ceiling by what the shape can carry', () => {
     // Both hands value at 340, so `ceiling >= OPENER_THRESHOLD` gives them the
     // same answer at every level — that is the limitation being replaced. The
-    // evaluator takes both at 300, and at 400 keeps only the one holding a Run.
-    // Asserted as equality to each other first, because *equal* is the property
-    // and the number has moved three times (#242, #273, #277) without the
-    // property changing. The companion assertion that both sit under the 400
-    // cap went with the cap itself (#283): with nothing clamped, two hands
-    // cannot be made falsely equal by both hitting a ceiling.
+    // evaluator takes both at 300, and at the level below keeps only the one
+    // holding a Run. Asserted as equality to each other first, because *equal*
+    // is the property and the number has moved three times (#242, #273, #277)
+    // without the property changing. The companion assertion that both sit
+    // under the 400 cap went with the cap itself (#283): with nothing clamped,
+    // two hands cannot be made falsely equal by both hitting a ceiling.
+    //
+    // The separating level was 400 until #226 regenerated the dataset and
+    // refit. The `bid` weight roughly tripled in magnitude there (-0.0098 to
+    // -0.0305), so both hands now fall away from the level far faster and 400
+    // is below the threshold for either of them — a level that separates
+    // nothing. 340 is where the pair parts company now, with room on both
+    // sides (0.62 against 0.36) rather than the knife edge 340 used to be: the
+    // middling hand scored 0.4998 there under the old weights, which is why
+    // the test reached for 400 in the first place.
     expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(
       evaluateBid(at(middlingHand, OPENING_BID)).ceiling,
     )
@@ -148,8 +157,8 @@ describe('the bid model responds to the level, not just the hand', () => {
     expect(shouldBid(at(strongHand, OPENING_BID))).toBe(true)
     expect(shouldBid(at(middlingHand, OPENING_BID))).toBe(true)
 
-    expect(shouldBid(at(strongHand, 400))).toBe(true)
-    expect(shouldBid(at(middlingHand, 400))).toBe(false)
+    expect(shouldBid(at(strongHand, 340))).toBe(true)
+    expect(shouldBid(at(middlingHand, 340))).toBe(false)
   })
 
   it('never takes a hopeless hand, at any level', () => {
