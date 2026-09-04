@@ -94,6 +94,70 @@ TS failure.
 
 ## Measuring the AI (`src/ab/`)
 
+> **Superseded, 2026-09-03 (#269). Every measurement in this section is
+> kept for the reasoning it records, not as a statement about the AI this
+> engine runs today. Re-measurement is tracked on #270.**
+
+Read the tables below as decisions with their evidence attached, and not as
+current fact. Four separate things have moved underneath them since they were
+taken, and the fourth is the one that will be misread.
+
+**The scoring itself was wrong for the life of the project.** #273 (2026-08-31)
+corrected `score_melds` in both engines: a Run absorbs the Royal Marriage inside
+it, so a bare trump run melds **150, not 190**. Every hand holding a trump run
+had scored 40 too many since the first commit, which means every game in every
+run recorded here was scored wrong — on both arms, so the comparisons were fair,
+but the margins are denominated in a currency that has since been corrected.
+That invalidates this record far more broadly than the difficulty dial does.
+
+**The difficulty dial is gone.** #222 collapsed five engine levels onto the one
+configuration `SHIPPED_PARAMS` names, and #269 deleted the two results below
+whose arms were levels rather than policies — the five-capacity trump-recall
+ladder and the `capacity --high expert --low easy` head-to-head. What survives
+still says things like "`hard` and above now run `'distilled'`; `easy` and
+`medium` keep the thresholds". That was true when it was written. A level name
+now means a slot in `src/ab/` that `installPolicies` can seat a policy on, not a
+tier a player could pick — see `SkillLevel` in `skills.ts`.
+
+**Four behaviour changes have landed with no A/B behind any of them**, by
+standing instruction that paired measurement waits until the queue is drained
+(#270):
+
+- **#256** — endgame protection: a team within 250 of winning, against
+  opponents below 450, passes the whole auction.
+- **#277** — the bid valuation restructured into three stages, and **known to be
+  miscalibrated**. Mean ceiling 270 → 344, hands clearing `OPENER_THRESHOLD`
+  27% → 56%, auto-SET 6.6% → 12.6%. The suspected cause is a double count:
+  stage 2's `+130` stands in for trick potential and partner meld while #277's
+  `computeTrickPotential` prices trick potential directly. It is deliberately
+  left uncalibrated pending #270.
+- **#280** — both pass priority lists reworked; the trump tiers now send a
+  spread rather than duplicates.
+- **#283** — the 400 bid cap removed.
+
+So the bidding underneath every table below is not the bidding this engine does
+today, and #277 alone changes which hands open at all.
+
+**The headline +227 is a much smaller number now, and that is not a
+regression.** This is the specific error the notice exists to prevent, and the
+explanation is written next to the figure itself rather than only here — see
+"Why the +227 above reads +22 today". The short form: the static arm the
+evaluator was measured against has been fixed repeatedly since, so the gap
+closed from the bottom. Nothing about the evaluator got worse.
+
+**Descriptive statistics are superseded too**, and are recorded here only so
+they are not later cited as current. Taken 2026-09-02, between #273 and #277:
+mean winning bid 304.5, mean ceiling 269.9, 26.8% of hands clearing
+`OPENER_THRESHOLD`, mean game length 5.0 hands, 23.8% baseline pass-out rate.
+Every one of those was invalidated by #277 the following day. The figures in
+#283's commit message are later, but they are descriptive statistics too and
+not an A/B.
+
+If you are here holding a fresh measurement, put it on #270. Do not diff it
+against a number on this page and call the difference a regression: a published
+figure here and a fresh one today are not measuring the same engine, the same
+bidder, or the same scoring.
+
 `chooseBid` runs one of two policies, selected by `SKILL_PARAMS.bidPolicy`
 (`src/engine/skills.ts`): the hand-tuned thresholds that predate epic #104, or
 the evaluator distilled from the Python rollout AI. Issue #115 had to decide
@@ -131,7 +195,9 @@ the `DEFENSIVE_PUSH_FLOOR` raise, which is what the static rule does on almost
 any hand, is worth more than the contracts it gives up. Cost: +872 B gzipped,
 and a p95 per decision of 72 µs (Node) / 495 µs (Chrome at 375×812), against the
 600 ms the auction already waits before each AI bid. `hard` and above now run
-`'distilled'`; `easy` and `medium` keep the thresholds.
+`'distilled'`; `easy` and `medium` keep the thresholds. **That +227 is not what
+this comparison measures today, and the reason is not a regression in the
+evaluator — read the paragraphs immediately below before quoting it.**
 
 Two bounds on that conclusion. The evaluator only governs the opening decision
 and the defensive push — the ordinary raise ladder and the 330/340 constants in
@@ -139,6 +205,44 @@ and the defensive push — the ordinary raise ladder and the 330/340 constants i
 of real auction positions, which is the ceiling on what the model can be
 credited with. And every seat in the harness is an AI, so this says the policy
 is stronger, not that it is a better partner for a human.
+
+**Why the +227 above reads +22 today.** #255 first noticed this on 2026-08-30,
+reading +18 per deal (CI -3 to +39) where #115 had published +227, and filed it
+as unexplained on #227. It is explained now. The same comparison, re-measured on
+2026-09-01 with `selftest` clean on both arms — every deal split, paired margin
+exactly +0 — comes back an order of magnitude smaller:
+
+| seed | margin per deal | 95% CI |
+| --- | --- | --- |
+| 1 | **+22** | +2 to +43 |
+| 2 | **+45** | +27 to +66 |
+
+**It is not the harness.** #153's `playPolicy` result was re-run in the same
+session and reproduced at **+159 per deal** (CI +140 to +178, p < 1e-4) against
+its published +121 — same direction, larger. A drifted ruler does not reproduce
+one headline result and destroy the other.
+
+**What moved is the static arm, not the evaluator.**
+
+| | #115 | 2026-09-01 |
+| --- | --- | --- |
+| distilled make-rate | 63.7% | 68.6% / 69.4% |
+| **static make-rate** | **54.6%** | **67.5% / 67.2%** |
+| contract volume | distilled takes **a third fewer** | 6–7% fewer |
+
+#115's stated mechanism was that the static rule raises on almost any hand via
+`DEFENSIVE_PUSH_FLOOR`, and that declining those cheap contracts was worth more
+than the contracts given up. Static does not do that any more. #177's
+partner-passed floor, #180's reach-not-clear, #206, #200/#257's opening rung,
+#255's third-bidder floor and #256's endgame rule between them tightened the
+static bidder by roughly thirteen points of make-rate where distilled gained
+five. **The evaluator's advantage did not evaporate; the baseline it was beating
+was fixed.** A reader who finds +227 without this paragraph will conclude the
+model regressed, and that is the wrong conclusion.
+
+(`skills.ts`'s `SHIPPED_PARAMS` docstring still calls this gap unexplained and
+open on #227. It is left alone deliberately: it was accurate when written, and
+this section is the explanation it was waiting for.)
 
 ### What #126 changed about those numbers
 
@@ -671,7 +775,8 @@ is never "this wins the trick", it is "nobody takes it with a bigger card of thi
 suit", which is the loss the rule exists to avoid: spending a King into a trick an
 opponent's Ace then takes gives away 20 points rather than 10.
 
-Where the information comes from is the whole of the skill dial:
+Where the information comes from is the one thing a level name still
+decides — how much trump a seat can remember:
 
 - **Side suits** are exact at every level. #157 scoped its cap to trump, so
   `PlayTracker` still counts perfectly and an `easy` seat answers a side-suit
@@ -726,55 +831,28 @@ re-run. Both arms of every row carry `autoSetPolicy: 'forced'`, and the harness
 reports the same auto-SET rate on each side, which is the check that the two
 arms are being dealt the same population.
 
-The ladder was run at all five capacities on the pre-#178 baseline and rises
-monotonically there; the two ends of it were re-run against auto-SET, which is
-where the claim rests. 5000 paired deals / 10 000 games per cell:
+Two recall settings were run against auto-SET, and that is where the claim
+rests. `easy` and `expert` here are `ab/` slots and not tiers (#222):
+`TRUMP_MEMORY_CAPACITY` is keyed on the level rather than on `SkillParams`
+(#157), so seating one unchanged rule on two levels is how the recall behind it
+is varied. Both rows are `'counted'` against the same `'off'` baseline, 5000
+paired deals / 10 000 games per cell:
 
 | level | trump remembered | seed 1 margin (95% CI) | seed 2 margin (95% CI) |
 | --- | --- | --- | --- |
 | easy | 2 of 12 | **+3.71** (+0.46 to +6.90) | **+4.07** (+0.96 to +7.26) |
 | expert | 10 of 12 | **+8.93** (+5.86 to +11.90) | **+7.93** (+5.06 to +10.83) |
 
-Both intervals exclude zero at both ends of the dial, and the effect is if
-anything slightly *larger* under auto-SET than it was without it (easy +3.29 and
-expert +8.69 on seed 1 of the older baseline). That direction makes sense: the
+Both intervals exclude zero, and the effect is if anything slightly *larger*
+under auto-SET than it was without it — the same two cells on the pre-#178
+baseline read +3.29 and +8.69 on seed 1. That direction makes sense: the
 contracts auto-SET removes are ones the bidding side could not have made however
 it played, so they were dead weight in the average rather than deals the rule was
 winning.
 
-The full pre-#178 ladder, kept because monotonicity across all five capacities is
-the shape of the claim and re-running ten cells to restate it would say nothing
-new — a historical reading on the older baseline, not a current one:
-
-| level | trump remembered | seed 1 margin (95% CI) | seed 2 margin (95% CI) |
-| --- | --- | --- | --- |
-| easy | 2 of 12 | +3.29 (+0.08 to +6.53) | +3.85 (+0.69 to +7.10) |
-| medium | 4 | +3.43 (+0.27 to +6.71) | +4.44 (+1.31 to +7.74) |
-| hard | 6 | +4.94 (+1.86 to +8.13) | +5.60 (+2.49 to +8.81) |
-| proficient | 8 | +7.76 (+4.77 to +10.80) | +6.76 (+3.78 to +9.83) |
-| expert | 10 | +8.69 (+5.73 to +11.63) | +7.64 (+4.80 to +10.63) |
-
 Make-rate moves with margin rather than against it on every post-rebase cell
 (expert, seed 1: 71.54% against the baseline's 71.26%), which is the check #126
 exists to force.
-
-The ladder is evidence by subtraction against a shared baseline, so it was also
-checked head-to-head, with `cli.ts capacity --high expert --low easy`: both sides
-run the counted rule and differ in **nothing but the level they sit on**, which is
-the only comparison that isolates recall itself. Re-run against auto-SET:
-
-| seed | expert vs easy, margin per deal | 95% CI | swept | p |
-| --- | --- | --- | --- | --- |
-| 1 | **+6.50** | +4.86 to +8.13 | 42–12 | 0.00005 |
-| 2 | **+6.08** | +4.33 to +7.91 | 46–16 | 0.0002 |
-
-(Pre-#178 the same runs read +5.96 and +5.91, so auto-SET did not wash the
-divergence out — it widened it slightly.)
-
-So expert and easy do diverge, by about six points a deal, entirely through what
-they can remember. That is the first time the skill dial has changed a *card*
-rather than a bid, which is what #157 was built for and what epic #152 set out to
-find.
 
 Size in context: roughly the same as #159's opening lead (+7.6 to +9.8), four to
 five times #155's forced-beat fix (+1.8), and still two orders of magnitude under
@@ -782,19 +860,25 @@ the dial's own span (#153's +121). Cost on the bundle is +1.58 kB raw / +0.55 kB
 gzipped (259.05 kB to 260.63 kB, measured against the tree this branch
 rebased onto).
 
-Shipped **enabled on all five levels**, not as a difficulty notch. The rule is
-identical everywhere — #156's settlement that trick play is shared competence
+Shipped **enabled**, and never as a difficulty notch: the rule is identical
+wherever it runs — #156's settlement that trick play is shared competence
 stands — and only the recall behind it differs, which is exactly #157's model.
-`'off'` survives as the A/B arm, like `'simple'` and `'never'`.
+Since #222 every seat is `SHIPPED_SKILL`, so in a real game that recall is 10 of
+12 for all four players. `'off'` survives as the A/B arm, like `'simple'` and
+`'never'`.
 
 `pinochle_engine.py` has no trump-memory model at all, so this is not a ported
 behaviour that has drifted; porting it is its own issue on the Python side, the
 way #164 followed #154.
 
 Unlike the throwaway arms #153–#159 built and deleted, `safe` and `capacity`
-stay in `cli.ts`: the second one is not a temporary rig but the only way to ask
-whether the skill dial is worth having, and epic #152 closes with that question
-answered rather than retired.
+stay in `cli.ts`. `capacity` seats one unchanged rule on two levels, so what it
+measures is recall itself. The head-to-head it was built for asked whether the
+skill dial was worth having; #215 answered that by removing the dial and #222
+carried it out, so **that result is deleted from this file (#269)** rather than
+left to read as a live comparison between tiers that no longer exist. The
+command is not deleted, and should not be: `TRUMP_MEMORY_CAPACITY` is still a
+real parameter, and this is still the only way to put a number on what it buys.
 
 ### Checking that a dial can see a change
 
