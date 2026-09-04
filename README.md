@@ -178,7 +178,17 @@ is where the next round of strategy work will run. See
   out of `GENERAL_STRATEGY_SKILL_PARAMS` at runtime rather than assumed —
   `--config` prints it. Output is `rollout_dataset.csv`; the committed
   file is a reproducible 2000-row prefix of a longer run, not a
-  hand-edited artifact.
+  hand-edited artifact. Generating also writes
+  `rollout_dataset.meta.json` beside it (issue #225): the commit, the
+  args, and a SHA over how that engine labelled a fixed four-game re-run.
+  `--check` re-runs those four games and compares, so the suite can
+  answer *would this engine label the dataset differently* — a
+  behavioural stamp rather than a hash of the label path's source, which
+  would have fired on code moves and on functions no rollout calls.
+  **That check is red on purpose right now**: the committed dataset was
+  labelled at `ff236ef`, before #273's meld correction and #277's
+  valuation restructure, so the stamp carries a `known_mismatch` block
+  saying so and #226 is the regeneration that clears it.
 - [`fit_evaluator.py`](fit_evaluator.py) — fits the cheap evaluator epic
   #104 wants to ship to that dataset (issue #113), and reports how often
   it reaches the rollout's *decision* rather than how close it gets to
@@ -275,7 +285,10 @@ python ab_harness.py --pairs 100       # A/B harness self-test (a config against
 python win_probability.py --games 6000 --seed 7   # regenerate the win-probability table
 python generate_rollout_dataset.py --config       # print the config the labels describe
 python generate_rollout_dataset.py --games 100 --samples 150 --seed 112 --max-rows 2000
-                                       # regenerate the committed rollout dataset (~15 min)
+                                       # regenerate the committed rollout dataset (~15 min),
+                                       # re-stamping rollout_dataset.meta.json as it goes
+python generate_rollout_dataset.py --check
+                                       # would this engine label that dataset differently? (~40 s)
 python fit_evaluator.py --compare --disagreements
                                        # refit the cheap evaluator, with the baselines it
                                        # has to beat and where it disagrees (~15 s)
