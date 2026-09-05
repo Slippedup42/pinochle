@@ -37,9 +37,18 @@ suite when the committed fixture goes stale. What is actually open:
   ordinary test again.
 - **#214** — splitting `pinochle_engine.py`, which this document has
   carried as open while the tracker carried #3 as wont-fix.
-- **#211** — `web/src/ab/stats.ts` is a hand-port of `ab_harness.py`'s
-  three statistics with no fixture behind it, and it is now what shipped
-  strategy decisions are judged on.
+- **#211 — closed.** `web/src/ab/stats.ts` now has the same shape of net
+  as the rules engine: `export_stats_parity.py` records what
+  `ab_harness.py`'s three statistics return into
+  `stats_parity_cases.json`, renders `web/src/ab/statsParity.fixture.ts`,
+  and `--check` fails the Python suite in either direction — the JSON
+  against a fresh Python run, and the committed TypeScript against the
+  JSON. Nothing crossing the Python/TS boundary is now unguarded.
+  Worth carrying forward: the first draft passed 85 recorded cases while
+  Python's Wilson `z` was mistyped, because every case passed `z`
+  explicitly and *both harnesses call with the default*. Defaults are now
+  recorded from `inspect.signature` and pinned separately. Any future
+  fixture over a function with optional arguments has the same hole.
 
 **Mission shift (2026-07-10) — satisfied.** The short-runway call was to
 get an installable PWA in front of players ahead of Expert-tier AI and
@@ -116,8 +125,9 @@ it rules out GitHub automation in general, not just deploys. A test-only
 workflow was proposed and declined. The consequence is that **running
 both suites before merging is a human discipline with no machine
 backstop** — `gh pr view <n> --json statusCheckRollup` is empty on every
-PR, and the two parity nets (`export_parity_scenarios.py --check`,
-`export_evaluator.py --check`) fire only when someone runs `python -m
+PR, and the parity nets (`export_parity_scenarios.py --check`,
+`export_evaluator.py --check`, `generate_rollout_dataset.py --check`,
+`export_stats_parity.py --check`) fire only when someone runs `python -m
 pytest -q` locally. #118 is the bug class those nets exist to catch, and
 an unrun net is as silent as no net. Worth knowing that vitest has gone
 quietly partial under CPU contention (#170 — 23 of 42 files, caught only
@@ -189,11 +199,16 @@ because nothing needs them yet (see Open questions).
    always will be — there is no TypeScript counterpart to compare
    against.
 
-   **The net does not cover everything that crosses the boundary.** It
-   covers the rules engine, `export_evaluator.py --check` covers the
-   evaluator model, and since #225 `generate_rollout_dataset.py --check`
-   covers the dataset that model is fit to. One seam remains uncovered
-   and is tracked: `web/src/ab/stats.ts` (#211).
+   **The net now covers everything that crosses the boundary**, as of
+   2026-09-04. This one covers the rules engine, `export_evaluator.py
+   --check` covers the evaluator model, `generate_rollout_dataset.py
+   --check` covers the dataset that model is fit to (#225),
+   `export_pass_parity.py --check` covers pass selection (#279), and
+   `export_stats_parity.py --check` covers `web/src/ab/stats.ts` (#211)
+   — the three A/B statistics every shipped strategy decision was
+   judged by. The last two landed together and were the two remaining
+   hand-ports with nothing behind them. All five fire only from `python
+   -m pytest -q`; see the CI note above.
 
 ## Phase 2 — Post-MVP hardening
 
@@ -449,10 +464,13 @@ is *measure a policy where that policy ships*:
   does, and `selftest` asserts a policy against itself finds exactly
   nothing.
 
-The seam this creates is that `stats.ts` is a hand-port of
-`ab_harness.py`'s three statistics with nothing checking it (#211) — the
-only thing crossing the Python/TS boundary that is neither generated nor
-guarded.
+The seam this creates was that `stats.ts` is a hand-port of
+`ab_harness.py`'s three statistics — for a long time the only thing
+crossing the Python/TS boundary that was neither generated nor guarded.
+#211 closed it with `export_stats_parity.py`: the fixture is generated
+and `--check` fails the Python suite from either side, so a number
+reported by `web/src/ab/` and a number reported by `ab_harness.py` are
+now known to mean the same thing rather than assumed to.
 
 ## Open questions
 
