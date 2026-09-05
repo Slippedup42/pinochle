@@ -12,8 +12,10 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from human_play import HumanPlayer, InteractiveRound, NeedsHumanInput, hand_grouped
-from pinochle_engine import Player, Team, GAME_LOSE_SCORE, determine_winner
+from human_play import (
+    HumanPlayer, InteractiveRound, NeedsHumanInput, hand_grouped, off_grid_bid_message,
+)
+from pinochle_engine import Player, Team, GAME_LOSE_SCORE, MIN_BID_INCREMENT, determine_winner
 from pinochle_rollout import MAX_TRICK_POINTS
 
 SUIT_NAME = {"S": "Spades", "H": "Hearts", "D": "Diamonds", "C": "Clubs"}
@@ -37,14 +39,28 @@ def prompt_and_get_answer(kind, data):
         print("Your hand:")
         print_grouped(data["hand_grouped"])
         print(f"Current bid: {data['current_bid']}   Min legal bid: {data['min_legal_bid']}")
+        if data.get("error"):
+            # Set when the seat itself turned an answer away (issue #297).
+            # This driver catches an off-grid bid below, so it should never be
+            # the one to print this - but the prompt data carries the reason
+            # and dropping it would leave a re-prompt looking like a redraw.
+            print(f"  {data['error']}")
         while True:
             raw = input("Enter a bid amount, or 'pass': ").strip().lower()
             if raw in ("pass", "p", ""):
                 return None
             try:
-                return int(raw)
+                amount = int(raw)
             except ValueError:
                 print("  Not a number - try again.")
+                continue
+            # Every bid sits on the multiple-of-10 grid (issue #297), read off
+            # MIN_BID_INCREMENT rather than a literal so the prompt follows the
+            # rung size if it ever moves.
+            if amount % MIN_BID_INCREMENT != 0:
+                print(f"  {off_grid_bid_message(amount)}")
+                continue
+            return amount
 
     if kind == "trump":
         print("Your hand:")

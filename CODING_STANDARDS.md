@@ -92,8 +92,8 @@ behavior the fallback preserves.
 
 ## Tests
 
-`pytest` is the suite. Twenty-five `test_*.py` modules sit at the repo
-root, 409 tests, all passing, run with `python -m pytest -q` at about
+`pytest` is the suite. Twenty-six `test_*.py` modules sit at the repo
+root, 418 tests, all passing, run with `python -m pytest -q` at about
 2m40s, most of it the dataset and model-fitting modules and the rollout
 fingerprint's 40-second re-label. There is no `pytest.ini`,
 `conftest.py`, or `pyproject.toml`: collection is stock discovery from
