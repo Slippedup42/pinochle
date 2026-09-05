@@ -414,4 +414,8 @@ tuning baseline for a rule the shipped game already follows. See
 - **The measurement harness doesn't ship.** `web/src/ab/` plays complete
   games through the same reducers and AI entry points the UI calls,
   minus React and the animation delays. Nothing outside the App's import
-  graph reaches the bundle.
+  graph reaches the bundle, and `src/boundaries/bundleBoundary.test.ts`
+  asserts it rather than leaving it to habit: it walks outward from
+  `index.html`'s module scripts and fails if `src/ab/` is reachable
+  (#236). The direction matters — the harness imports the engine and the
+  components constantly, and a walk from the app never follows that edge.

@@ -314,10 +314,18 @@ static-vs-rollout switch moves together across all decision points.
 entry points the UI calls, minus React and the delays; `abRun.ts` pairs
 them the way `ab_harness.py` does; `stats.ts` is a direct port of its
 three statistics; `bench/index.html` is the browser side of the latency
-measurement. None of it reaches the bundle — though nothing
-checks that, and `installPolicies` writes into the shared `SKILL_PARAMS`
-object rather than a copy, so the failure mode is a mutable engine config
-rather than a fat bundle (#236). Run `selftest` before believing `ab`:
+measurement. None of it reaches the bundle, and
+`src/boundaries/bundleBoundary.test.ts` is what holds that: it walks the
+import graph outward from `index.html`'s module scripts and fails the
+suite the moment anything under `src/ab/` turns up in it (#236). The
+guard is worth its weight because `installPolicies` writes into the
+shared `SKILL_PARAMS` object rather than a copy — #222 kept it mutable
+on purpose, since a mirrored A/B needs both policies seated at one table
+— so the cost of an accidental import is engine configuration that is
+writable at runtime in the product, not a fat bundle. Because the walk
+only ever follows edges away from the app, the harness goes on importing
+the engine and the components freely; only the reverse edge is an error.
+Run `selftest` before believing `ab`:
 one policy against itself must find *exactly* nothing, and `ab.test.ts`
 asserts that.
 

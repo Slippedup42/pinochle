@@ -47,6 +47,11 @@ npm test        # vitest
   options.
 - `src/ab/` — the measurement harness (issue #115). Not shipped: nothing under
   `src/` outside the App's import graph reaches the bundle. See below.
+- `src/boundaries/` — the check on that claim (#236). `bundleBoundary.test.ts`
+  walks the import graph out from `index.html`'s module scripts and fails if
+  `src/ab/` or `src/layout/` is reachable. Imports the other way — the harness
+  reading the engine and the components — are what the walk's direction
+  deliberately leaves alone.
 
 ## Parity with the Python engine (`engineParity.*`)
 
