@@ -53,8 +53,10 @@ export function collectSituations(count: number, level: SkillLevel, seed = 7): B
 
 export interface LatencySummary {
   readonly label: string
+  /** Positions measured. Zero means nothing was measured, and every field
+   *  below is then `NaN` rather than a number — see `summarise`. */
   readonly samples: number
-  /** Microseconds per decision. */
+  /** Microseconds per decision. `NaN` when `samples` is 0. */
   readonly mean: number
   readonly p50: number
   readonly p95: number
@@ -62,11 +64,30 @@ export interface LatencySummary {
   readonly max: number
 }
 
+/**
+ * Statistics over one arm's per-decision costs.
+ *
+ * An empty sample reports `NaN`, not 0 (#293). Zero is a legitimate reading
+ * here — a clock clamped coarser than the decision genuinely returns 0.00us —
+ * so an unmeasured arm reporting 0 is not merely uninformative, it is
+ * indistinguishable from a real measurement of a free decision. `NaN` is the
+ * value that cannot be mistaken for one, and it fails every comparison a caller
+ * might use to claim the model is affordable. That is the same service
+ * `stats.ts` does by returning 1.0 from `binomialTwoSidedP` on zero trials: the
+ * number handed back must not support a claim the data cannot.
+ *
+ * It returns rather than throws because an empty sample is reachable —
+ * `benchPage.ts` takes its position count from a text input — and an instrument
+ * asked to measure nothing has an honest answer available.
+ */
 function summarise(label: string, micros: number[]): LatencySummary {
+  if (micros.length === 0) {
+    return { label, samples: 0, mean: NaN, p50: NaN, p95: NaN, p99: NaN, max: NaN }
+  }
   return {
     label,
     samples: micros.length,
-    mean: micros.reduce((s, v) => s + v, 0) / Math.max(1, micros.length),
+    mean: micros.reduce((s, v) => s + v, 0) / micros.length,
     p50: percentile(micros, 0.5),
     p95: percentile(micros, 0.95),
     p99: percentile(micros, 0.99),
@@ -196,11 +217,18 @@ export function runLatencyBenchmark(situationCount = 3000, repeats = 40, include
   }
 }
 
+/** An arm with nothing in it says so in words rather than printing a row of
+ *  figures. The measured row is left exactly as it was: `samples` is either 0
+ *  or the position count already in the header, so printing it on every row
+ *  would add a column repeating the header for the sake of a case this line
+ *  covers outright. */
 export function formatLatency(report: LatencyReport): string {
   const row = (s: LatencySummary) =>
-    `    ${s.label.padEnd(11)}mean ${s.mean.toFixed(2).padStart(7)}us   ` +
-    `p50 ${s.p50.toFixed(2).padStart(7)}us   p95 ${s.p95.toFixed(2).padStart(7)}us   ` +
-    `p99 ${s.p99.toFixed(2).padStart(7)}us   max ${s.max.toFixed(2).padStart(8)}us`
+    s.samples === 0
+      ? `    ${s.label.padEnd(11)}no positions measured`
+      : `    ${s.label.padEnd(11)}mean ${s.mean.toFixed(2).padStart(7)}us   ` +
+        `p50 ${s.p50.toFixed(2).padStart(7)}us   p95 ${s.p95.toFixed(2).padStart(7)}us   ` +
+        `p99 ${s.p99.toFixed(2).padStart(7)}us   max ${s.max.toFixed(2).padStart(8)}us`
   const lines = [
     `Per-decision latency over ${report.decisions} real auction positions`,
     '',
