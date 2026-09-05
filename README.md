@@ -239,6 +239,26 @@ is where the next round of strategy work will run. See
   (`--record`); rendering is a pure function of the committed JSON, so
   `--check` can fail a hand-edited fixture without the answer depending
   on what the AI decides today.
+- [`export_pass_parity.py`](export_pass_parity.py) — the same net for
+  the 3-card pass (issue #279). `engineParity.fixture.ts` records the
+  pass but replays it as an *input*, so a divergence in which three
+  cards each engine chooses leaves that suite green: #276 moved two of
+  its forty recorded passes and #280 moved seventeen, and nothing would
+  have said if only one engine had moved. This records the pass as an
+  *answer* — 55 hands (40 dealt from seeds, 15 built for the tiers that
+  random hands never reach: the trump spread, protected tens, void
+  opportunities, the low-trump last resort that exists in Hearts/Clubs
+  only) with the trump, the role, the category and the three cards
+  Python sent — into `pass_parity_scenarios.json`, then renders
+  `web/src/engine/passParity.fixture.ts`. `passParity.test.ts` compares
+  as a *set*: order within the selection is not observable once the
+  three cards move. Unlike the scenario recorder above, `--check`
+  re-records as well as re-renders — a pass is a pure function of twelve
+  cards, so there is no AI drift to cry wolf about — and it reports the
+  two failures separately, because "Python moved" and "the fixture was
+  edited" want different fixes. What it cannot cover, and says so: the
+  expert-tier pass logic (#61), which has no TypeScript counterpart at
+  all.
 - [`human_play.py`](human_play.py) — resumable interactive play layer
   (`HumanPlayer`, `InteractiveRound`) built for chat-session play, where
   a script can't block on `input()` between messages: decisions raise
@@ -302,6 +322,8 @@ python export_parity_scenarios.py --record
                                        # re-record the engine-parity scenarios (~1 min)
 python export_parity_scenarios.py      # re-render the TS fixture from the committed JSON
 python export_parity_scenarios.py --check  # fail if that fixture is stale
+python export_pass_parity.py --record  # re-record what the passer sends (instant)
+python export_pass_parity.py --check   # fail if the record or its fixture is stale
 python -m pytest -q                    # full test suite
 ```
 
