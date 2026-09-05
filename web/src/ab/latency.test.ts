@@ -301,19 +301,41 @@ describe('the benchmark report', () => {
     expect(report.disagreementRate).toBe(report.disagreements / report.decisions)
   })
 
-  it('reports zero samples rather than a rate of NaN when nothing was measured', () => {
-    // The degenerate case an instrument must not paper over. `samples: 0` is
-    // the honest signal, and the guarded divisor keeps the rate a number.
-    // Note what it does *not* do: every microsecond field reads 0, and
-    // `formatLatency` prints no sample count, so a rendered empty report is
-    // indistinguishable from a measured one that cost nothing (#293).
+  it('reports NaN rather than a measured zero when nothing was measured', () => {
+    // The degenerate case an instrument must not paper over (#293). Zero is a
+    // reading this module can legitimately produce — a clock clamped coarser
+    // than the decision returns 0.00us — so an unmeasured arm reporting 0 is
+    // not vague, it is wrong in the direction that flatters the model. NaN is
+    // the value no caller can compare against a budget and pass.
     const report = runLatencyBenchmark(0, 2, true)
+    expect(report.amortised.length + report.singleShot.length).toBe(4)
     for (const summary of [...report.amortised, ...report.singleShot]) {
       expect(summary.samples).toBe(0)
+      for (const field of [summary.mean, summary.p50, summary.p95, summary.p99, summary.max]) {
+        expect(Number.isNaN(field)).toBe(true)
+      }
+      // The comparison an affordability claim would be made with: 0 passes it
+      // on no data, NaN cannot.
+      expect(summary.p95 < 1000).toBe(false)
     }
     expect(report.decisions).toBe(0)
+    // The rate stays a number, and unlike the microsecond fields it is printed
+    // beside the 0/0 it came from, so the output discloses its own emptiness.
     expect(report.disagreementRate).toBe(0)
     expect(Number.isNaN(report.disagreementRate)).toBe(false)
+  })
+
+  it('keeps every field a number as soon as there is one position to measure', () => {
+    // The other side of the guard: the empty branch must not leak into a run
+    // that measured something, however little.
+    numberPositionsOnFirstSight()
+    const report = runLatencyBenchmark(1, 2, true)
+    for (const summary of [...report.amortised, ...report.singleShot]) {
+      expect(summary.samples).toBe(1)
+      for (const field of [summary.mean, summary.p50, summary.p95, summary.p99, summary.max]) {
+        expect(field).toBe(1000)
+      }
+    }
   })
 })
 
@@ -364,15 +386,48 @@ describe('the rendered report', () => {
     expect(text).not.toContain('Single-shot')
   })
 
-  it('renders a report with no samples without throwing', () => {
-    const empty = summary('static', 0, 0)
+  it('says an empty arm measured nothing instead of printing a row of zeros', () => {
+    // #293: the row a reader scans is the whole output for most of this
+    // module's users, and `mean 0.00us   p50 0.00us   ...` is what a decision
+    // costing nothing looks like. An arm that never ran must not be able to
+    // wear that. It renders without throwing, because `benchPage.ts` takes its
+    // position count from a text input and can ask for none.
     const text = formatLatency({
-      amortised: [{ ...empty, samples: 0 }],
+      amortised: [{ label: 'static', samples: 0, mean: NaN, p50: NaN, p95: NaN, p99: NaN, max: NaN }],
       singleShot: [],
       disagreementRate: 0,
       disagreements: 0,
       decisions: 0,
     })
     expect(text).toContain('over 0 real auction positions')
+    const line = text.split('\n').find((l) => l.trimStart().startsWith('static')) as string
+    expect(line).toBe('    static     no positions measured')
+    expect(text).not.toContain('NaN')
+  })
+
+  it('still prints a measured zero as a figure, so the two cannot be confused', () => {
+    // The reading the empty row is not allowed to imitate. A coarse clock can
+    // genuinely report 0.00us per decision, and that is a measurement: it keeps
+    // its numeric row, and the two renderings share no line.
+    const measuredZero = formatLatency({
+      amortised: [{ label: 'static', samples: 200, mean: 0, p50: 0, p95: 0, p99: 0, max: 0 }],
+      singleShot: [],
+      disagreementRate: 0,
+      disagreements: 0,
+      decisions: 200,
+    })
+    expect(measuredZero).toContain('static     mean    0.00us')
+    expect(measuredZero).not.toContain('no positions measured')
+  })
+
+  it('leaves a measured row byte-for-byte as it was', () => {
+    // The empty case is worth nothing if it costs the populated rows their
+    // legibility, so the format is pinned exactly rather than by substring.
+    const line = formatLatency(report)
+      .split('\n')
+      .find((l) => l.trimStart().startsWith('static')) as string
+    expect(line).toBe(
+      '    static     mean   41.50us   p50   41.50us   p95   62.25us   p99   62.25us   max    62.25us',
+    )
   })
 })
