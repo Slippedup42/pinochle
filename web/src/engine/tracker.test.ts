@@ -13,8 +13,9 @@ import { TrumpMemory } from './trumpMemory'
  * Since #156 no `SKILL_PARAMS` row ships `'simple'` — trick play is identical
  * at all five levels — so it can no longer be reached by naming `easy`, the way
  * these tests used to reach it. It is still a live policy: `PLAY_AB_POLICIES`
- * is the baseline every child of epic #152 is measured against, and an arm the
- * suite never exercises is an arm nothing vouches for.
+ * holds it open as the baseline #270's re-measurement names (`PlayPolicy` in
+ * `skills.ts` for why), and an arm the suite never exercises is an arm nothing
+ * vouches for.
  *
  * This is `installPolicies`' mechanism (`ab/abRun.ts`) narrowed to one level,
  * rather than that import, to keep the engine's unit tests off the A/B harness
@@ -632,7 +633,8 @@ describe('chooseFollowCard', () => {
   it("'simple' plays the lowest legal card, skipping every tier above", () => {
     // Partner is winning, so `cascade` feeds them the King (the tier asserted
     // above). `simple` plays the 9 — it never asks who is winning, which is
-    // exactly the weakness epic #152 exists to fix and #153 exists to measure.
+    // exactly the weakness epic #152 existed to fix and #153 built the dial to
+    // measure.
     const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'Q', 1) }]
     const legalMoves = [
       new Card(Suit.Hearts, '9', 1),

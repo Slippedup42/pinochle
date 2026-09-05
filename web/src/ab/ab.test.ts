@@ -145,8 +145,9 @@ describe('the policy override', () => {
   })
 
   it('puts the two card-play rules at one table (#153)', () => {
-    // What epic #152 is blocked on. Both arms already ship — `simple` is what
-    // `easy` plays — so this map enables nothing; it only makes the comparison
+    // What epic #152 was blocked on. Both arms already shipped when this was
+    // written — `simple` was what `easy` played — so the map enabled nothing
+    // then and enables nothing now; it only makes the comparison
     // reachable, which is a thing `SKILL_PARAMS` alone cannot do because
     // `chooseFollowCard` reads the level it is handed.
     const before = { ...SKILL_PARAMS }
@@ -178,9 +179,10 @@ describe('the policy override', () => {
     // The other half of #156. `'simple'` is unreferenced by `SKILL_PARAMS` and
     // both `tracker.ts` branches are unreachable in a real game, which reads
     // exactly like dead code — but deleting it would leave `PlayPolicy` a
-    // one-member union and strip epic #152 of the baseline every one of its
-    // children is measured against. `PLAY_AB_POLICIES` is what keeps it alive,
-    // and this asserts that it does.
+    // one-member union and strip the trick-play dial of its baseline while
+    // #270's re-measurement still names `playPolicy` (#296).
+    // `PLAY_AB_POLICIES` is what keeps it alive, and this asserts that it
+    // does.
     expect(PLAY_AB_POLICIES[STATIC_LEVEL].playPolicy).toBe('simple')
     expect(Object.values(SKILL_PARAMS).map((p) => p.playPolicy)).not.toContain('simple')
   })
