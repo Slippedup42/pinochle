@@ -7,6 +7,11 @@
 // has been told why the hand ended, and (#217) the #54 resume path, where
 // `initialState` hands the component a state it did not build and every one of
 // those behaviours has to work off a history it never watched happen.
+//
+// Two of those notices are reached the way a player reaches them, from a deal
+// played forward: auto-SET, and (#298) a claim that becomes available partway
+// through a hand rather than at mount. A claim is the one path that awards
+// tricks nobody played, so what it pays out is checked where it arrives.
 
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -310,6 +315,127 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
     // 24 point-cards (A/10/K x 4 suits x 2 copies) worth 10 each, plus the
     // +10 last-trick bonus — the full round's points always sum to this,
     // regardless of who won which trick.
+    expect(result.trickPointsByTeam[0] + result.trickPointsByTeam[1]).toBe(250)
+  })
+
+  // -- A claim that arrives mid-hand (#298) ---------------------------------
+
+  it('shows the claim notice at the first boundary a claim exists, and awards the tricks it skips', () => {
+    vi.useFakeTimers()
+
+    // The mirror of the test above, and the other half of #208's coverage in a
+    // mount. `claimablePosition.fixture.ts` starts *in* the claimable state, so
+    // it never watches one arrive; the two `not.toContain('claim')` guards prove
+    // only that their seeds never reach one. Nothing until now played into a
+    // claim and checked what it paid out.
+    //
+    // Seed 261 rather than 217, pinned for the same reason 217 is pinned: a
+    // deal that only sometimes reaches the claim reintroduces exactly the
+    // intermittency #261 was filed about, and the run that missed the path
+    // looks identical to the run that took it. #261's implementer probed a
+    // spread and found 2, 8 and 261 all claim mid-hand; re-verified here rather
+    // than trusted, since #273, #277, #280, #283 and #226 have all changed what
+    // the AI does with a fixed deal since that search. All three still claim.
+    //
+    // 261 is the one worth spending the runtime on. The claimer is Partner, an
+    // AI, which is the `humanIsClaimer: false` wording the fixture cannot
+    // reach; the claim runs three tricks rather than the two-trick floor; and
+    // it rests on K/Q of Clubs rather than on trump, which is `findClaim`'s
+    // *other* branch — nobody else holds a trump to ruff with, and no club
+    // outstanding beats them.
+    const hands = shuffledDeal(261)
+    const onComplete = vi.fn()
+
+    render(
+      <TrickPlayFlow
+        hands={hands}
+        trumpSuit={Suit.Hearts}
+        bidWinner={0}
+        bid={300}
+        meldPointsByTeam={{ 0: LIVE_MELD, 1: 0 }}
+        seatNames={SEAT_NAMES}
+        humanPlayer={0}
+        scoresByTeam={SCORES}
+        dealer={0}
+        onComplete={onComplete}
+        options={{ ...DEFAULT_OPTIONS, hideTrickLog: false } as GameOptions}
+      />,
+    )
+
+    // Driven to the notice rather than to `onComplete`, which is what makes
+    // "at the first boundary" assertable: `driveUntil` tests its predicate
+    // *before* every step, so the notice was absent at all 45 of them.
+    const beforeClaim = driveUntil(
+      () => screen.queryByRole('dialog', { name: /the rest are mine/i }) !== null,
+    )
+
+    // Nine tricks played by hand, then the claim — not one played and eleven
+    // claimed, and not twelve played with a notice that never came. Both of
+    // those pass every assertion below this block, which is the whole reason
+    // the count is taken from the actions rather than from the result.
+    expect(beforeClaim.filter((action) => action === 'play')).toHaveLength(9)
+    expect(beforeClaim).not.toContain('claim')
+    expect(screen.getAllByText(/won the trick/)).toHaveLength(9)
+    expect(screen.getAllByText(/ (led|played) the /)).toHaveLength(36)
+
+    // The notice is addressed to the human *about* Partner, and the round is
+    // held there: `onComplete` does not fire until it is dismissed, because a
+    // hand that jumps to the summary three tricks early reads as lost cards.
+    const notice = within(screen.getByRole('dialog', { name: /the rest are mine/i }))
+    expect(notice.getByText(/Partner holds/)).not.toBeNull()
+    expect(notice.getByText('3')).not.toBeNull()
+    expect(notice.getByText('60')).not.toBeNull()
+    expect(screen.getByText(/took the last 3 tricks \(60 points\)/)).not.toBeNull()
+    expect(onComplete).not.toHaveBeenCalled()
+
+    // What the claim is worth, derived from the log instead of copied out of
+    // the payload. Every counter *not* yet played is still on the table, and
+    // `findClaim` hands all of them to the claimer along with the last-trick
+    // bonus — so the award is the 240 counter points that exist minus the ones
+    // already taken, plus 10. Reading it off the 36 rendered card-plays is the
+    // only check here that would notice the award being computed from the
+    // claimer's own hand, or from the wrong side of the subtraction.
+    const countersPlayed = screen
+      .getAllByText(/ (led|played) the /)
+      .filter((line) => / the (A|10|K) of /.test(line.textContent ?? '')).length
+    const expectedClaimPoints = 240 - countersPlayed * 10 + 10
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'See the score' }))
+    })
+
+    expect(onComplete).toHaveBeenCalledOnce()
+    const result = onComplete.mock.calls[0][0] as TrickPlayResult
+    expect(result.claim?.player).toBe(2)
+    expect(result.claim?.name).toBe('Partner')
+    expect(result.claim?.tricks).toBe(3)
+    expect(result.claim?.points).toBe(expectedClaimPoints)
+    expect(result.claim?.points).toBe(60)
+    // One card left in hand is one trick awarded — the notice showed three
+    // cards face up as its evidence and the payload skipped three tricks.
+    expect(result.claim?.cards).toHaveLength(3)
+    expect(result.conceded).toBeUndefined()
+
+    // The reconciliation #298 is about: the hand is whole. Nine tricks the
+    // human clicked through plus three the claim awarded is twelve, and the
+    // three awarded ones are recorded to the claimer rather than left blank.
+    expect(beforeClaim.filter((action) => action === 'play').length + result.claim!.tricks).toBe(12)
+    expect(result.trickWinners).toHaveLength(12)
+    expect(result.trickWinners.slice(9)).toEqual([2, 2, 2])
+
+    // The claimed points landed on the claimer's team and only there. Team 1's
+    // share is summed off the nine trick-won lines the player was shown, so a
+    // claim that credited the wrong side, or split the award, fails here rather
+    // than hiding inside a total that sums to 250 either way.
+    const defenderPoints = screen
+      .getAllByText(/won the trick/)
+      .reduce((sum, line) => {
+        const text = line.textContent ?? ''
+        const points = Number(/\((\d+) points?\)/.exec(text)?.[1] ?? 0)
+        return sum + (/^(West|East) /.test(text) ? points : 0)
+      }, 0)
+    expect(result.trickPointsByTeam[1]).toBe(defenderPoints)
+    expect(result.trickPointsByTeam[0]).toBe(250 - defenderPoints)
     expect(result.trickPointsByTeam[0] + result.trickPointsByTeam[1]).toBe(250)
   })
 
