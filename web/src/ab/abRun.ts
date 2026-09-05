@@ -148,19 +148,23 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
  * Trick-play A/B (#153): identical bidders and identical folders, differing
  * only in which rule picks a card.
  *
- * This is the dial epic #152 is blocked on. Card play is the one phase of this
- * AI that has never been measured — #105, #115, #123 and #126 are all bidding
- * or folding — so every heuristic in `tracker.ts` is there on reasoning alone,
- * and #154-#159 each propose replacing one of them. None of that can be judged
- * without a way to sit two card-play rules at one table.
+ * This is the dial epic #152 was blocked on. Card play was the one phase of
+ * this AI never measured — #105, #115, #123 and #126 are all bidding or
+ * folding — so every heuristic in `tracker.ts` was there on reasoning alone,
+ * and #154-#159 each proposed replacing one of them. None of that could be
+ * judged without a way to sit two card-play rules at one table. All of those
+ * children landed and the epic closed on 2026-08-02; the map outlived it.
  *
  * When this map was written both arms shipped: `'simple'` was what `easy`
  * played and `'cascade'` what every other level played. #156 acted on the
  * number — every level now plays `'cascade'` — so outside `tracker.test.ts`
  * this map is the **only** thing that selects `'simple'`, and deleting it
- * would take the arm with it: a one-member `PlayPolicy` union and no baseline
- * for the rest of epic #152 to be measured against. Load-bearing, not
- * leftover; `PlayPolicy` in `skills.ts` says the same from the other side.
+ * would take the arm with it: a one-member `PlayPolicy` union, and no baseline
+ * left for a re-measurement that still asks for one. That re-measurement is
+ * #270, whose scope names `playPolicy` and which has not run — it is what
+ * keeps the arm now that the epic above is closed (#296). Load-bearing, not
+ * leftover; `PlayPolicy` in `skills.ts` carries the full case, and
+ * `CODING_STANDARDS.md`'s condition 4 is the one it turns on.
  *
  * Both sides bid `'distilled'` rather than `'static'` for the same reason
  * `FOLD_AB_POLICIES` does: it describes card play as it will actually ship on

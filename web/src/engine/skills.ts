@@ -113,8 +113,8 @@ export type FoldPolicy = 'never' | 'model'
  *
  * That mattered enough to be its own issue because trick play is the one phase
  * of this AI never A/B'd — #105, #115, #123 and #126 all measured bidding or
- * folding — and epic #152 is a queue of changes to it that cannot be judged
- * without a dial.
+ * folding — and epic #152 was a queue of changes to it that could not be
+ * judged without a dial.
  *
  * Splitting it off `handValuation` also unblocks the epic rather than merely
  * tidying. `meld_only` gates *bidding* valuation too (`bidding.ts`,
@@ -128,10 +128,22 @@ export type FoldPolicy = 'never' | 'model'
  * `FoldPolicy` keeps `'never'`: `abRun.ts` needs two levels differing in
  * exactly one field to measure this, and `PLAY_AB_POLICIES` is the only reason
  * the trick-play dial has a span at all. Deleting the arm would leave
- * `PlayPolicy` a one-member union and take the ruler away from epic #152 days
- * after #153 built it — every child of that epic is judged against the
- * `simple` baseline. Removing it is a decision to stop measuring card play,
- * not a cleanup.
+ * `PlayPolicy` a one-member union and take the ruler away while a measurement
+ * that asks for it is still outstanding: #270, Paul's deferred re-measurement
+ * of the shipped AI, whose scope names `playPolicy` among the arms to re-run,
+ * and which has not run.
+ *
+ * That — not the epic — is what keeps the arm now. This docstring cited
+ * epic #152 in the present tense until #296; #152 closed on 2026-08-02 with
+ * every child closed, and no comment had to be edited for the justification to
+ * stop being true. In the terms `CODING_STANDARDS.md` sets out under "Retiring
+ * a policy arm", `'simple'` clears conditions 1-3 outright — two seeds,
+ * decisively negative at -228 and -221 per deal (#156), selected by no shipped
+ * configuration — and survives on condition 4 alone. So its fate is entirely
+ * the question of what is baselined against it; the answer today is #270, and
+ * when #270 reports, the place to check that is the tracker rather than this
+ * paragraph. Removing it before then is a decision to stop measuring card
+ * play, not a cleanup.
  */
 export type PlayPolicy = 'simple' | 'cascade'
 

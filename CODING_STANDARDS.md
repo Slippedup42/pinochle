@@ -394,14 +394,22 @@ alone.
 **Check condition 4 against the tracker as it is today, not against the
 docstring's own claim.** The three sites that justify `'simple'` —
 `PlayPolicy` in `skills.ts`, `PLAY_AB_POLICIES` in `abRun.ts`, and the
-lead gate in `tracker.ts` — all name epic #152 in the present tense, and
-#152 closed on 2026-08-02 with every child closed. An arm's
-justification is a claim about open work, so it can go stale on its own
-in a way the rest of this file's docstring rules cannot. A stale
-citation is not a satisfied condition 4; it is the cue to go and find
-out what the live claim is. For `'simple'` that is #270's
-re-measurement scope, which names `playPolicy` — whether that is enough
-is a call for the issue, not for this file.
+lead gate in `tracker.ts` — all named epic #152 in the present tense
+until #296 refreshed them, and #152 had closed on 2026-08-02 with every
+child closed. Nobody edited those comments into being wrong: the work
+they pointed at finished, and they went on saying the same thing. An
+arm's justification is a claim about open work, so it can go stale on
+its own in a way the rest of this file's docstring rules cannot. A
+stale citation is not a satisfied condition 4; it is the cue to go and
+find out what the live claim is.
+
+For `'simple'` that live claim is #270's re-measurement, whose scope
+names `playPolicy` and which has not run — which is why the arm is
+still here. Read that as the example and not the exception: the new
+citation is mortal in exactly the way the old one was, so when #270
+reports, condition 4 is *open again* rather than answered, and whoever
+next reaches for this section should expect the same walk to the
+tracker rather than trusting the sentence they find in `skills.ts`.
 
 ### Retire the introducing commit, not the arm's name
 

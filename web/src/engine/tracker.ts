@@ -313,8 +313,9 @@ export function chooseLeadCard(
   // Simplified leading — prefer low non-trump non-count cards. No shipped
   // `SKILL_PARAMS` row selects this since #156 moved `easy` onto the cascade
   // with everyone else, so nothing reaches it in a real game; it stays as the
-  // `'simple'` arm of `PLAY_AB_POLICIES`, the baseline every remaining child of
-  // epic #152 is measured against, and is reachable only by overriding the dial.
+  // `'simple'` arm of `PLAY_AB_POLICIES` — the baseline #270's deferred
+  // re-measurement still names — and is reachable only by overriding the dial.
+  // `PlayPolicy` in `skills.ts` has the full case for keeping it.
   if (SKILL_PARAMS[skill].playPolicy === 'simple') {
     const safeLeads = hand.filter((c) => c.suit !== trump && c.rank !== 'A' && c.rank !== '10' && c.rank !== 'K')
     const pool = safeLeads.length > 0 ? safeLeads : hand
