@@ -259,6 +259,25 @@ is where the next round of strategy work will run. See
   edited" want different fixes. What it cannot cover, and says so: the
   expert-tier pass logic (#61), which has no TypeScript counterpart at
   all.
+- [`export_stats_parity.py`](export_stats_parity.py) — the same net for
+  the three statistics (issue #211). `web/src/ab/stats.ts` is a
+  hand-port of `ab_harness.py`'s `binomial_two_sided_p`,
+  `wilson_interval` and `bootstrap_mean_ci`, and it is what every
+  shipped strategy decision was judged by — a divergence there does not
+  fail a test, it makes a decision wrong. This records what Python
+  returns across cases chosen for where a port slips (documented
+  contracts, the exact binomial's tails out to 1000 trials, both Wilson
+  clamps, each bootstrap percentile index and the clamp past the end)
+  into `stats_parity_cases.json`, renders
+  `web/src/ab/statsParity.fixture.ts`, and `statsParity.test.ts` holds
+  the TypeScript to it. The bootstrap's resampling draws are recorded
+  and replayed into both sides, for the reason the deals are not
+  compared above: `random.Random.randrange` and
+  `Math.floor(rand() * n)` are different generators and no seed makes
+  them agree, so what is compared is the interval construction. Unlike
+  the round recorder this recording is pure, so `--check` compares the
+  committed JSON against a *fresh* run as well as the TypeScript against
+  the JSON — a Python change fails the Python suite naming the case.
 - [`human_play.py`](human_play.py) — resumable interactive play layer
   (`HumanPlayer`, `InteractiveRound`) built for chat-session play, where
   a script can't block on `input()` between messages: decisions raise
@@ -324,6 +343,8 @@ python export_parity_scenarios.py      # re-render the TS fixture from the commi
 python export_parity_scenarios.py --check  # fail if that fixture is stale
 python export_pass_parity.py --record  # re-record what the passer sends (instant)
 python export_pass_parity.py --check   # fail if the record or its fixture is stale
+python export_stats_parity.py --record # re-record the A/B statistics parity cases
+python export_stats_parity.py --check  # fail if those are stale in either direction
 python -m pytest -q                    # full test suite
 ```
 
