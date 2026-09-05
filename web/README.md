@@ -281,8 +281,9 @@ is not a difficulty setting.
 Card play was the one phase never measured — #105, #115, #123 and #126 are all
 bidding or folding — so every heuristic in `tracker.ts` was there on reasoning
 alone. `SkillParams.playPolicy` is the field that fixed that, and epic #152's
-remaining children are each a change to it that has to be measured before it
-ships.
+remaining children were each a change to it that had to be measured before it
+shipped. Every one of them landed and the epic closed on 2026-08-02; the dial
+outlived it.
 
 It has two arms, and both shipped when it was introduced: `'cascade'` is the
 ported Proficient strategy (`chooseLeadCard`'s safe-card cascade,
@@ -337,11 +338,12 @@ Two things worth carrying forward. The effect is real but two orders of magnitud
 below the dial's own span (#153's +121, #115's +227), because the tier only fires
 when partner is winning, the trick is not a forced beat, and two counters are
 legal — so at 1000 pairs the same comparison reads +2.67 with a CI of +0.51 to
-+4.92 and a sign test of p = 1.0 on two decisive deals. 1000 pairs is the wrong
-size for the rest of #152's children; 5000 is. And games-won is useless at this
-scale: 4961 of 5000 pairs split even where the margin interval is clean, which is
-exactly the null this project has been burned by before and the reason margin is
-the headline number.
++4.92 and a sign test of p = 1.0 on two decisive deals. 1000 pairs was the wrong
+size for the rest of #152's children and 5000 was — a rule set by how small the
+effect is rather than by which queue was open, so it outlived the epic that
+prompted it. And games-won is useless at this scale: 4961 of 5000 pairs split
+even where the margin interval is clean, which is exactly the null this project
+has been burned by before and the reason margin is the headline number.
 
 The three-arm comparison needed a throwaway `'feed-high'` / `'feed-low-ace'` pair
 on the `PlayPolicy` union plus a temporary `cli.ts feed` command, added in the
@@ -390,12 +392,21 @@ is also the largest effect epic #152 has measured, an order of magnitude above
 #154's +3.55 — the shortcut was not a difficulty setting, it was bad play.
 
 That leaves `'simple'` referenced by no `SKILL_PARAMS` row and both `tracker.ts`
-branches unreachable in a real game. **It is kept anyway**, in
+branches unreachable in a real game. **It was kept anyway**, in
 `PLAY_AB_POLICIES` and documented at `PlayPolicy` in `skills.ts`, on the
-precedent `FoldPolicy` set with `'never'`: the harness needs two levels
-differing in exactly one field, and this is the baseline every remaining child
-of #152 is judged against. Deleting it as dead code would leave a one-member
-union and take the ruler away days after #153 built it.
+precedent `FoldPolicy` set with `'never'`: the harness needs two arms differing
+in exactly one field, and at the time this was the baseline every remaining
+child of #152 was judged against. Deleting it as dead code would have left a
+one-member union and taken the ruler away days after #153 built it.
+
+The arm is still here, and no longer for that reason. #152 closed on 2026-08-02
+with every child closed, so nothing has been judged against this baseline since.
+What holds it open now is #270, whose re-measurement scope names `playPolicy`
+and which has not run; `PlayPolicy` in `skills.ts` carries the whole case rather
+than it being restated here (#296, #303). Read that as a claim about the arm's
+future and not as a re-reading of the numbers above — the table in this section
+is the #156 measurement exactly as it was taken, and nothing in it has been
+re-run against #270.
 
 ### Fixing the forced-beat comparison (#155)
 
