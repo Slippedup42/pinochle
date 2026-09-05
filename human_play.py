@@ -43,6 +43,14 @@ class NeedsHumanInput(Exception):
         super().__init__(f"Needs human input: {kind}")
 
 
+def off_grid_bid_message(bid):
+    """The single wording both human seats use to turn away a bid off the
+    multiple-of-10 grid (issue #297). Shared rather than copied because both
+    seats reject on the same rule and read from the same constant; each caller
+    supplies its own indent."""
+    return f"{bid} is off the {MIN_BID_INCREMENT}-point bid grid - try again."
+
+
 def card_str(card):
     return f"{card.rank}{card.suit.value}"
 
@@ -80,10 +88,26 @@ class HumanPlayer(Player):
         self.played_cards = []
 
     def choose_bid(self, current_bid, min_increment, context=None):
+        rejected = None
         if self.pending_answer != _NO_ANSWER:
             ans = self.pending_answer
             self.pending_answer = _NO_ANSWER
-            return ans
+            if ans is None or ans % MIN_BID_INCREMENT == 0:
+                return ans
+            # Off the multiple-of-10 grid that pinochle_rules.md states without
+            # qualification (issue #297). Both bidding loops would take it -
+            # they only compare a bid against the minimum - and every raise
+            # after it is +MIN_BID_INCREMENT from whatever was accepted, so a
+            # single 305 puts the rest of the ladder on 315, 325, 335. The
+            # answer is dropped and this decision point re-raised, which is the
+            # ordinary resume path rather than a special case: no auction state
+            # moved before the check, so the next call prompts from the
+            # identical position. The check lives on the human seat and not in
+            # either loop deliberately - the AI raises by MIN_BID_INCREMENT
+            # from a grid-aligned opener and is already correct, so it should
+            # not be exposed to a new rejection - and putting it on the player
+            # means it holds for `Round` and `InteractiveRound` alike.
+            rejected = ans
         prompt = {
             "hand": hand_str(self.hand),
             "hand_grouped": hand_grouped(self.hand),
@@ -104,6 +128,8 @@ class HumanPlayer(Player):
                     f"{p.name}{' (you)' if p is self else ''}: {last_action.get(p.name, '(no action yet)')}"
                     for p in clockwise
                 ]
+        if rejected is not None:
+            prompt["error"] = off_grid_bid_message(rejected)
         raise NeedsHumanInput("bid", prompt)
 
     def choose_trump(self):
