@@ -174,6 +174,21 @@ because nothing needs them yet (see Open questions).
    for drift that had already happened, where #125 is the standing net.
    Both closed 2026-08-01.
 
+   The pass is a second standing net (#279). #125 records the 3-card
+   pass but replays it as an *input*, so which three cards each engine
+   *chooses* was never compared — #276 moved two of the forty recorded
+   passes and #280 moved seventeen, and the suite would have been just
+   as green if only one engine had moved. `export_pass_parity.py`
+   records what Python's passer sends from 55 hands into
+   `pass_parity_scenarios.json` and renders
+   `web/src/engine/passParity.fixture.ts`; `passParity.test.ts` holds
+   `passing.ts` to the same three cards, compared as a set. Its
+   `--check` re-records as well as re-renders, which #125's cannot: a
+   pass is a pure function of twelve cards, with no AI drift to cry
+   wolf about. Python's expert-tier pass logic (#61) is outside it and
+   always will be — there is no TypeScript counterpart to compare
+   against.
+
    **The net does not cover everything that crosses the boundary.** It
    covers the rules engine, `export_evaluator.py --check` covers the
    evaluator model, and since #225 `generate_rollout_dataset.py --check`
