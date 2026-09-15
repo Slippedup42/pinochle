@@ -247,9 +247,10 @@ evaluator — read the paragraphs immediately below before quoting it.**
 
 Two bounds on that conclusion. The evaluator only governs the opening decision
 and the defensive push — the ordinary raise ladder and the 330/340 constants in
-`chooseBid` are untouched, and the two policies return a different bid on 6.5%
-of real auction positions, which is the ceiling on what the model can be
-credited with. And every seat in the harness is an AI, so this says the policy
+`chooseBid` are untouched, and the two policies returned a different bid on 6.5%
+of the auction positions a table of four static bidders produced, before #277,
+which is the ceiling on what the model can be credited with. And every seat in
+the harness is an AI, so this says the policy
 is stronger, not that it is a better partner for a human.
 
 **Why the +227 above reads +22 today.** #255 first noticed this on 2026-08-30,
