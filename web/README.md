@@ -165,7 +165,7 @@ still says things like "`hard` and above now run `'distilled'`; `easy` and
 now means a slot in `src/ab/` that `installPolicies` can seat a policy on, not a
 tier a player could pick — see `SkillLevel` in `skills.ts`.
 
-**Four behaviour changes have landed with no A/B behind any of them**, by
+**Five behaviour changes have landed with no A/B behind any of them**, by
 standing instruction that paired measurement waits until the queue is drained
 (#270):
 
@@ -175,11 +175,17 @@ standing instruction that paired measurement waits until the queue is drained
   miscalibrated**. Mean ceiling 270 → 344, hands clearing `OPENER_THRESHOLD`
   27% → 56%, auto-SET 6.6% → 12.6%. The suspected cause is a double count:
   stage 2's `+130` stands in for trick potential and partner meld while #277's
-  `computeTrickPotential` prices trick potential directly. It is deliberately
-  left uncalibrated pending #270.
+  `computeTrickPotential` prices trick potential directly. It was left
+  uncalibrated pending #270 until #308, below.
 - **#280** — both pass priority lists reworked; the trump tiers now send a
   spread rather than duplicates.
 - **#283** — the 400 bid cap removed.
+- **#308** — stage 2's three branches each down 40 (`+130` / `+160` / `+100` to
+  `+90` / `+120` / `+60`), on Paul's direct decision (#282) rather than on
+  #288's A/B. Descriptive statistics only, 2000 games at `SHIPPED_SKILL`: mean
+  winning bid 328.7 → 312.5, contracts made 65.5% → 70.9%, auto-SET 12.6% →
+  8.2%, mean game length 5.33 → 4.95 hands. The other threshold constants #282
+  lists are untouched and still open there.
 
 So the bidding underneath every table below is not the bidding this engine does
 today, and #277 alone changes which hands open at all.

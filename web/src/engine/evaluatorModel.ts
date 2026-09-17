@@ -61,15 +61,15 @@ export interface LogisticModelData {
   readonly weights: readonly number[]
 }
 
-// Held-out decision agreement with the rollout: 82.6% over 419 rows,
-// against a majority-verdict baseline of 52.3%; mean regret 11.2 points per decision.
+// Held-out decision agreement with the rollout: 80.1% over 418 rows,
+// against a majority-verdict baseline of 53.1%; mean regret 16.2 points per decision.
 // Disagreements with the rollout sit on near-boundary rows — 0% of them where
 // the rollout's own EV margin exceeds 200 — so they cost points rather than
 // describing a hand class the model gets wrong every time.
 export const BID_MODEL: LogisticModelData = {
   decision: '1 = bid (taking the contract beats defending it)',
   threshold: 0.5,
-  intercept: -1.7880291285585528,
+  intercept: -1.1152735068739579,
   features: [
     'meld_total',
     'ace_count',
@@ -86,24 +86,24 @@ export const BID_MODEL: LogisticModelData = {
     'ceiling_minus_bid',
   ],
   weights: [
-    0.008209684626992458, // meld_total
-    0.3831471911349723, // ace_count
-    1.3076567326278066, // trump_length
-    0.48327692318863225, // longest_side_suit
-    0.9001127736725427, // has_run
-    -0.44408360709588285, // has_pinochle
-    -2.1474845156320628, // has_around
-    -0.030547412800173472, // bid
-    0.00014665272100630728, // score_diff
-    -0.16219837129064088, // partner_has_bid
-    0.07102233954572583, // partner_has_passed
-    0.0063672404328047535, // base_bid_ceiling
-    0.00789943505538682, // ceiling_minus_bid
+    0.009212483417629263, // meld_total
+    0.4084533264088503, // ace_count
+    1.3393880626616694, // trump_length
+    0.37134894719721007, // longest_side_suit
+    1.309980998163659, // has_run
+    -0.5329829736764788, // has_pinochle
+    -1.8652380435580902, // has_around
+    -0.030389186889026025, // bid
+    0.000489161771784831, // score_diff
+    -0.13791007803516395, // partner_has_bid
+    0.04291224923410328, // partner_has_passed
+    0.006226667709407318, // base_bid_ceiling
+    0.007655870224238975, // ceiling_minus_bid
   ],
 }
 
-// Held-out decision agreement with the rollout: 97.5% over 81 rows,
-// against a majority-verdict baseline of 88.9%; mean regret 0.8 points per decision.
+// Held-out decision agreement with the rollout: 97.6% over 83 rows,
+// against a majority-verdict baseline of 91.6%; mean regret 1.0 points per decision.
 // Note what is NOT a feature here: the game score and the partner-auction flags.
 // The fold label was measured with the scores withheld, so it is score-independent
 // by construction, and including score measurably hurt (93.6% -> 92.8%). Its
@@ -112,7 +112,7 @@ export const BID_MODEL: LogisticModelData = {
 export const FOLD_MODEL: LogisticModelData = {
   decision: '1 = concede (playing the contract out is worse than folding)',
   threshold: 0.5,
-  intercept: 8.523722235984886,
+  intercept: 5.471255089705032,
   features: [
     'meld_total',
     'ace_count',
@@ -130,19 +130,19 @@ export const FOLD_MODEL: LogisticModelData = {
     'fold_cost',
   ],
   weights: [
-    -0.008251924512268537, // meld_total
-    -1.3994621869248505, // ace_count
-    -1.1211275591215628, // trump_length
-    -0.7418084999375847, // longest_side_suit
-    -0.5335094432908574, // has_run
-    -0.08489695890781623, // has_pinochle
-    -0.6798584076406218, // has_around
-    0.010921290099819009, // bid
-    -0.017048823275325413, // bidding_meld
-    -0.0020566489087021664, // defending_meld
-    -0.006368075057638706, // base_bid_ceiling
-    -0.007448490015127003, // ceiling_minus_bid
-    0.019200141427966957, // tricks_needed
-    0.0016156908787789497, // fold_cost
+    -0.005095683080360886, // meld_total
+    -0.8848417471112148, // ace_count
+    -1.7824571780573053, // trump_length
+    -0.6093993229318959, // longest_side_suit
+    -0.6789493645625004, // has_run
+    -1.718760252698719, // has_pinochle
+    -0.9983919058524636, // has_around
+    0.020676417368938018, // bid
+    -0.014338455878461666, // bidding_meld
+    -0.00408386442375053, // defending_meld
+    -0.0016796965172095355, // base_bid_ceiling
+    -0.0030812625929623324, // ceiling_minus_bid
+    0.017445159976409805, // tricks_needed
+    0.0028079092040927214, // fold_cost
   ],
 }

@@ -381,20 +381,25 @@ describe('computeTrickPotential', () => {
   })
 })
 
+// The three values moved together in #308, each down 40 (130/160/100 to
+// 90/120/60), on Paul's decision recorded on #282. They are pinned as literals
+// on purpose: this block is where the constants live in the test suite, and
+// the fixtures elsewhere in the file are checked through `ceilingOf` rather
+// than by restating a ceiling.
 describe('computeCompetitiveAdjustment', () => {
-  it('defaults to the +130 baseline', () => {
+  it('defaults to the +90 baseline', () => {
     const { value, breakdown } = computeCompetitiveAdjustment([], trump)
-    expect(value).toBe(130)
-    expect(breakdown['Competitive adj (baseline)']).toBe(130)
+    expect(value).toBe(90)
+    expect(breakdown['Competitive adj (baseline)']).toBe(90)
   })
 
-  it('gives +160 when behind by 600 or more', () => {
+  it('gives +120 when behind by 600 or more', () => {
     const { value, breakdown } = computeCompetitiveAdjustment([], trump, 0, 600)
-    expect(value).toBe(160)
-    expect(breakdown['Competitive adj (behind 600+ / Run+AcesAround double-payoff)']).toBe(160)
+    expect(value).toBe(120)
+    expect(breakdown['Competitive adj (behind 600+ / Run+AcesAround double-payoff)']).toBe(120)
   })
 
-  it('gives +160 for the Run+AcesAround double-payoff shape even when not behind', () => {
+  it('gives +120 for the Run+AcesAround double-payoff shape even when not behind', () => {
     const hand = [
       new Card(trump, '10', 1),
       new Card(trump, 'K', 1),
@@ -405,13 +410,24 @@ describe('computeCompetitiveAdjustment', () => {
       new Card(Suit.Hearts, 'A', 1),
     ]
     const { value } = computeCompetitiveAdjustment(hand, trump, 0, 0)
-    expect(value).toBe(160)
+    expect(value).toBe(120)
   })
 
-  it('gives +100 when close to winning and the opponent is far behind', () => {
+  it('gives +60 when close to winning and the opponent is far behind', () => {
     const { value, breakdown } = computeCompetitiveAdjustment([], trump, 750, 400)
-    expect(value).toBe(100)
-    expect(breakdown['Competitive adj (closing out the game)']).toBe(100)
+    expect(value).toBe(60)
+    expect(breakdown['Competitive adj (closing out the game)']).toBe(60)
+  })
+
+  it('keeps closing out the most cautious branch and behind the most aggressive', () => {
+    // Why #308 moved all three rather than the baseline alone: a +90 baseline
+    // under a +100 closing-out branch would have had a team nearly home bidding
+    // harder than normal, which is the opposite of what that branch is for.
+    const baseline = computeCompetitiveAdjustment([], trump).value
+    const behind = computeCompetitiveAdjustment([], trump, 0, 600).value
+    const closingOut = computeCompetitiveAdjustment([], trump, 750, 400).value
+    expect(closingOut).toBeLessThan(baseline)
+    expect(baseline).toBeLessThan(behind)
   })
 })
 
@@ -423,14 +439,18 @@ describe('computeCompetitiveAdjustment', () => {
 // red: there is no longer a number for them to assert.
 describe('the ceiling is not capped (#283)', () => {
   it('lets an ordinary hand value above 400 instead of stopping there', () => {
-    // A trump Run, a second Royal Marriage and an off-suit Ace. Its guaranteed
-    // meld is nowhere near the 300 the old exemption wanted, so this is exactly
-    // the hand the cap used to bind: worth 440 and allowed to say 400.
+    // A trump Run, a second Royal Marriage and two off-suit Aces. Its
+    // guaranteed meld is nowhere near the 300 the old exemption wanted, so this
+    // is exactly the hand the cap used to bind: worth 420 and allowed to say
+    // 400. It held one off-suit Ace and read 440 until #308 took 40 off the
+    // competitive adjustment and left it on exactly 400, where "worth more than
+    // the cap" is no longer true; the second Ace puts it back over.
     const hand = [
       ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
       new Card(Suit.Hearts, 'K', 2),
       new Card(Suit.Hearts, 'Q', 2),
       new Card(Suit.Spades, 'A', 1),
+      new Card(Suit.Clubs, 'A', 1),
     ]
     expect(scoreMelds(hand, Suit.Hearts).total).toBeLessThan(300)
     const { trump: t, total } = bestBaseBid(hand)
@@ -492,12 +512,13 @@ describe('chooseBid', () => {
   // OPENER_THRESHOLD no matter which suit bestBaseBid picks as trump.
   const weakHand = [new Card(Suit.Hearts, '9', 1)]
 
-  // The "good but not good enough" fixture: ceiling 310 at the default 0/0
+  // The "good but not good enough" fixture: ceiling 270 at the default 0/0
   // score adjustment. Below OPENER_THRESHOLD (320), below the 330 the
   // competitive branch relaxes to once a partner has bid, and comfortably over
   // THIRD_BIDDER_FLOOR and DEFENSIVE_PUSH_FLOOR (200 each). Two Royal Marriages
   // and the Dix (90 of Base Bid), an off Ace, six trump and one unmarried King
-  // (90 of trick potential), + the 130 baseline.
+  // (90 of trick potential), + the 90 baseline. It read 310 until #308 took 40
+  // off that baseline, which left it inside the same band.
   //
   // Its history is a warning about pinning a hand to a threshold, and about
   // making the hand small to make the arithmetic easy. It was a bare trump Run
@@ -528,10 +549,11 @@ describe('chooseBid', () => {
   ]
 
   // Base Bid 190 (Run 150 + the second Royal Marriage 40) + 100 of trick
-  // potential (the trump Ace at 40, three trump past the fourth at 60) ->
-  // 420, capped to 400. Clears both OPENER_THRESHOLD (320) and the 340
+  // potential (the trump Ace at 40, three trump past the fourth at 60) + the 90
+  // baseline -> 380. Clears both OPENER_THRESHOLD (320) and the 340
   // raise-support gate with room to spare, which is all this fixture is for;
-  // nothing asserts its exact value. It read 340 before #277.
+  // nothing asserts its exact value. It read 340 before #277, 420 once #283
+  // uncapped it, and 380 since #308.
   const strongHand = [
     ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
     new Card(Suit.Hearts, 'K', 2),
@@ -589,7 +611,7 @@ describe('chooseBid', () => {
     })
 
     it('takes this hand on a distilled level and passes it on a static one (#114/#115)', () => {
-      // belowOpenerHand's ceiling is 310, under OPENER_THRESHOLD, so the static
+      // belowOpenerHand's ceiling is 270, under OPENER_THRESHOLD, so the static
       // rule passes. The distilled evaluator takes it — it sees 90 guaranteed
       // meld and six trump, offered the contract at the 300 minimum.
       // That divergence is the clearest single illustration of what #114
@@ -616,14 +638,14 @@ describe('chooseBid', () => {
 
     it('passes for a weak-handed 4th bidder when partner has already had a turn', () => {
       // 4th bidder (passesSoFar=3, dealer=player): partner has had a turn,
-      // and the weak hand's ceiling (130) doesn't clear OPENER_THRESHOLD.
+      // and the weak hand's ceiling (100) doesn't clear OPENER_THRESHOLD.
       const context = baseContext({ dealer: 0, passesSoFar: 3, scores: { 0: 850, 1: 500 } })
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
     })
 
     it('3rd bidder does not open a hand under THIRD_BIDDER_FLOOR (#255)', () => {
       // This used to assert `toBe(OPENING_BID)` on `weakHand` — a lone off-trump
-      // 9, ceiling 130 — because the positional rule opened on anything at all
+      // 9, ceiling 100 — because the positional rule opened on anything at all
       // to deny the last seat a cheap contract. There is a floor under it now.
       //
       // Note the context: `passesSoFar: 2` with an empty `passedPlayers`, i.e.
@@ -667,7 +689,7 @@ describe('chooseBid', () => {
 
     it('3rd bidder falls back to the normal threshold once my score is above 800', () => {
       // oppScore kept above 500 so the "closing out the game" competitive
-      // adjustment bucket (+100) doesn't kick in and change the ceiling -
+      // adjustment bucket (+60) doesn't kick in and change the ceiling -
       // this test is purely about the passes_so_far===2 threshold gate.
       const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 850, 1: 600 } })
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
@@ -740,11 +762,11 @@ describe('chooseBid', () => {
       // that is no longer an opener, so `currentBid <= OPENING_BID` went false
       // and the push it exists to check stopped firing at all.
       const opener = { player: 1 as PlayerIndex, amount: OPENING_BID }
-      // belowOpenerHand has ceiling 310 >= DEFENSIVE_PUSH_FLOOR (200)
+      // belowOpenerHand has ceiling 270 >= DEFENSIVE_PUSH_FLOOR (200)
       const context = baseContext({ everBid: true, bidHistory: [opener] })
       expect(chooseBid(0, belowOpenerHand, OPENING_BID, 10, context)).toBe(OPENING_BID + 10)
 
-      // weakHand has ceiling 140 (a Dix at its best trump, no aces) < DEFENSIVE_PUSH_FLOOR (200) — truly hopeless
+      // weakHand has ceiling 100 (a Dix at its best trump, no aces) < DEFENSIVE_PUSH_FLOOR (200) — truly hopeless
       const hopelessContext = baseContext({ everBid: true, bidHistory: [opener] })
       expect(chooseBid(0, weakHand, OPENING_BID, 10, hopelessContext)).toBeNull()
     })
@@ -796,9 +818,10 @@ describe('endgame protection (#256)', () => {
   const OPP_BEFORE_ME: PlayerIndex = 3
   const OTHER_OPP: PlayerIndex = 1
 
-  // Trump Run + a second Royal Marriage + the other three Aces. Base Bid 270,
-  // so its ceiling clears ENDGAME_RESCUE_CEILING, OPENER_THRESHOLD and
-  // PARTNER_RAISE_FLOOR alike at the +100 adjustment this score band carries.
+  // Trump Run + a second Royal Marriage + the other three Aces. Base Bid 190
+  // and 160 of trick potential, so its ceiling clears ENDGAME_RESCUE_CEILING,
+  // OPENER_THRESHOLD and PARTNER_RAISE_FLOOR alike at the +60 adjustment this
+  // score band carries (+100 before #308).
   // Nothing here should ever be mistaken for "the hand was not worth a bid".
   const richHand = [
     ...RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1)),
@@ -1114,22 +1137,25 @@ describe('every bid chooseBid can return is legal (#177)', () => {
     // threshold it is here to sit exactly on; it was rebuilt out of a near-run
     // plus a Pinochle, and #277 carried *that* past the threshold in turn — the
     // lone Q(S) picked up both the new no-King-of-Spades pinochle bonus and the
-    // unmarried-Queen line. What is left is the smallest hand that lands on 320
-    // and the one with the least under it that can move: a bare near-run with
-    // its Dix. 120 near-run + 10 Dix = 130 of Base Bid, and the trump Ace at 40
-    // plus one trump past the fourth at 20 = 60 of trick potential, over the
-    // 130 baseline adjustment. No Run rule, no Pinochle rule, no marriage rule
-    // anywhere in it.
+    // unmarried-Queen line. It became a bare near-run with its Dix, and #308
+    // took 40 off the competitive adjustment underneath it and left it at 280.
+    // Two off-suit Aces put back exactly the 40 that came off, through the one
+    // line of the valuation none of those changes has touched: 120 near-run +
+    // 10 Dix = 130 of Base Bid; three Aces at 60, the trump Ace's own 20 and
+    // one trump past the fourth at 20 = 100 of trick potential; over the 90
+    // baseline. No Run rule, no Pinochle rule, no marriage rule anywhere in it.
     const ceiling320Hand = [
       new Card(Suit.Hearts, 'A', 1),
       new Card(Suit.Hearts, 'K', 1),
       new Card(Suit.Hearts, 'Q', 1),
       new Card(Suit.Hearts, 'J', 1),
       new Card(Suit.Hearts, '9', 1),
+      new Card(Suit.Spades, 'A', 1),
+      new Card(Suit.Clubs, 'A', 1),
     ]
     const { trump, total } = bestBaseBid(ceiling320Hand, 0, 0)
     expect(trump).toBe(Suit.Hearts)
-    expect(total).toBe(OPENER_THRESHOLD) // 130 Base Bid + 60 trick potential + baseline adj 130
+    expect(total).toBe(OPENER_THRESHOLD) // 130 Base Bid + 100 trick potential + baseline adj 90
 
     // 4th bidder (dealer), partner (seat 2) has passed, nobody has bid.
     const context: AuctionContext = {
@@ -1169,14 +1195,16 @@ describe('raising over a bid our own team already holds (#206)', () => {
   // Ceiling 320 — opens happily, but cannot support a 340 commitment. Same
   // hand and same history as #180's `ceiling320Hand` above: a trump Run plus an
   // off-suit Ace until #242, a near-run plus a Pinochle until #277 paid the
-  // lone Q(S) twice over, and now a bare near-run with its Dix, which touches
-  // none of the three rules that have moved under it.
+  // lone Q(S) twice over, a bare near-run with its Dix until #308 left that at
+  // 280, and now the near-run and Dix with two off-suit Aces.
   const modestHand = [
     new Card(Suit.Hearts, 'A', 1),
     new Card(Suit.Hearts, 'K', 1),
     new Card(Suit.Hearts, 'Q', 1),
     new Card(Suit.Hearts, 'J', 1),
     new Card(Suit.Hearts, '9', 1),
+    new Card(Suit.Spades, 'A', 1),
+    new Card(Suit.Clubs, 'A', 1),
   ]
 
   /** Seat 2 opened one rung under `partnerBid`; its partner (seat 0) then bid
@@ -1228,6 +1256,11 @@ describe('raising over a bid our own team already holds (#206)', () => {
   })
 
   it('backs off instead of being talked into a commitment it cannot make', () => {
+    // Both sides of the band, because the lower one is what makes this a hand
+    // that *could* have opened. #308 took modestHand to 280 without failing
+    // anything here: under the floor is all the old assertion asked, and a
+    // hand under OPENER_THRESHOLD backing off proves nothing about the raise.
+    expect(bestBaseBid(modestHand, 0, 0).total).toBeGreaterThanOrEqual(OPENER_THRESHOLD)
     expect(bestBaseBid(modestHand, 0, 0).total).toBeLessThan(PARTNER_RAISE_FLOOR)
     for (const partnerBid of [260, 300, 330]) {
       expect(chooseBid(2, modestHand, partnerBid, 10, afterPartnerRaise(partnerBid), SHIPPED_SKILL)).toBeNull()
@@ -1263,7 +1296,7 @@ describe('raising over a bid our own team already holds (#206)', () => {
   it('pushes opponents rather than handing them a cheap contract once the partner has bid', () => {
     // The other half of Paul's report: passing here would let the opponents buy
     // it low after both seats have shown cards. `Math.max(ceiling, 330)` already
-    // covers it, and this pins that down — a ceiling-190 hand still pushes.
+    // covers it, and this pins that down — a ceiling-150 hand still pushes.
     const weakHand = [
       new Card(Suit.Hearts, 'K', 1),
       new Card(Suit.Hearts, 'Q', 1),
