@@ -366,9 +366,10 @@ What is left of the Expert tier:
   browser they do not, so the distilled evaluator is currently their
   floor rather than their ceiling.
 - The evaluator still only governs the opening decision and the
-  defensive push, and the two policies differ on 6.5% of real auction
-  positions — that is the ceiling on what any of this can be credited
-  with. The claim that the ordinary raise ladder is untouched has
+  defensive push, and the two policies differed on 6.5% of the auction
+  positions a table of four static bidders produced, before #277 — that
+  is the ceiling on what any of this can be credited with. The claim
+  that the ordinary raise ladder is untouched has
   **expired**: #180 moved `PARTNER_PASSED_FLOOR` to 320, #206 made
   `PARTNER_RAISE_FLOOR = 340` a real floor rather than an accident of
   the ladder's arithmetic, and #204 added an `openingPolicy` dial in
