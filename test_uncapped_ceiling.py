@@ -56,10 +56,13 @@ def test_a_double_run_hand_has_no_ceiling():
 
 
 def test_an_ordinary_hand_worth_over_400_may_say_so():
-    # A trump Run, a second Royal Marriage and an off-suit Ace: 440. Its
+    # A trump Run, a second Royal Marriage and two off-suit Aces: 420. Its
     # guaranteed meld is nowhere near the 300 the old exemption wanted, so this
-    # is precisely the hand the cap used to bind - worth 440 and allowed to say
-    # 400.
+    # is precisely the hand the cap used to bind - worth over 400 and allowed
+    # to say only 400. It had one off-suit Ace and read 440 until #308 took 40
+    # off the competitive adjustment and left it on exactly 400, which a test
+    # about being worth *more* than 400 cannot use; the second Ace puts it back
+    # over.
     hand = [
         Card(Suit.HEARTS, "A", 1),
         Card(Suit.HEARTS, "10", 1),
@@ -69,6 +72,7 @@ def test_an_ordinary_hand_worth_over_400_may_say_so():
         Card(Suit.HEARTS, "K", 2),
         Card(Suit.HEARTS, "Q", 2),
         Card(Suit.SPADES, "A", 1),
+        Card(Suit.CLUBS, "A", 1),
     ]
     actual_meld, _ = score_melds(hand, Suit.HEARTS)
     assert actual_meld < 300

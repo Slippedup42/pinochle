@@ -15,9 +15,11 @@ import { SHIPPED_PARAMS, SHIPPED_SKILL, SKILL_LEVELS, SKILL_PARAMS, type SkillLe
 const RUN_RANKS: readonly Rank[] = ['A', '10', 'K', 'Q', 'J']
 
 /** A full Hearts Run plus a second royal marriage, an off-suit marriage and
- *  filler. Ceiling 340: a bare trump Run at 150, the trump Ace at 40 (the flat
+ *  filler. Ceiling 300: a bare trump Run at 150, the trump Ace at 40 (the flat
  *  Ace line and the Ace-of-trump line both), one trump past the fourth at 20,
- *  plus the 130 baseline competitive adjustment.
+ *  plus the 90 baseline competitive adjustment. It was 340 until #308 took 40
+ *  off that baseline - which moves `middlingHand` by the same 40, so the pair
+ *  stays equal.
  *
  *  Everything but the run and the filler has now been removed twice for the
  *  same reason, and it is worth stating once. The pairing with `middlingHand`
@@ -41,7 +43,7 @@ const strongHand = [
   new Card(Suit.Spades, '9', 2),
 ]
 
-/** Same ceiling (340) as `strongHand`, reached without a Run: five Spades
+/** Same ceiling (300) as `strongHand`, reached without a Run: five Spades
  *  headed A-K-Q-10 (a near-run) with its Dix, and a side marriage in Hearts.
  *  The pair is the point — a threshold on the ceiling cannot tell these two
  *  hands apart at any level. The Jack of Diamonds it used to carry is gone
@@ -62,7 +64,7 @@ const middlingHand = [
   new Card(Suit.Diamonds, '9', 1),
 ]
 
-/** Eight nines and four jacks: no meld, no aces, ceiling 190. */
+/** Eight nines and four jacks: no meld, no aces, ceiling 150. */
 const hopelessHand = [
   new Card(Suit.Clubs, '9', 1),
   new Card(Suit.Clubs, '9', 2),
@@ -132,14 +134,16 @@ describe('the bid model responds to the level, not just the hand', () => {
   })
 
   it('separates two hands of identical ceiling by what the shape can carry', () => {
-    // Both hands value at 340, so `ceiling >= OPENER_THRESHOLD` gives them the
-    // same answer at every level — that is the limitation being replaced. The
-    // evaluator takes both at 300, and at the level below keeps only the one
-    // holding a Run. Asserted as equality to each other first, because *equal*
-    // is the property and the number has moved three times (#242, #273, #277)
-    // without the property changing. The companion assertion that both sit
-    // under the 400 cap went with the cap itself (#283): with nothing clamped,
-    // two hands cannot be made falsely equal by both hitting a ceiling.
+    // Both hands value at the same ceiling, so `ceiling >= OPENER_THRESHOLD`
+    // gives them the same answer at every level — that is the limitation being
+    // replaced. The evaluator takes both at 300, and at 340 keeps only the one
+    // holding a Run. Asserted as equality to each other and not to a number,
+    // because *equal* is the property: the number has moved four times (#242,
+    // #273, #277, and #308 from 340 to 300) without the property changing, and
+    // a literal pinned beside the equality was the only thing #308 turned red
+    // here. The companion assertion that both sit under the 400 cap went with
+    // the cap itself (#283): with nothing clamped, two hands cannot be made
+    // falsely equal by both hitting a ceiling.
     //
     // The separating level was 400 until #226 regenerated the dataset and
     // refit. The `bid` weight roughly tripled in magnitude there (-0.0098 to
@@ -148,11 +152,11 @@ describe('the bid model responds to the level, not just the hand', () => {
     // nothing. 340 is where the pair parts company now, with room on both
     // sides (0.62 against 0.36) rather than the knife edge 340 used to be: the
     // middling hand scored 0.4998 there under the old weights, which is why
-    // the test reached for 400 in the first place.
+    // the test reached for 400 in the first place. #308's refit widened that
+    // to 0.74 against 0.34 at the same level.
     expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(
       evaluateBid(at(middlingHand, OPENING_BID)).ceiling,
     )
-    expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(340)
 
     expect(shouldBid(at(strongHand, OPENING_BID))).toBe(true)
     expect(shouldBid(at(middlingHand, OPENING_BID))).toBe(true)
@@ -230,12 +234,14 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
     passedPlayers: [],
   }
 
-  // Ceiling 300 (Run 150 + Ace 20 + adj 130) - 340 while #242 also paid the
-  // marriage the run absorbs, 300 again since #273. Kept for the meld-only
+  // Ceiling 300 (Run 150, 60 of trick potential, adj 90) - 340 while #242
+  // also paid the marriage the run absorbs, 300 again since #273, and back to
+  // 300 by different arithmetic after #277 priced the trump Ace and #308 took
+  // 40 off the adjustment. Kept for the meld-only
   // arithmetic below, which needs a hand whose certain meld is a known number.
   const runOnlyHand = RUN_RANKS.map((r) => new Card(Suit.Hearts, r, 1))
 
-  // Ceiling 290 — under OPENER_THRESHOLD, so the static rule passes, while the
+  // Ceiling 270 — under OPENER_THRESHOLD, so the static rule passes, while the
   // evaluator opens (80 guaranteed meld and four fifths of a run). One hand,
   // two policies, which is what makes it a usable probe of the dial.
   //
@@ -280,7 +286,7 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
   })
 
   it('separates the two policies on one hand that can be probed with', () => {
-    // Ceiling 310, under OPENER_THRESHOLD, so the static rule passes while the
+    // Ceiling 270, under OPENER_THRESHOLD, so the static rule passes while the
     // evaluator opens — one hand that reads the field's effect directly rather
     // than asserting on SKILL_PARAMS a second time. It is the same twelve-card
     // hand `bidding.test.ts` calls `belowOpenerHand`; see the note there for

@@ -299,9 +299,9 @@ PINOCHLE_NO_KING_OF_SPADES_BONUS = 20
 
 # -- Trick potential (#277). The stage between the Base Bid and the
 # competitive adjustment: what the hand can win with cards rather than meld.
-# `compute_base_bid`'s docstring has always said this belongs somewhere else
-# and named the competitive adjustment as its home, but that layer only ever
-# read the score, so until now nothing priced the tricks at all. It does now,
+# `compute_base_bid`'s docstring always said this belonged somewhere else and
+# named the competitive adjustment as its home, but that layer only ever read
+# the score, so until #277 nothing priced the tricks card by card. It does now,
 # and it is its own stage rather than more lines inside the Base Bid because
 # the two answer different questions - what will this hand meld, and what will
 # it take.
@@ -313,7 +313,11 @@ EXTRA_TRUMP_VALUE = 20
 PROTECTED_TEN_VALUE = 20    # see `_is_protected_ten`
 LOOSE_KING_VALUE = 30       # non-trump K with no Queen of its suit behind it
 LOOSE_QUEEN_VALUE = 20      # non-trump Q with no King of its suit behind it
-PARTNER_ESTIMATE_RANGE = (50, 100)  # Proficient draws randomly in this range each bid
+# A partner-strength estimate. Nothing reads it: the comment here used to say
+# Proficient draws randomly in this range each bid, and no code has ever done
+# so. It is kept because it names the quantity the competitive adjustment is
+# left standing in for since #308 - see that function's docstring.
+PARTNER_ESTIMATE_RANGE = (50, 100)
 # There is no cap on the ceiling. MAX_BID_DEFAULT = 400 and
 # MAX_BID_MELD_THRESHOLD = 300 used to be the two constants here that made one
 # (#283): every hand stopped at 400 unless its *guaranteed* meld (score_melds,
@@ -338,7 +342,8 @@ OPENER_THRESHOLD = 320  # minimum Base Bid to justify opening at all
 # Hands at or above this floor should almost always raise a 300 opener,
 # since even moderate hands can contribute toward making 300 with partner's
 # help, and pushing deprives the opponent of a cheap contract. "Truly
-# hopeless" hands (no meld, no aces — ceiling ~130) fall below this floor.
+# hopeless" hands (no meld, no aces — ceiling ~90 since #308, a little more
+# with loose honours) fall below this floor.
 DEFENSIVE_PUSH_FLOOR = 200
 
 # -- Endgame protection (#256). The one bidding rule that is about the *game*
@@ -356,8 +361,9 @@ ENDGAME_OPP_SCORE_CAP = GAME_WIN_SCORE - 550
 # The one hand check in the rule, and the only thing that puts a bid back on
 # the table while the trigger holds. This is the Max Bid *ceiling* (all three
 # valuation stages summed), not the Base Bid: in the score
-# band this rule fires in `compute_competitive_adjustment` returns +100, so
-# the effective bar is a Base Bid a little over 100 and few hands fail it.
+# band this rule fires in `compute_competitive_adjustment` returns +60 (+100
+# before #308), so the effective bar is a Base Bid plus trick potential a
+# little over 140 and few hands fail it.
 # That is a deliberate choice rather than an oversight - if the rescue turns
 # out to fire on hands that cannot carry OPENING_BID, this is the number to
 # revisit, not the choice of measure.
@@ -668,17 +674,65 @@ def compute_trick_potential(hand, trump):
 
 def compute_competitive_adjustment(hand, trump, my_score=0, opp_score=0):
     """
-    Score-context-driven adjustment on top of Base Bid, meant to protect
-    the FINAL score clearing the bid - not a hand-shape estimate.
+    Score-context-driven adjustment, the last of the three stages: added on
+    top of what the hand melds (Base Bid) and what it takes (trick
+    potential), to cover what the hand cannot see - chiefly partner.
 
-      +160 if: behind by 600+ points, OR the hand has a rare double-payoff
+      +120 if: behind by 600+ points, OR the hand has a rare double-payoff
                shape (missing only the trump Ace for a Run, while already
                holding an Ace in each of the other 3 suits - landing that
                one card would complete BOTH the Run and Aces Around at once,
                worth pushing harder for)
-      +100 if: within 300 of winning AND opponent is 500+ from winning
-               (push to close the game out while they're far behind)
-      +130 otherwise (baseline)
+      +60  if: within 300 of winning AND opponent is 500+ from winning
+               (closing the game out while they're far behind - the most
+               cautious of the three)
+      +90  otherwise (baseline)
+
+    These were +160 / +100 / +130 until #308, and all three came down by the
+    same 40 on Paul's decision of 2026-09-15 (recorded on #282).
+
+    WHY THEY MOVED. Until #277 this number stood in for two things the rest
+    of the valuation did not price, and compute_base_bid's docstring said so
+    in as many words: it "deliberately excludes remaining-card trick-taking
+    potential and partner estimate - those live in
+    compute_competitive_adjustment instead". #277 rewrote that docstring and
+    added compute_trick_potential, which prices the trick-taking half
+    directly, card by card - and nothing came off here to make room for it.
+    So the +130 went on paying for tricks that were now paid for once
+    already. That is an argument from the code rather than a measurement,
+    but it is the suspected cause of what followed: the scale rose about 60
+    a hand with no threshold following it, and on the shipped build auto-set
+    (a contract arithmetically impossible before a card is led) went from
+    6.6% of contracts to 13.0%.
+
+    With the trick half priced elsewhere, what this stage is left carrying
+    is mostly the partner-meld estimate, and
+    PARTNER_ESTIMATE_RANGE = (50, 100) is the engine's own name for that
+    quantity. The structural argument put the double-counted portion at
+    roughly 55, which would leave about the range's midpoint of 75 - the
+    reasoning behind the ~70 of #288's `lean` arm. +90 takes 40 of that 55
+    rather than all of it, so it sits inside the range and above its
+    midpoint: about one generous partner's meld, and no longer that plus a
+    hand's worth of tricks. That is a statement of scale, not a derivation -
+    nothing reads the range today.
+
+    THE BRANCHES MOVE TOGETHER to keep their order. Lowering the baseline
+    alone would have left closing-out at +100, above a +90 baseline, so a
+    team nearly home would bid harder than normal - the opposite of what
+    that branch is for. Behind still pushes hardest, closing out is still
+    the most cautious, and every hand gives up the same 40.
+
+    NO THRESHOLD MOVED WITH IT. Every rule that reads the ceiling -
+    OPENER_THRESHOLD, THIRD_BIDDER_FLOOR, DEFENSIVE_PUSH_FLOOR,
+    ENDGAME_RESCUE_CEILING and the two partner floors - is now 40 harder for
+    the same hand to reach. That is the point of the change and not a side
+    effect to compensate for; whether any of those six should move as well
+    is still open on #282, to be decided once this change's effect is known.
+
+    THIS IS A VALUE CHOSEN, NOT MEASURED. On 2026-09-02 the plan was to settle
+    it with #288's paired A/B; on 2026-09-15 Paul set it directly instead. So
+    +90 with #288 never having run is a recorded decision, not an oversight,
+    and not a reason to put +130 back.
     """
     breakdown = {}
 
@@ -693,13 +747,13 @@ def compute_competitive_adjustment(hand, trump, my_score=0, opp_score=0):
     behind_600 = (opp_score - my_score) >= 600
 
     if behind_600 or double_payoff_shape:
-        value = 160
+        value = 120
         breakdown["Competitive adj (behind 600+ / Run+AcesAround double-payoff)"] = value
     elif (my_score >= GAME_WIN_SCORE - 300) and (opp_score <= GAME_WIN_SCORE - 500):
-        value = 100
+        value = 60
         breakdown["Competitive adj (closing out the game)"] = value
     else:
-        value = 130
+        value = 90
         breakdown["Competitive adj (baseline)"] = value
 
     return value, breakdown

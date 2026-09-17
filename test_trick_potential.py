@@ -280,31 +280,47 @@ def test_the_bonus_needs_a_pinochle_to_hang_on():
 def test_compute_max_bid_sums_all_three_stages():
     """One worked hand, so the wiring is pinned and not only the pieces: a
     near-run in trump with its Dix. 120 + 10 of Base Bid; the trump Ace at 40
-    and one trump past the fourth at 20 of trick potential; + the 130 baseline
-    adjustment = 320."""
+    and one trump past the fourth at 20 of trick potential; + the baseline
+    adjustment. The stage-2 value is read from the stage rather than written
+    in, so this test is about the sum and the one below owns the constant -
+    it said `+ 130 = 320` until #308 moved the adjustment and the total with
+    it, which is two tests failing for one change."""
+    from pinochle_engine import compute_competitive_adjustment
+
     near_run = hand(("A", TRUMP), ("K", TRUMP), ("Q", TRUMP), ("J", TRUMP), ("9", TRUMP))
     base, _b, _pool = compute_base_bid(near_run, TRUMP)
     trick, _t = compute_trick_potential(near_run, TRUMP)
+    adj, _a = compute_competitive_adjustment(near_run, TRUMP)
     total, breakdown = compute_max_bid(near_run, TRUMP)
 
     assert base == NEAR_RUN_VALUE + DIX_VALUE
     assert trick == ACE_VALUE + TRUMP_ACE_VALUE + EXTRA_TRUMP_VALUE
-    assert total == base + trick + 130
-    assert total == 320
+    assert total == base + trick + adj
 
     # And the breakdown carries every stage's lines rather than the last one's.
     assert breakdown["Run/near-run"] == NEAR_RUN_VALUE
     assert breakdown["Ace of trump"] == TRUMP_ACE_VALUE
-    assert breakdown["Competitive adj (baseline)"] == 130
+    assert breakdown["Competitive adj (baseline)"] == adj
 
 
-def test_the_competitive_adjustment_is_untouched():
+def test_the_competitive_adjustment_values_are_pinned():
     """#277 left stage 2 exactly as it was, deliberately and on Paul's answer
-    to a direct question. Pinned here so a later change to the valuation cannot
-    quietly compensate through it."""
+    to a direct question, and this test was written to hold it there so a
+    later change to the valuation could not quietly compensate through it.
+
+    #308 is that change made loudly instead: all three branches down by the
+    same 40, on Paul's decision recorded on #282, because #277's trick
+    potential is taken to have left the +130 counting tricks twice (see
+    compute_competitive_adjustment's docstring). The pin stays, at the
+    new values, for the same reason it was written - and the order of the
+    three is asserted as well as their size, since keeping closing-out below
+    the baseline is why all three moved rather than the baseline alone."""
     from pinochle_engine import compute_competitive_adjustment
 
     empty = []
-    assert compute_competitive_adjustment(empty, TRUMP)[0] == 130
-    assert compute_competitive_adjustment(empty, TRUMP, 0, 600)[0] == 160
-    assert compute_competitive_adjustment(empty, TRUMP, 700, 500)[0] == 100
+    baseline = compute_competitive_adjustment(empty, TRUMP)[0]
+    behind = compute_competitive_adjustment(empty, TRUMP, 0, 600)[0]
+    closing_out = compute_competitive_adjustment(empty, TRUMP, 700, 500)[0]
+
+    assert (baseline, behind, closing_out) == (90, 120, 60)
+    assert closing_out < baseline < behind

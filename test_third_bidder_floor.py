@@ -15,8 +15,8 @@ What is covered here:
 
   1. A hand under the floor passes where it used to open, and a hand over it
      still opens - the floor is a floor, not a repeal of the rule.
-  2. The comparison is `>=` against the ceiling, checked at the tightest pair
-     of hands the Base Bid grid actually reaches either side of 200.
+  2. The comparison is `>=` against the ceiling, checked with a hand exactly
+     on 200 and one a single grid step below it.
   3. The rule still has content: a hand in the 200-320 band opens as third
      bidder and passes as first bidder. That difference *is* the positional
      rule, and it is what a 320 floor would have deleted.
@@ -34,14 +34,15 @@ from pinochle_engine import (
 )
 
 
-# A trump Run plus a second Royal Marriage and an off-suit Ace: ceiling 440.
+# A trump Run plus a second Royal Marriage and an off-suit Ace: ceiling 400.
 # It was 360 before #242, 400 (the old MAX_BID_DEFAULT cap) between #242 and
 # #273, 360 again once the Run absorbed the Royal Marriage inside it, 400 again
-# when #277 added a trick-potential stage that pushed it back into the cap, and
-# 440 now that #283 has removed the cap and let it say what it is worth. Five
-# numbers, one unchanged hand, which is why the comments here are checked
-# against the engine by test_fixture_hands_sit_where_the_tests_assume rather
-# than trusted.
+# when #277 added a trick-potential stage that pushed it back into the cap, 440
+# once #283 removed the cap and let it say what it is worth, and 400 again - by
+# arithmetic this time, not by a clamp - when #308 took 40 off the competitive
+# adjustment. Six numbers, one unchanged hand, which is why the comments here
+# are checked against the engine by test_fixture_hands_sit_where_the_tests_assume
+# rather than trusted.
 STRONG_HAND = [
     Card(Suit.HEARTS, "A", 1),
     Card(Suit.HEARTS, "10", 1),
@@ -53,8 +54,8 @@ STRONG_HAND = [
     Card(Suit.SPADES, "A", 1),
 ]
 
-# No meld, no Aces, nothing near a Run - ceiling 140, the hand the old rule
-# opened on and the one Paul saw at the table.
+# No meld, no Aces, nothing near a Run - ceiling 100 (140 before #308), the
+# hand the old rule opened on and the one Paul saw at the table.
 JUNK_HAND = [
     Card(Suit.SPADES, "9", 1),
     Card(Suit.SPADES, "J", 1),
@@ -64,22 +65,29 @@ JUNK_HAND = [
     Card(Suit.HEARTS, "9", 1),
 ]
 
-# A Royal Marriage and two off-suit Aces: ceiling 210. Over THIRD_BIDDER_FLOOR
-# and well under OPENER_THRESHOLD, so it is the hand the whole disagreement
-# between 200 and 320 is about.
+# A marriage, two Aces and an unmarried King: ceiling 200, exactly on
+# THIRD_BIDDER_FLOOR and well under OPENER_THRESHOLD, so it is the hand the
+# whole disagreement between 200 and 320 is about. Hearts, spades and clubs all
+# value it at 200 - a Royal Marriage in hearts, or a common one plus the Ace of
+# trump in either black suit. Until #308 it was the marriage and the two Aces
+# alone, at 210; taking 40 off the competitive adjustment put that at 170, under
+# the floor, so the King was added to bring it back into the band.
 MIDDLING_HAND = [
     Card(Suit.HEARTS, "K", 1),
     Card(Suit.HEARTS, "Q", 1),
     Card(Suit.SPADES, "A", 1),
     Card(Suit.CLUBS, "A", 1),
+    Card(Suit.DIAMONDS, "K", 1),
 ]
 
-# The same Royal Marriage with one Ace instead of two: ceiling 190, the
-# nearest hand *below* the floor that the Base Bid grid reaches.
+# The same hand with the loose King swapped for a loose Queen: ceiling 190, one
+# step of the grid below the floor, and a single card away from MIDDLING_HAND.
 JUST_UNDER_HAND = [
     Card(Suit.HEARTS, "K", 1),
     Card(Suit.HEARTS, "Q", 1),
     Card(Suit.SPADES, "A", 1),
+    Card(Suit.CLUBS, "A", 1),
+    Card(Suit.DIAMONDS, "Q", 1),
 ]
 
 
@@ -145,7 +153,8 @@ def test_fixture_hands_sit_where_the_tests_assume():
     # Derived, not asserted against literals, and checked before anything else
     # in the file leans on them. #242 moved every hand holding a trump Run up
     # by 40 and #273 moved it back down; either would have quietly taken a band
-    # fixture out of its band.
+    # fixture out of its band. #308 moved every hand down by 40 and did take
+    # MIDDLING_HAND out of it, which this test caught.
     assert _ceiling(JUNK_HAND) < THIRD_BIDDER_FLOOR
     assert _ceiling(JUST_UNDER_HAND) < THIRD_BIDDER_FLOOR
     assert THIRD_BIDDER_FLOOR <= _ceiling(MIDDLING_HAND) < OPENER_THRESHOLD
@@ -184,15 +193,16 @@ def test_the_high_score_arm_is_gone():
 # ---------------------------------------------------------------------------
 
 def test_the_floor_is_reached_not_cleared():
-    # The Base Bid grid does not land on 200 exactly with any small hand - it
-    # steps 190 -> 210 through this region - so the boundary is pinned with the
-    # nearest hand either side rather than with an equality case that does not
-    # exist. Reach-it-do-not-clear-it still matters as intent: it is the form
-    # that was measured, and it matches the normal opener and #180's
+    # Pinned with an equality case, which is the only kind that can tell `>=`
+    # from `>`: MIDDLING_HAND sits exactly on the floor and opens, and
+    # JUST_UNDER_HAND, one card and one grid step away, does not. Until #308
+    # the fixtures sat at 190 and 210 and the boundary was bracketed rather than
+    # hit. Reach-it-do-not-clear-it matters as intent: it is the form that was
+    # measured, and it matches the normal opener and #180's
     # PARTNER_PASSED_FLOOR.
     assert _ceiling(JUST_UNDER_HAND) < THIRD_BIDDER_FLOOR
     assert _bid_as_third(JUST_UNDER_HAND) is None
-    assert _ceiling(MIDDLING_HAND) >= THIRD_BIDDER_FLOOR
+    assert _ceiling(MIDDLING_HAND) == THIRD_BIDDER_FLOOR
     assert _bid_as_third(MIDDLING_HAND) == OPENING_BID
 
 

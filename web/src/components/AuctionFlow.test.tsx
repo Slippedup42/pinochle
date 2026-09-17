@@ -336,8 +336,8 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
   it('opens as first bidder on a hand that clears the opener threshold', () => {
     vi.useFakeTimers()
     const hands = buildTestHands()
-    // Seat 2 gets a full club Run plus a spare Royal Marriage: Base Bid 210,
-    // ceiling 340 at 0/0 — over OPENER_THRESHOLD (320).
+    // Seat 2 gets a full club Run plus a spare Royal Marriage: Base Bid 190,
+    // ceiling 380 at 0/0 since #308 — over OPENER_THRESHOLD (320).
     hands[2] = [
       ...(['A', '10', 'K', 'Q', 'J'] as const).map((r) => new Card(Suit.Clubs, r, 1)),
       new Card(Suit.Clubs, 'K', 2),
