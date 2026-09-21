@@ -21,12 +21,27 @@ export interface ScoreboardProps {
    * centred strip off-centre by half the button; putting it *in* the flow costs
    * nothing and cannot collide. Omitted entirely when not provided. */
   onOpenMenu?: () => void
+  /** Concede the hand (trick play only). In the strip for the same reason the
+   * menu button is: as an `absolute top-2 right-2` button it was painted over
+   * this strip's own text — Paul's screenshot has "Concede hand" sitting across
+   * a team name. Omitted outside trick play, and whenever conceding is not
+   * available. */
+  onConcede?: () => void
 }
 
 /** Top strip: cumulative team scores, the standing bid, and trump. Stays
  * mounted throughout bidding/passing/trick-play so those flows (separate
  * issues) can render alongside it without needing their own scoreboard. */
-export function Scoreboard({ scoresByTeam, teamNames, currentBid, bidWinnerName, trumpSuit, meldPoints, onOpenMenu }: ScoreboardProps) {
+export function Scoreboard({
+  scoresByTeam,
+  teamNames,
+  currentBid,
+  bidWinnerName,
+  trumpSuit,
+  meldPoints,
+  onOpenMenu,
+  onConcede,
+}: ScoreboardProps) {
   const trumpColor = trumpSuit && RED_SUITS.includes(trumpSuit) ? 'text-red-400' : 'text-white'
 
   return (
@@ -65,6 +80,15 @@ export function Scoreboard({ scoresByTeam, teamNames, currentBid, bidWinnerName,
         <span>
           Meld: <span className="font-semibold text-amber-300">{meldPoints}</span>
         </span>
+      )}
+      {onConcede && (
+        <button
+          type="button"
+          onClick={onConcede}
+          className="rounded bg-red-800 px-2 py-0.5 text-xs font-semibold text-white hover:bg-red-900"
+        >
+          Concede hand
+        </button>
       )}
     </div>
   )

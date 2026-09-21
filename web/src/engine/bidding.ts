@@ -874,9 +874,6 @@ export function chooseBid(
 
     // 3rd bidder opens cheap — with a hand floor under it (#255).
     if (context.passesSoFar === 2) {
-      if (myScore > 800) {
-        return opens ? floorLevel : null
-      }
       if (opens) return floorLevel
       // The positional arm: the seat's own policy has said the hand is not
       // worth a contract, and this used to put `OPENING_BID` on the table
@@ -888,32 +885,34 @@ export function chooseBid(
       // lives on `THIRD_BIDDER_FLOOR` and should be read before it is tidied
       // up to `OPENER_THRESHOLD`.
       //
-      // Two things a reader should know before treating this as the whole of
-      // #255's third path, because they are what the measurement found:
+      // THIS ARM USED TO BE UNREACHABLE, AND THAT WAS THE BUG. Two guards
+      // stood in front of it, and between them the browser never made a
+      // positional open at all:
       //
-      // The `!partnerPassed` half of this arm cannot be reached. `passesSoFar`
-      // counts every pass of the auction and never resets, so `!everBid &&
-      // passesSoFar === 2` means exactly two seats have spoken and both
-      // passed. `auctionReducer` opens left of the dealer and advances one
-      // seat at a time, so those two are `dealer + 1` and `dealer + 2`, this
-      // seat is `dealer + 3`, and its partner is `dealer + 1` — already
-      // passed, every time. Confirmed over 1162 arrivals at this tier in
-      // headless games across `medium`/`hard`/`expert`: `partnerPassed` was
-      // true on all 1162. So this floor guards a state the auction cannot
-      // produce, and it changes no decision this engine makes today.
+      //   `if (partnerPassed) return null` — `passesSoFar` counts every pass
+      //   and never resets, so `!everBid && passesSoFar === 2` means exactly
+      //   two seats have spoken and both passed. `auctionReducer` opens left
+      //   of the dealer and advances one seat at a time, so those two are
+      //   `dealer + 1` and `dealer + 2`, this seat is `dealer + 3`, and its
+      //   partner is `dealer + 1` — already passed, every time. The guard was
+      //   documented as covering a state the auction cannot produce; what it
+      //   actually did was return `null` on every arrival, every game.
       //
-      // It is kept rather than deleted as dead code, deliberately. The
-      // seat-order argument above is a fact about `auctionReducer`'s rotation,
-      // not about `chooseBid`, and if that rotation ever changes — a seat
-      // allowed back into the auction, a different opening seat — deleting
-      // this arm would silently reinstate opening-on-anything. The floored
-      // branch is the cheap net; `biddingSim.test.ts`'s seat-order test is
-      // what keeps the two in step.
+      //   `if (myScore > 800)` — a sub-case Python had already dropped (it
+      //   applied `OPENER_THRESHOLD`, which is not this rule's floor, and
+      //   #256's endgame protection sits in front of this tier doing that job
+      //   with thresholds chosen for it).
       //
-      // The live instance of #255's third path is Python's, where
-      // `Player.choose_bid` has this tier with no hand check on either arm and
-      // no partner condition, and it fires. That one moves in this commit too.
-      if (partnerPassed) return null
+      // Paul reported the symptom from live play at 0-0: three seats passed,
+      // the auction passed out, and the human dealer was stuck with
+      // `FORCED_BID` (250) — the exact outcome this tier exists to deny.
+      //
+      // `pinochle_engine.py` is authoritative here (CLAUDE.md) and has always
+      // read `passes_so_far == 2 -> OPENING_BID if ceiling >= THIRD_BIDDER_FLOOR`,
+      // with no partner condition and no score sub-case. This is the
+      // TypeScript side coming back to it — #118's bug class, caught by a
+      // player rather than by the parity net, which does not cover
+      // `chooseBid`'s tiers.
       return ceiling >= THIRD_BIDDER_FLOOR ? OPENING_BID : null
     }
 

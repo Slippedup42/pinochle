@@ -257,5 +257,5 @@ export function AuctionFlow({
   // auction, as opposed to where it now stands. `state.log` is still built and
   // still handed to `onComplete`, so restoring a view of it is a render, not a
   // rebuild.
-  return <Table state={tableState} layout="auction" dock={dock} overlay={overlay} onOpenMenu={onOpenMenu} />
+  return <Table state={tableState} layout="stacked" dock={dock} overlay={overlay} onOpenMenu={onOpenMenu} />
 }

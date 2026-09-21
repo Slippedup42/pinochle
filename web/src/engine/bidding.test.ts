@@ -688,13 +688,46 @@ describe('chooseBid', () => {
       expect(chooseBid(0, belowOpenerHand, OPENING_BID - 10, 10, first, STATIC_LEVEL)).toBeNull()
     })
 
-    it('3rd bidder falls back to the normal threshold once my score is above 800', () => {
-      // oppScore kept above 500 so the "closing out the game" competitive
-      // adjustment bucket (+60) doesn't kick in and change the ceiling -
-      // this test is purely about the passes_so_far===2 threshold gate.
+    it('3rd bidder keeps its positional floor at every score', () => {
+      // This used to assert the opposite — that above 800 the tier fell back to
+      // OPENER_THRESHOLD — and that sub-case is gone. Python never had it:
+      // `passes_so_far == 2` there is one line with no score condition, and the
+      // seat near the end of the game has #256's endgame protection in front of
+      // this tier doing that job with thresholds chosen for it.
+      //
+      // oppScore kept above 500 so neither the "closing out the game"
+      // adjustment bucket nor #256 is what is answering.
       const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 850, 1: 600 } })
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
       expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
+      // The band hand is the one that moved: under the old sub-case this was a
+      // pass, because 850 sent it to OPENER_THRESHOLD instead of the floor.
+      expect(chooseBid(0, belowOpenerHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBe(OPENING_BID)
+    })
+
+    // Paul reported this one from live play at 0-0: three seats passed, the
+    // auction passed out, and he was left holding FORCED_BID (250) as dealer.
+    //
+    // Every other test in this block passes `passedPlayers: []` — partner still
+    // to speak — and that is a state no real auction reaches, as the note on
+    // the weak-hand case above says in as many words. The auction opens left of
+    // the dealer, so the seat arriving here with `passesSoFar === 2` is
+    // `dealer + 3` and its partner is `dealer + 1`, who has already passed.
+    // `chooseBid` carried `if (partnerPassed) return null` in front of the
+    // positional arm, so the tier returned null on every arrival a player could
+    // actually produce, while the unit tests above exercised the arm behind it.
+    // This test is in the reachable state on purpose.
+    it('opens positionally when the partner has passed, rather than letting the auction pass out', () => {
+      const context = baseContext({
+        dealer: 1,
+        passesSoFar: 2,
+        passedPlayers: [2, 3],
+        scores: { 0: 0, 1: 0 },
+      })
+      expect(ceilingOf(belowOpenerHand)).toBeGreaterThanOrEqual(THIRD_BIDDER_FLOOR)
+      expect(chooseBid(0, belowOpenerHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBe(OPENING_BID)
+      // The floor is still a floor: a lone 9 lets it pass out as before.
+      expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBeNull()
     })
   })
 
@@ -1140,11 +1173,16 @@ describe('every bid chooseBid can return is legal (#177)', () => {
     // lone Q(S) picked up both the new no-King-of-Spades pinochle bonus and the
     // unmarried-Queen line. It became a bare near-run with its Dix, and #308
     // took 40 off the competitive adjustment underneath it and left it at 280.
-    // Two off-suit Aces put back exactly the 40 that came off, through the one
-    // line of the valuation none of those changes has touched: 120 near-run +
-    // 10 Dix = 130 of Base Bid; three Aces at 60, the trump Ace's own 20 and
-    // one trump past the fourth at 20 = 100 of trick potential; over the 90
-    // baseline. No Run rule, no Pinochle rule, no marriage rule anywhere in it.
+    // Two off-suit Aces put back exactly the 40 that came off, and when the
+    // baseline went 90 -> 80 the last of those Aces became a lone King, which
+    // is worth 30 to the Ace's 20 and so pays the 10 back.
+    //
+    // What it adds up to, through lines none of those changes has touched: 120
+    // near-run + 10 Dix = 130 of Base Bid; two Aces at 40, the trump Ace's own
+    // 20, one trump past the fourth at 20 and an unmarried King at 30 = 110 of
+    // trick potential; over the 80 baseline. No Run rule, no Pinochle rule, no
+    // marriage rule anywhere in it — the King is unmarried precisely because
+    // there is no Queen of clubs behind it.
     const ceiling320Hand = [
       new Card(Suit.Hearts, 'A', 1),
       new Card(Suit.Hearts, 'K', 1),
@@ -1152,7 +1190,7 @@ describe('every bid chooseBid can return is legal (#177)', () => {
       new Card(Suit.Hearts, 'J', 1),
       new Card(Suit.Hearts, '9', 1),
       new Card(Suit.Spades, 'A', 1),
-      new Card(Suit.Clubs, 'A', 1),
+      new Card(Suit.Clubs, 'K', 1),
     ]
     const { trump, total } = bestBaseBid(ceiling320Hand, 0, 0)
     expect(trump).toBe(Suit.Hearts)
@@ -1205,7 +1243,10 @@ describe('raising over a bid our own team already holds (#206)', () => {
     new Card(Suit.Hearts, 'J', 1),
     new Card(Suit.Hearts, '9', 1),
     new Card(Suit.Spades, 'A', 1),
-    new Card(Suit.Clubs, 'A', 1),
+    // An unmarried King rather than a third Ace, which is what keeps this hand
+    // inside the band the test needs: 30 against 20 puts it back on
+    // OPENER_THRESHOLD after the 90 -> 80 baseline took it to 310.
+    new Card(Suit.Clubs, 'K', 1),
   ]
 
   /** Seat 2 opened one rung under `partnerBid`; its partner (seat 0) then bid
@@ -1261,6 +1302,8 @@ describe('raising over a bid our own team already holds (#206)', () => {
     // that *could* have opened. #308 took modestHand to 280 without failing
     // anything here: under the floor is all the old assertion asked, and a
     // hand under OPENER_THRESHOLD backing off proves nothing about the raise.
+    // That is why the fixture was re-pointed at the band rather than the
+    // assertion relaxed when the baseline moved again.
     expect(bestBaseBid(modestHand, 0, 0).total).toBeGreaterThanOrEqual(OPENER_THRESHOLD)
     expect(bestBaseBid(modestHand, 0, 0).total).toBeLessThan(PARTNER_RAISE_FLOOR)
     for (const partnerBid of [260, 300, 330]) {

@@ -65,28 +65,32 @@ JUNK_HAND = [
     Card(Suit.HEARTS, "9", 1),
 ]
 
-# A marriage, two Aces and an unmarried King: ceiling 200, exactly on
+# A marriage, an Ace and two unmarried Kings: ceiling 200, exactly on
 # THIRD_BIDDER_FLOOR and well under OPENER_THRESHOLD, so it is the hand the
-# whole disagreement between 200 and 320 is about. Hearts, spades and clubs all
-# value it at 200 - a Royal Marriage in hearts, or a common one plus the Ace of
-# trump in either black suit. Until #308 it was the marriage and the two Aces
-# alone, at 210; taking 40 off the competitive adjustment put that at 170, under
-# the floor, so the King was added to bring it back into the band.
+# whole disagreement between 200 and 320 is about.
+#
+# This hand is re-pointed at the floor every time the valuation moves under it,
+# which is the job it does. Until #308 it was a marriage and two Aces, at 210;
+# taking 40 off the competitive adjustment put that at 170 and a loose King was
+# added to bring it back. Taking the baseline 90 -> 80 put it at 190, and the
+# remaining spare Ace became a loose King for the same reason: an unmarried King
+# is worth 30 where an Ace is worth 20, so the swap is exactly the +10 the
+# baseline took away.
 MIDDLING_HAND = [
     Card(Suit.HEARTS, "K", 1),
     Card(Suit.HEARTS, "Q", 1),
     Card(Suit.SPADES, "A", 1),
-    Card(Suit.CLUBS, "A", 1),
+    Card(Suit.CLUBS, "K", 1),
     Card(Suit.DIAMONDS, "K", 1),
 ]
 
-# The same hand with the loose King swapped for a loose Queen: ceiling 190, one
+# The same hand with one loose King swapped for a loose Queen: ceiling 190, one
 # step of the grid below the floor, and a single card away from MIDDLING_HAND.
 JUST_UNDER_HAND = [
     Card(Suit.HEARTS, "K", 1),
     Card(Suit.HEARTS, "Q", 1),
     Card(Suit.SPADES, "A", 1),
-    Card(Suit.CLUBS, "A", 1),
+    Card(Suit.CLUBS, "K", 1),
     Card(Suit.DIAMONDS, "Q", 1),
 ]
 
