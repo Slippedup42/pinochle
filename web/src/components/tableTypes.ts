@@ -74,6 +74,10 @@ export interface TableState {
   /** Meld points of the bidding team, shown in the header after meld
    * declaration. Only meaningful during trick-play; omitted before that. */
   readonly meldPoints?: number
+  /** The cards the human was just passed, marked in their hand so they can
+   * find what they received among the ones they already held. Set only for the
+   * pass-reveal step of the auction; omitted everywhere else. */
+  readonly receivedCards?: readonly Card[]
 }
 
 /** Table position, independent of PlayerIndex — the human seat is always

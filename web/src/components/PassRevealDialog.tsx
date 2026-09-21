@@ -1,6 +1,4 @@
-import { type Card, sortHandForDisplay } from '../engine/card'
-import { useMemo } from 'react'
-import { PlayingCard } from './PlayingCard'
+import type { Card } from '../engine/card'
 
 export interface PassRevealDialogProps {
   readonly cards: readonly Card[] | null
@@ -8,31 +6,29 @@ export interface PassRevealDialogProps {
   readonly onContinue: () => void
 }
 
+/**
+ * The step between the pass and the meld. It says how many cards arrived and
+ * that they are marked in the hand — the cards themselves are not repeated
+ * here. This is docked under the call circle and above the hand (see `Table`'s
+ * `dock`), so the hand it points at is on screen, unobscured, while it is read.
+ */
 export function PassRevealDialog({ cards, partnerName, onContinue }: PassRevealDialogProps) {
-  const sorted = useMemo(() => (cards ? sortHandForDisplay(cards) : []), [cards])
+  const count = cards?.length ?? 0
 
   return (
-    <div className="rounded-lg bg-slate-800 p-6 shadow-xl">
-      <h2 className="mb-4 text-center text-lg font-semibold text-white">
-        {cards && cards.length > 0 ? `${partnerName} passed you ${cards.length} card${cards.length !== 1 ? 's' : ''}` : 'No cards passed'}
+    <div className="w-full max-w-xs rounded-lg bg-slate-800 p-4 text-center shadow-xl">
+      <h2 className="text-lg font-semibold text-white">
+        {count > 0 ? `${partnerName} passed you ${count} card${count !== 1 ? 's' : ''}` : 'No cards passed'}
       </h2>
-      {cards && cards.length > 0 && (
-        <div className="mb-6 flex justify-center gap-0">
-          {sorted.map((card, i) => (
-            <div key={i} className="-ml-10 first:ml-0">
-              <PlayingCard suit={card.suit} rank={card.rank} />
-            </div>
-          ))}
-        </div>
+      {count > 0 && (
+        <p className="mt-1 text-sm text-amber-300">They are marked NEW in your hand below.</p>
       )}
-      <div className="flex justify-center">
-        <button
-          className="rounded bg-blue-600 px-6 py-2 text-white hover:bg-blue-500"
-          onClick={onContinue}
-        >
-          Continue
-        </button>
-      </div>
+      <button
+        className="mt-4 w-full rounded bg-blue-600 px-6 py-2 text-white hover:bg-blue-500"
+        onClick={onContinue}
+      >
+        Continue
+      </button>
     </div>
   )
 }

@@ -535,10 +535,12 @@ export interface CompetitiveAdjustmentResult {
  *   +60  if: within 300 of winning AND opponent is 500+ from winning
  *            (closing the game out while they're far behind - the most
  *            cautious of the three)
- *   +90  otherwise (baseline)
+ *   +80  otherwise (baseline)
  *
  * These were +160 / +100 / +130 until #308, and all three came down by the
- * same 40 on Paul's decision of 2026-09-15 (recorded on #282). Python's
+ * same 40 on Paul's decision of 2026-09-15 (recorded on #282). The baseline
+ * alone then went 90 -> 80 on Paul's decision of 2026-09-19; the other two
+ * branches stayed at 120 and 60. Python's
  * `compute_competitive_adjustment` is authoritative and moved in the same
  * commit (#213).
  *
@@ -609,7 +611,7 @@ export function computeCompetitiveAdjustment(
     value = 60
     breakdown['Competitive adj (closing out the game)'] = value
   } else {
-    value = 90
+    value = 80
     breakdown['Competitive adj (baseline)'] = value
   }
 

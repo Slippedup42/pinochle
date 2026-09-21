@@ -51,6 +51,14 @@ export interface TrickAreaProps {
    * exactly as `trick` places its cards. Omitted outside the auction, where
    * `trick` occupies the same cells. */
   calls?: readonly SeatCallAt[]
+  /** Auction layout: print each seat's name under its call, so the call reads
+   * as "Alexander: 320" without matching a side of the circle to a label
+   * somewhere else on the board. Off in the standard layout, where the seat's
+   * own label sits right beside the circle. */
+  namedCalls?: boolean
+  /** With `namedCalls`: the dealer, marked next to their name. The human's own
+   * marker lives on their seat header, so it is not repeated here. */
+  dealer?: PlayerIndex
 }
 
 const POSITION_CLASS: Record<SeatPosition, string> = {
@@ -102,7 +110,7 @@ function CallLabel({ call }: { call: SeatCall }) {
  * settled), so they share the same 3x3 placement grid rather than each getting
  * their own layout to keep in sync.
  */
-export function TrickArea({ trick, humanPlayer, winningPlayer, trickNumber, calls }: TrickAreaProps) {
+export function TrickArea({ trick, humanPlayer, winningPlayer, trickNumber, calls, namedCalls, dealer }: TrickAreaProps) {
   return (
     <div className="flex flex-col items-center gap-1">
       {trickNumber !== undefined && (
@@ -150,9 +158,19 @@ export function TrickArea({ trick, humanPlayer, winningPlayer, trickNumber, call
             // as loose text.
             role="img"
             aria-label={describeCall(name, call)}
-            className={`flex items-center justify-center text-center ${POSITION_CLASS[seatPosition(player, humanPlayer)]}`}
+            className={`flex min-w-0 flex-col items-center justify-center gap-1 text-center ${POSITION_CLASS[seatPosition(player, humanPlayer)]}`}
           >
             <CallLabel call={call} />
+            {namedCalls && (
+              <span className="flex max-w-full items-center gap-0.5 text-[11px] leading-none font-medium text-white/80">
+                <span className="truncate">{name}</span>
+                {player === dealer && player !== humanPlayer && (
+                  <span className="shrink-0 rounded bg-neutral-700/80 px-1 text-[9px] leading-3 font-bold text-amber-300">
+                    D
+                  </span>
+                )}
+              </span>
+            )}
           </div>
         ))}
       </div>

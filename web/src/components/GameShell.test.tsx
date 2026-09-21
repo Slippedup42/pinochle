@@ -67,11 +67,16 @@ describe('GameShell', { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole('button', { name: 'New Game' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
 
-    // West/Partner/East seat names, read off the seat labels (Seat.tsx
-    // renders `seat.name` as plain text) — captured before unmount so we
-    // can assert the resumed game shows the exact same draw, not a fresh
-    // one.
-    const seatNamesBefore = screen.getAllByText(/cards$/).map((el) => el.parentElement?.textContent ?? '')
+    // West/Partner/East seat names, read off the call circle (the auction layout
+    // draws no seats for them; each name rides on its call, whose accessible
+    // name is "<name>: <call>") — captured before unmount so we can assert the
+    // resumed game shows the exact same draw, not a fresh one.
+    const seatCalls = () =>
+      screen.getAllByRole('img').flatMap((el) => {
+        const label = el.getAttribute('aria-label') ?? ''
+        return /: (bid \d+|passed|to bid|waiting)$/.test(label) ? [label] : []
+      })
+    const seatNamesBefore = seatCalls()
     // Team names, read off the Scoreboard strip ("<name>: <score>").
     const scoreboardTextBefore = document.querySelector('.bg-green-950')?.textContent ?? ''
 
@@ -81,11 +86,11 @@ describe('GameShell', { timeout: 20_000 }, () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Bid' })).not.toBeNull())
 
-    const seatNamesAfter = screen.getAllByText(/cards$/).map((el) => el.parentElement?.textContent ?? '')
+    const seatNamesAfter = seatCalls()
     const scoreboardTextAfter = document.querySelector('.bg-green-950')?.textContent ?? ''
 
     expect(seatNamesAfter).toEqual(seatNamesBefore)
-    expect(seatNamesBefore.length).toBeGreaterThan(0) // sanity: actually found opponent seats
+    expect(seatNamesBefore.length).toBe(4) // sanity: actually found all four seats
     expect(scoreboardTextAfter).toBe(scoreboardTextBefore)
   })
 

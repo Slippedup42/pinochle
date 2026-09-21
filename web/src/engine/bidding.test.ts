@@ -382,15 +382,16 @@ describe('computeTrickPotential', () => {
 })
 
 // The three values moved together in #308, each down 40 (130/160/100 to
-// 90/120/60), on Paul's decision recorded on #282. They are pinned as literals
+// 90/120/60), on Paul's decision recorded on #282; the baseline alone then went
+// 90 -> 80 on Paul's decision of 2026-09-19. They are pinned as literals
 // on purpose: this block is where the constants live in the test suite, and
 // the fixtures elsewhere in the file are checked through `ceilingOf` rather
 // than by restating a ceiling.
 describe('computeCompetitiveAdjustment', () => {
-  it('defaults to the +90 baseline', () => {
+  it('defaults to the +80 baseline', () => {
     const { value, breakdown } = computeCompetitiveAdjustment([], trump)
-    expect(value).toBe(90)
-    expect(breakdown['Competitive adj (baseline)']).toBe(90)
+    expect(value).toBe(80)
+    expect(breakdown['Competitive adj (baseline)']).toBe(80)
   })
 
   it('gives +120 when behind by 600 or more', () => {

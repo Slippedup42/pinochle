@@ -102,3 +102,31 @@ describe('TrickArea auction calls (#191)', () => {
     expect(board.getByText('Trick 3 of 12')).not.toBeNull()
   })
 })
+
+describe('TrickArea named calls', () => {
+  const calls = callsFor({
+    0: { kind: 'turn' },
+    1: { kind: 'bid', amount: 320 },
+    2: { kind: 'pass' },
+    3: { kind: 'waiting' },
+  })
+
+  it('prints each seat name under its call, and marks a non-human dealer', () => {
+    const { container } = render(<TrickArea trick={[]} humanPlayer={0} calls={calls} namedCalls dealer={1} />)
+    const board = within(container)
+    for (const name of ['You', 'West', 'Partner', 'East']) expect(board.getByText(name)).not.toBeNull()
+    // Only West deals: one marker, inside West's own call.
+    expect(board.getAllByText('D')).toHaveLength(1)
+    expect(within(board.getByLabelText('West: bid 320')).getByText('D')).not.toBeNull()
+  })
+
+  it('leaves the human dealer to their seat header rather than repeating it', () => {
+    const { container } = render(<TrickArea trick={[]} humanPlayer={0} calls={calls} namedCalls dealer={0} />)
+    expect(within(container).queryByText('D')).toBeNull()
+  })
+
+  it('prints no names unless asked', () => {
+    const { container } = render(<TrickArea trick={[]} humanPlayer={0} calls={calls} />)
+    expect(within(container).queryByText('West')).toBeNull()
+  })
+})

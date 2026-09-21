@@ -26,6 +26,18 @@ export interface TableProps {
   /** Meld phase: when true, non-human seats render their cards face-up (meld
    * cards on the table) instead of just their name and card count. */
   exposeCards?: boolean
+  /** `'auction'` swaps the 3x3 board for a stacked one built around a docked
+   * slot: the call circle on top, `dock` under it, the human's hand at the
+   * bottom. The other three seats are not drawn as seats at all — their names
+   * ride on their calls in the circle, and nothing else about them (a card count
+   * that is 12 for everyone) is worth the room during the auction. Defaults to
+   * the standard board. */
+  layout?: 'board' | 'auction'
+  /** `layout="auction"`: an in-flow slot between the circle and the hand, for a
+   * panel that must not cover either (the bid controls, the pass reveal). Its
+   * height is reserved even while empty, so the hand does not jump every time
+   * the turn passes to and from the human. */
+  dock?: ReactNode
 }
 
 /**
@@ -58,7 +70,7 @@ const POSITION_GRID_CLASS: Record<SeatPosition, string> = {
  * and trick-play controls (separate issues) will mount into this shell,
  * most likely inside/near the human seat and the TrickArea respectively.
  */
-export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, exposeCards }: TableProps) {
+export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, exposeCards, layout = 'board', dock }: TableProps) {
   const { onMouseDown, onMouseMove, onMouseUp } = useDraggable()
 
   useEffect(() => {
@@ -85,8 +97,17 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
     humanPlayable,
     trickWinner,
     meldPoints,
+    receivedCards,
   } = state
   const bidWinnerSeat = bidWinner === null ? undefined : seats.find((seat) => seat.player === bidWinner)
+  const humanSeat = seats.find((seat) => seat.player === humanPlayer)
+  // Calls are derived here rather than passed in, so a caller only has to
+  // populate `SeatState.call` and the circle placement follows from the seat it
+  // is already describing. Seats without a call (every phase after the auction)
+  // contribute nothing.
+  const calls = seats.flatMap((seat) =>
+    seat.call ? [{ player: seat.player, name: seat.name, call: seat.call }] : [],
+  )
 
   return (
     // Safe-area insets (#161, --safe-* in index.css): on an installed instance
@@ -144,6 +165,37 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
           scrolls — 375x812 is 14px over — and anything that grows the bottom
           seat or the circle costs twice its own height here. Re-measure this
           number before changing either. */}
+      {layout === 'auction' ? (
+        // Circle, then dock, then hand — top to bottom, in the order a bid is
+        // made: read the table, decide, look at your cards. `flex-1` on the dock
+        // gives it all the slack, which centres the panel between the circle and
+        // the hand instead of leaving a gap above the hand. The dock is
+        // `min-h-[12.5rem]` because the bid panel measures ~182px at 390px wide;
+        // a floor a little above that absorbs a third line of hint text.
+        <div className="flex flex-1 flex-col items-center gap-2 p-2">
+          <TrickArea
+            trick={trick}
+            humanPlayer={humanPlayer}
+            winningPlayer={trickWinner}
+            calls={calls}
+            namedCalls
+            dealer={state.dealer}
+          />
+          <div className="flex min-h-[12.5rem] w-full flex-1 items-center justify-center">{dock}</div>
+          {humanSeat && (
+            <div className={SEAT_CELL_CLASS}>
+              <Seat
+                seat={humanSeat}
+                position="bottom"
+                isHuman
+                isBidWinner={humanSeat.player === bidWinner}
+                isDealer={humanSeat.player === state.dealer}
+                receivedCards={receivedCards}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="grid flex-1 grid-cols-[minmax(0,1fr)_minmax(0,13rem)_minmax(0,1fr)] grid-rows-[1fr_auto_1fr] items-center justify-items-center gap-2 p-2">
         {seats.map((seat) => (
           <div
@@ -158,25 +210,21 @@ export function Table({ state, overlay, logPanel, onOpenMenu, trickNumber, expos
               isDealer={seat.player === state.dealer}
               playable={seat.player === humanPlayer ? humanPlayable : undefined}
               exposeCards={seat.player !== humanPlayer ? exposeCards : undefined}
+              receivedCards={seat.player === humanPlayer ? receivedCards : undefined}
             />
           </div>
         ))}
         <div className="col-start-2 row-start-2">
-          {/* Calls are derived here rather than passed in, so a caller only has
-              to populate `SeatState.call` and the circle placement follows from
-              the seat it is already describing. Seats without a call (every
-              phase after the auction) contribute nothing. */}
           <TrickArea
             trick={trick}
             humanPlayer={humanPlayer}
             winningPlayer={trickWinner}
             trickNumber={trickNumber}
-            calls={seats.flatMap((seat) =>
-              seat.call ? [{ player: seat.player, name: seat.name, call: seat.call }] : [],
-            )}
+            calls={calls}
           />
         </div>
       </div>
+      )}
       {/* Fixed to the viewport, so the root's safe-area padding doesn't reach
           it — both of these carry the insets themselves. */}
       {logPanel && (

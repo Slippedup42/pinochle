@@ -167,3 +167,33 @@ describe('Seat hand layout (#187)', () => {
     expect(container.querySelectorAll('div.overflow-x-auto')).toHaveLength(1)
   })
 })
+
+describe('Seat received cards', () => {
+  const hand = [new Card(Suit.Spades, 'A', 1), new Card(Suit.Hearts, 'K', 1), new Card(Suit.Clubs, 'Q', 1)]
+
+  it('marks exactly the received cards, matched by value', () => {
+    // A different instance of the same card: the marks must not depend on the
+    // received list holding the very objects that are in the hand.
+    const received = [new Card(Suit.Hearts, 'K', 1)]
+    render(
+      <Seat
+        seat={{ player: 0, name: 'You', hand }}
+        position="bottom"
+        isHuman
+        isBidWinner={false}
+        isDealer={false}
+        receivedCards={received}
+      />,
+    )
+    expect(screen.getAllByText('NEW')).toHaveLength(1)
+    const marked = screen.getByText('received in the pass').parentElement
+    expect(marked?.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('K of H')
+    cleanup()
+  })
+
+  it('marks nothing when no cards were received', () => {
+    render(<Seat seat={{ player: 0, name: 'You', hand }} position="bottom" isHuman isBidWinner={false} isDealer={false} />)
+    expect(screen.queryByText('NEW')).toBeNull()
+    cleanup()
+  })
+})
