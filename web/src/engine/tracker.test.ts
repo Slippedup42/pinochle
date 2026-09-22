@@ -1,7 +1,28 @@
-import { describe, expect, it } from 'vitest'
-import type { SkillLevel } from './skills'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { SkillLevel, SkillParams } from './skills'
 import { Card, Suit } from './card'
-import { SKILL_PARAMS } from './skills'
+import { SHIPPED_PARAMS, SKILL_LEVELS, SKILL_PARAMS } from './skills'
+
+/**
+ * Every level is pinned to `partnerRead: 'current'` for this file, and
+ * restored after it. The forced-beat and feed-partner tests below put this
+ * seat second after an opponent's lead with a beatable card on the table -
+ * which is precisely the position the shipped `'feedAhead'` read acts on, so
+ * under it seven of them would be asserting the King fed rather than the tier
+ * they are named for. The position read is tested in its own block, which
+ * installs the arm it means explicitly, the way `withSimplePlay` and
+ * `withSafeCounterOff` do for theirs.
+ */
+const pristinePartnerRead: Partial<Record<SkillLevel, SkillParams>> = {}
+beforeAll(() => {
+  for (const level of SKILL_LEVELS) {
+    pristinePartnerRead[level] = SKILL_PARAMS[level]
+    SKILL_PARAMS[level] = { ...SKILL_PARAMS[level], partnerRead: 'current' }
+  }
+})
+afterAll(() => {
+  for (const level of SKILL_LEVELS) SKILL_PARAMS[level] = pristinePartnerRead[level] as SkillParams
+})
 import { Trick, type TrickPlay } from './trick'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from './tracker'
 import { TrumpMemory } from './trumpMemory'
@@ -390,6 +411,85 @@ describe('chooseLeadCard', () => {
     const led = chooseLeadCard(hand, Suit.Spades, new PlayTracker(), false, 'hard', true)
     expect(led.suit).toBe(Suit.Spades)
     expect(led.rank).toBe('A')
+  })
+})
+
+/** Runs `play` with one level temporarily on the given `partnerRead` arm. */
+function withPartnerRead<T>(arm: 'feedAhead' | 'holdBack' | 'likely', play: (skill: SkillLevel) => T): T {
+  const level: SkillLevel = 'medium'
+  const saved = SKILL_PARAMS[level]
+  SKILL_PARAMS[level] = { ...saved, partnerRead: arm }
+  try {
+    return play(level)
+  } finally {
+    SKILL_PARAMS[level] = saved
+  }
+}
+
+describe('chooseFollowCard partner read (position-aware)', () => {
+  // Team [0, 2]; this seat is player 2 throughout. Every level in this file is
+  // pinned to `'current'` (top of file), so the default call below is the
+  // control and the arm under test is installed by name.
+  it('the shipped configuration reads feedAhead', () => {
+    expect(SHIPPED_PARAMS.partnerRead).toBe('feedAhead')
+  })
+
+  const HEARTS = (rank: 'A' | '10' | 'K' | 'Q' | 'J' | '9', copy: 1 | 2 = 1) => new Card(Suit.Hearts, rank, copy)
+
+  it('feed-ahead: second to play after an opponent lead, partner last, forced to beat — puts the King in', () => {
+    // Opponent (1) led the 9; J and K both beat it, so the shipped rule takes
+    // cheaply with the J. Partner (0) still to play, and last.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: HEARTS('9') }]
+    const legalMoves = [HEARTS('J'), HEARTS('K')]
+    expect(chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2]).rank).toBe('J')
+    const fed = withPartnerRead('feedAhead', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(fed.rank).toBe('K')
+  })
+
+  it('feed-ahead does not fire from third seat — partner has already played', () => {
+    // Opponent (1) led, partner (0) followed low, an opponent sits behind.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: HEARTS('9') }, { player: 0, card: HEARTS('J') }]
+    const legalMoves = [HEARTS('Q'), HEARTS('K')]
+    const played = withPartnerRead('feedAhead', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(played.rank).toBe('Q')
+  })
+
+  it('hold-back: partner winning with a beatable card and an opponent still behind — plays a non-point', () => {
+    // Partner (0) led the Queen, opponent (1) could not beat it. This seat is
+    // third; the last opponent may still hold a King, 10 or Ace of hearts.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: HEARTS('Q') }, { player: 1, card: HEARTS('J') }]
+    const legalMoves = [HEARTS('9'), HEARTS('K'), HEARTS('10')]
+    expect(chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2]).rank).toBe('K')
+    const held = withPartnerRead('holdBack', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(held.rank).toBe('9')
+  })
+
+  it('hold-back still feeds when partner\'s card is boss', () => {
+    const trickPlays: TrickPlay[] = [{ player: 0, card: HEARTS('A') }, { player: 1, card: HEARTS('9') }]
+    const legalMoves = [HEARTS('J'), HEARTS('K'), HEARTS('10')]
+    const played = withPartnerRead('holdBack', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(played.rank).toBe('K')
+  })
+
+  it('hold-back does not apply from the last seat — nothing is behind', () => {
+    const trickPlays: TrickPlay[] = [
+      { player: 3, card: HEARTS('9') },
+      { player: 0, card: HEARTS('Q') },
+      { player: 1, card: HEARTS('J') },
+    ]
+    const legalMoves = [HEARTS('9', 2), HEARTS('K')]
+    const played = withPartnerRead('likely', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(played.rank).toBe('K')
   })
 })
 

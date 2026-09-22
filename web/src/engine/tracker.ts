@@ -639,23 +639,52 @@ export function chooseFollowCard(
     // returns false against any trump — correctly, since no card of the lead
     // suit can take a trick a trump is winning.
     const forcedBeat = winner !== undefined && legalMoves.every((c) => c.beats(winner.card, trump))
+    const nonPoints = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
+
+    // "Is this partner's trick?" read with position (`PartnerRead`). Both
+    // reads below hinge on whether the card currently winning is boss in its
+    // suit — every higher copy seen or in this hand — because that is the
+    // only thing this seat can know about what the seats behind it can do.
+    // A boss card can still be ruffed; nothing here claims otherwise.
+    const partnerRead = SKILL_PARAMS[skill].partnerRead
+    const winnerIsBoss = winner !== undefined && isBoss(winner.card, hand, trump, tracker, memory)
+    // Opponent led and this seat is second: partner plays last, the best seat
+    // at the table. Forced to beat, the shipped rule takes the trick as cheaply
+    // as it can; this one puts the King in for partner to collect instead,
+    // when the opponent's lead is beatable by something still unaccounted for.
+    const feedAhead =
+      (partnerRead === 'feedAhead' || partnerRead === 'likely') &&
+      !ledByTeam &&
+      trickPlays.length === 1 &&
+      forcedBeat &&
+      !winnerIsBoss
+    // Partner is winning but exactly one seat is still to play, and it is an
+    // opponent (partner led -> this seat is third; opponent led and partner
+    // won it -> this seat is third). Feeding a King into a trick that seat can
+    // still take hands them twenty; hold it unless partner's card is boss.
+    const holdBack =
+      (partnerRead === 'holdBack' || partnerRead === 'likely') &&
+      partnerWinning &&
+      seatsStillToPlay === 1 &&
+      !winnerIsBoss
+    const feed = () => (holdBack ? (nonPoints.length > 0 ? minByRank(nonPoints) : minByRank(legalMoves)) : feedPartner(legalMoves))
 
     if (ledByTeam) {
       // Partner led, so check partner-winning first (#312) — the natural first
       // question when your own side started the trick — and only then ask
       // whether an opponent has since overtaken and needs reclaiming.
-      if (partnerWinning) return feedPartner(legalMoves)
+      if (partnerWinning) return feed()
       if (forcedBeat) return chooseForcedBeatOwnLead(legalMoves)
     } else {
       // Opponent led: forced-to-beat is checked first, because being forced to
       // beat here is banking a certain trick, not gambling on one.
+      if (feedAhead) return feedPartner(legalMoves)
       if (forcedBeat) {
         return chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
       }
-      if (partnerWinning) return feedPartner(legalMoves)
+      if (partnerWinning) return feed()
     }
 
-    const nonPoints = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
     if (nonPoints.length > 0) return minByRank(nonPoints)
     return minByRank(legalMoves)
   }

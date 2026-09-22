@@ -144,11 +144,22 @@ export interface HeadlessGameOptions {
   readonly stats?: Record<TeamId, SideStats>
   /** Appended to, if supplied. See `BidSituationSample`. */
   readonly collectBidSituations?: BidSituationSample[]
+  /** Which level's `TRUMP_MEMORY_CAPACITY` every seat's `TrumpMemory` is built
+   *  with. Omitted, each seat remembers as its own level does — which is what
+   *  a *capacity* comparison (`capacity`, `safe`) is measuring. A *policy*
+   *  comparison must pass one level for both sides: `runAb` seats its two arms
+   *  on two levels, `hard` and `expert`, and those remember 6 and 10 trump, a
+   *  difference measured at +13 a deal (95% CI +11 to +16, 5000 pairs) with
+   *  every policy field identical. Left in, that edge is folded into side A of
+   *  every A/B whose two sides both run `'counted'` — which since #158 is all
+   *  of them. The #206 rig found the same trap and equalised it in a throwaway;
+   *  this is that equaliser kept. */
+  readonly memoryLevel?: SkillLevel
 }
 
 /** Plays one complete game to the +/-1000 thresholds and reports who won. */
 export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
-  const { seatSkills, dealSeed, stats, collectBidSituations } = options
+  const { seatSkills, dealSeed, stats, collectBidSituations, memoryLevel } = options
   const scoresByTeam: Record<TeamId, number> = { 0: 0, 1: 0 }
   let dealer: PlayerIndex = 3
 
@@ -295,7 +306,7 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
     // inside `playTrickTakingPhase` because it is strategy input, like
     // `tracker`, not a rule — and built from `state.hands` because that is the
     // post-pass, post-meld hand the melds were scored from.
-    const trumpMemories = newTrumpMemories(state.hands, trumpSuit, (seat) => seatSkills[seat])
+    const trumpMemories = newTrumpMemories(state.hands, trumpSuit, (seat) => memoryLevel ?? seatSkills[seat])
     let cardsPlayed = 0
     const { trickPointsByTeam } = playTrickTakingPhase(
       state.hands,

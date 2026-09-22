@@ -1094,15 +1094,30 @@ ceiling reaches the intercept:
 | 330 + 0.34·(c−330), cap 380 | −52 | −63 to −41 | 57% | 37.7% | 11.6% |
 | 330 + 0.25·(c−330), cap 360 | −35 | −45 to −24 | 57% | 36.8% | 10.6% |
 | 330 + 0.25·(c−330), cap 350 | −32 | −42 to −22 | 57% | 36.7% | 10.5% |
-| **flat 330** (slope 0), seed 1 | **−17** | −27 to −6 | 57% | 35.9% | 9.8% |
+| flat 330 (slope 0), seed 1 | −17 | −27 to −6 | 57% | 35.9% | 9.8% |
 | flat 330, seed 2 | −13 | −23 to −3 | 58% | 37.0% | 10.7% |
 | flat 330, seed 3 | −21 | −31 to −11 | 56% | 37.5% | 10.9% |
 
-The band share is the same in every row. **All of the distribution is bought by
-naming 330 instead of 300 on a hand worth 330, and every point of slope above
-that is price paid for nothing the target asks for.** The seed-1 slope-0.5 run
-was replicated at −51 (CI −63 to −39) on seed 2. So the arm as committed is the
-flat 330, and the constants stay general only so this table can be re-run.
+**Every margin in that table is about 13 points too kind to the anchor.** It
+was measured on the harness as it stood, which seats side A on `expert` and
+side B on `hard`, and those levels remember 10 and 6 trump respectively — a
+difference measured the same day at **+13 a deal (95% CI +11 to +16, 5000
+pairs) with every policy field identical** (`capacity --high expert --low
+hard`). The rig now pins both sides to one capacity (`memoryLevel` on `runAb`,
+below), and the flat 330 re-measured on it:
+
+| anchor shape, capacity equalised | margin/deal | 95% CI | in 330-380 | set |
+|---|---|---|---|---|
+| flat 330, seed 1 (2000 pairs) | −27 | −35 to −17 | 57% | 35.8% vs 34.3% |
+| flat 330, seed 2 (2000 pairs) | −24 | −33 to −15 | 58% | 36.8% vs 35.4% |
+| **flat 330, seed 3 (5000 pairs)** | **−31** | −36 to −25 | 57% | 36.8% vs 35.1% |
+
+The band share and the ordering of the shapes are unchanged — the confound is a
+constant offset, not a reversal — so the reading stands: all of the distribution
+is bought by naming 330 instead of 300 on a hand worth 330, and every point of
+slope above that is price paid for nothing the target asks for. The slope rows
+were not re-run; subtract about 13 from each. The arm as committed is the flat
+330, and the constants stay general only so the table can be re-run.
 
 The mechanism is the one #204 named, at a gentler exchange rate: the anchored
 seat *wins more contracts* (10,505 vs 10,442 on seed 1 - a 330 open shuts out
@@ -1123,16 +1138,68 @@ The flat anchor's symmetric price is contracts going down about one extra time
 in every 125, for the share of contracts in the band going from under a third to
 well over half.
 
-**Switched on, 2026-09-21.** This is a significant negative on the metric the
-project judges strategy by, in exchange for the distribution Paul asked for,
-and whether that is worse play or a table that bids like people is the house's
-call and not the harness's. Paul made it with the −17 in front of him. The arm
+**Switched on, 2026-09-21 — on a number that was wrong.** This is a
+significant negative on the metric the project judges strategy by, in exchange
+for the distribution Paul asked for, and whether that is worse play or a table
+that bids like people is the house's call and not the harness's. Paul made it
+with −17 in front of him; shown the equalised figure of about −30 on
+2026-09-22, he kept it. The house-feel table above is unaffected —
+a self-test seats one level on both sides, so it never carried the confound —
+and one extra set in ~125 contracts is still the symmetric price. The arm
 landed flag-off in one commit and was flipped in the next so the two are
 separable in the history; `'floor'` is now the A/B control. Python carries the
 same anchor (`opening_level_for`) in both the static opener and the rollout
 bidder's candidate level, and the rollout dataset, evaluator and its TypeScript
 export were regenerated against the flipped engine — the fingerprint guard is
 what said they had to be.
+
+#### The capacity confound in every two-level A/B (found 2026-09-22)
+
+`runAb` carries its two arms on two levels, `hard` (side B) and `expert` (side
+A), because `SKILL_PARAMS` is keyed by level and a paired A/B needs two keys.
+#157 keyed `TRUMP_MEMORY_CAPACITY` on the level too — 6 trump remembered on
+`hard`, 10 on `expert` — and since #158 every shipped row plays
+`safeCounterPolicy: 'counted'`, which reads that memory. So with every policy
+field identical, side A still wins: **+13 a deal, 95% CI +11 to +16, 5000
+pairs, seed 3.** The #206 rig hit exactly this, recorded it (above, "one
+decisive pair and −1 per deal instead of 0.00"), equalised it in a throwaway,
+and deleted the equaliser with the rig.
+
+It was found again the way such things are found: a partner-read arm that
+changes the card played 21 times in 834 rounds measured +15 a deal. On the
+equalised rig it measures +0 (CI −1 to +1).
+
+`runAb` now takes `memoryLevel`, defaulting to `SHIPPED_SKILL`'s capacity for
+every seat on both sides; `capacity` and `safe` pass `'seat'` because for them
+the level *is* the arm. Self-tests never carried the confound (one level on
+both sides), which is why they read 0.00 throughout and why the house-feel
+tables in this file stand as written. **Every head-to-head margin in this file
+measured before this date on a two-level policy map — `ab`, `fold`, `autoset`,
+`play`, `opening`, `anchor` — carries roughly +13 for side A.** None has been
+re-run except the flat-330 anchor; the direction of each is far from the
+offset in every case but that one, which is the one that mattered.
+
+#### Reading "is this partner's trick?" with position (`partnerRead`)
+
+Paul's two follow rules — *if partner is likely to take the trick, put in the
+lowest point you can; if you can take the trick, do so* — were implemented as
+"partner is winning *right now*", never as "likely". `PartnerRead` gives
+"likely" two definitions by position and prices each on the equalised rig,
+5000 pairs, seed 3, everything else `SHIPPED_PARAMS`:
+
+| arm | rule | margin/deal | 95% CI |
+|---|---|---|---|
+| `feedAhead` | opponent led, this seat second (partner last), forced to beat, winner not boss in suit: put the King in | **+5** | +2 to +9 |
+| `holdBack` | partner winning, one opponent still behind, partner's card not boss: play a non-point instead of feeding | +0 | −1 to +1 |
+| `likely` | both | +6 | +2 to +9 |
+
+`feedAhead` is real and small; `holdBack` is a null — instrumented over 150
+games it fires 77 times and changes the card on 21 of them, since the position
+rarely leaves a King in a hand that also has a non-point. **`feedAhead` ships**
+(Paul, 2026-09-22): Python carries the same rule as `_feed_ahead` in both
+`choose_follow_card` and `_expert_follow_card_honest`, and the rollout dataset,
+evaluator and TypeScript export were regenerated behind it. `holdBack` is
+recorded as the null it is and stays an arm; `'current'` is now the control.
 
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an

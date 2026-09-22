@@ -480,14 +480,58 @@ def test_proficient_follow_holds_the_ace_back_when_it_is_the_only_counter():
 
 def test_proficient_follow_forced_beat_still_wins_cheaply():
     """Guards the tier above it: when every legal card already beats the current
-    winner the forced-beat branch runs first, so `_feed_partner` must not be
-    reached and the cheapest winner goes in."""
+    winner the forced-beat branch runs first and the cheapest winner goes in.
+
+    Third seat, not second: from second seat after an opponent's lead the
+    `_feed_ahead` read now runs ahead of this tier and would put the King in
+    *as a feed*, which happens to be the same card and would prove nothing.
+    With partner already down the position is not feed-ahead's, and the King
+    here is the cheapest beat and nothing else."""
     trump = Suit.SPADES
-    opponent = object()
-    trick_plays = [(opponent, C(Suit.HEARTS, "J"))]
+    opponent, partner = object(), object()
+    trick_plays = [(opponent, C(Suit.HEARTS, "J")), (partner, C(Suit.HEARTS, "9"))]
     legal = [C(Suit.HEARTS, "K"), C(Suit.HEARTS, "A")]
-    card = choose_follow_card(legal, legal, trick_plays, trump, set(), PlayTracker())
+    card = choose_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker())
     assert card.rank == "K"
+
+
+# ---------------------------------------------------------------------------
+# 8b. Feed-ahead: "partner is *likely* to take it" read by position.
+#     Shipped 2026-09-22 at +5 a deal (95% CI +2 to +9) on the equalised
+#     TypeScript harness; Python carries it in both follow functions.
+# ---------------------------------------------------------------------------
+
+def test_feed_ahead_from_second_seat_puts_the_king_in_for_partner():
+    """Opponent led low, this seat is second, partner plays last. J and K both
+    beat the 9, so the old rule took cheaply with the J; the feed-ahead read
+    puts the King in for partner to collect, on both follow paths."""
+    trump = Suit.SPADES
+    opponent, partner = object(), object()
+    trick_plays = [(opponent, C(Suit.HEARTS, "9"))]
+    legal = [C(Suit.HEARTS, "J"), C(Suit.HEARTS, "K")]
+    assert choose_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker()).rank == "K"
+    assert choose_expert_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker()).rank == "K"
+
+
+def test_feed_ahead_does_not_fire_from_third_seat():
+    """Partner has already played, an opponent sits behind: not feed-ahead's
+    position, so the forced beat is taken cheaply as before."""
+    trump = Suit.SPADES
+    opponent, partner = object(), object()
+    trick_plays = [(opponent, C(Suit.HEARTS, "9")), (partner, C(Suit.HEARTS, "J"))]
+    legal = [C(Suit.HEARTS, "Q"), C(Suit.HEARTS, "K")]
+    assert choose_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker()).rank == "Q"
+    assert choose_expert_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker()).rank == "Q"
+
+
+def test_feed_ahead_does_not_fire_when_partner_led():
+    """Partner led and an opponent overtook; this seat reclaims. Feed-ahead is
+    about an *opponent's* lead with partner still to come, so it stays out."""
+    trump = Suit.SPADES
+    opponent, partner = object(), object()
+    trick_plays = [(partner, C(Suit.HEARTS, "9")), (opponent, C(Suit.HEARTS, "J"))]
+    legal = [C(Suit.HEARTS, "Q"), C(Suit.HEARTS, "K")]
+    assert choose_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker()).rank == "Q"
 
 
 # ---------------------------------------------------------------------------

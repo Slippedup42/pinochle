@@ -208,13 +208,44 @@ export type SafeCounterPolicy = 'off' | 'counted'
  * up rung by rung while the evaluator still tolerated the next one, landed by
  * construction on the marginal contract, lost 52-56 points a deal and was
  * retired by #221. `'valuation'` is not a walk: it is one number, named once,
- * that stops well under the ceiling. The `anchor` A/B measured the price at
- * -13 to -21 a deal for a flat 330 (against -52 to -56 for the walk), and Paul
- * switched it on for the shipped AI on 2026-09-21 with that number in front of
- * him: a table that bids like people, bought at one extra set in ~125
- * contracts. `'floor'` is now the A/B control.
+ * that stops well under the ceiling. The `anchor` A/B first read -13 to -21 a
+ * deal for a flat 330, and Paul switched it on for the shipped AI on 2026-09-21
+ * with that number in front of him. That number carried the capacity confound
+ * `web/README.md` records; equalised, the price is about -30 a deal (-31, CI
+ * -36 to -25, at 5000 pairs), and shown that on 2026-09-22 he kept it. The
+ * symmetric price - one extra set in ~125 contracts - never carried it and
+ * stands. `'floor'` is the A/B control.
  */
 export type OpeningAnchor = 'floor' | 'valuation'
+
+/**
+ * How a following seat reads "is this partner's trick?" (Paul's two rules:
+ * if partner is *likely* to take the trick, put in the lowest point you can;
+ * if you can take it, do so).
+ *
+ * `'current'` is the shipped reading: partner is winning *right now*. It is
+ * the whole of what `chooseFollowCard` has ever asked, and it never looks at
+ * who is still to play. `'likely'` adds the position: partner still to play
+ * and last means the trick is probably theirs, an opponent still behind you
+ * means it probably is not yet. The two halves are separately selectable so
+ * the A/B can price each:
+ *
+ *   - `'feedAhead'`  opponent led, this seat is second (partner last), forced
+ *                    to beat, and the current winner is not boss in suit: feed
+ *                    the King now rather than beat cheaply with a Jack.
+ *   - `'holdBack'`   partner is winning but an opponent still sits behind this
+ *                    seat and partner's card is not boss: play a non-point
+ *                    instead of feeding a King the opponent may collect.
+ *   - `'likely'`     both.
+ *
+ * `'feedAhead'` ships, on Paul's decision of 2026-09-22: +5 a deal (95% CI +2
+ * to +9, 5000 pairs) on the capacity-equalised harness. `'holdBack'` measured
+ * +0 (CI -1 to +1) - it changes the card played 21 times in 834 rounds - and
+ * stays as the recorded null; `'likely'` adds nothing over `'feedAhead'` for
+ * that reason. `'current'` is the A/B control. Python carries the same rule
+ * (`_feed_ahead`) in both of its follow functions.
+ */
+export type PartnerRead = 'current' | 'feedAhead' | 'holdBack' | 'likely'
 
 export interface SkillParams {
   readonly handValuation: HandValuation
@@ -224,6 +255,7 @@ export interface SkillParams {
   readonly autoSetPolicy: AutoSetPolicy
   readonly safeCounterPolicy: SafeCounterPolicy
   readonly openingAnchor: OpeningAnchor
+  readonly partnerRead: PartnerRead
 }
 
 /**
@@ -239,6 +271,7 @@ export interface SkillParams {
  * | `autoSetPolicy`     | `forced`    | `off`                                  |
  * | `safeCounterPolicy` | `counted`   | `off`                                  |
  * | `openingAnchor`     | `valuation` | `floor`                                |
+ * | `partnerRead`       | `feedAhead` | `current`, `holdBack`, `likely`        |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -288,6 +321,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   autoSetPolicy: 'forced',
   safeCounterPolicy: 'counted',
   openingAnchor: 'valuation',
+  partnerRead: 'feedAhead',
 }
 
 /**

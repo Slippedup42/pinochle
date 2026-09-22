@@ -48,7 +48,14 @@
 // only thing differing between them is which rule answers "is this hand worth a
 // contract here".
 
-import { SKILL_PARAMS, type SkillLevel, type SkillParams } from '../engine/skills'
+import {
+  type PartnerRead,
+  SHIPPED_PARAMS,
+  SHIPPED_SKILL,
+  SKILL_PARAMS,
+  type SkillLevel,
+  type SkillParams,
+} from '../engine/skills'
 import type { TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
 import { type SideStats, makeRng, newSideStats, playHeadlessGame } from './headlessGame'
@@ -70,6 +77,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
+    partnerRead: 'current',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -79,6 +87,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
+    partnerRead: 'current',
   },
 }
 
@@ -100,6 +109,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
+    partnerRead: 'current',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -109,6 +119,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
+    partnerRead: 'current',
   },
 }
 
@@ -138,6 +149,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     autoSetPolicy: 'off',
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
+    partnerRead: 'current',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -147,6 +159,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
+    partnerRead: 'current',
   },
 }
 
@@ -177,6 +190,29 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
  * `hard` and above. Note that side A is `DISTILLED_LEVEL` and therefore
  * `'cascade'`, matching the other two maps, where A is the arm under test.
  */
+export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
+  [STATIC_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'simple',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
+    partnerRead: 'current',
+  },
+  [DISTILLED_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
+    partnerRead: 'current',
+  },
+}
+
 /**
  * The opening-anchor comparison. Both sides bid on the distilled evaluator,
  * fold on the model, play the cascade; the only thing separating them is the
@@ -197,6 +233,7 @@ export const OPENING_ANCHOR_AB_POLICIES: Record<string, SkillParams> = {
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
+    partnerRead: 'current',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -206,27 +243,7 @@ export const OPENING_ANCHOR_AB_POLICIES: Record<string, SkillParams> = {
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
     openingAnchor: 'valuation',
-  },
-}
-
-export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'simple',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-  },
-  [DISTILLED_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
+    partnerRead: 'current',
   },
 }
 
@@ -261,6 +278,20 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
  *   being measured. `easy` = 2 trump remembered, `expert` = 10.
  * @param offLevel - Carries the baseline. Must differ from `countedLevel`.
  */
+/**
+ * The partner-read comparison (Paul's two follow rules, with "likely" given a
+ * definition). Side A (`DISTILLED_LEVEL`) carries `arm`; side B is the shipped
+ * `'current'` reading. Everything else on both sides is `SHIPPED_PARAMS`, so a
+ * margin here is the price of reading position into the follow decision and
+ * nothing else.
+ */
+export function partnerReadAbPolicies(arm: PartnerRead): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS, partnerRead: 'current' },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, partnerRead: arm },
+  }
+}
+
 export function safeCounterAbPolicies(
   countedLevel: SkillLevel,
   offLevel: SkillLevel,
@@ -275,6 +306,7 @@ export function safeCounterAbPolicies(
       autoSetPolicy: 'forced',
       safeCounterPolicy: 'counted',
       openingAnchor: 'floor',
+      partnerRead: 'current',
     },
     [offLevel]: {
       handValuation: 'base_bid',
@@ -284,6 +316,7 @@ export function safeCounterAbPolicies(
       autoSetPolicy: 'forced',
       safeCounterPolicy: 'off',
       openingAnchor: 'floor',
+      partnerRead: 'current',
     },
   }
 }
@@ -329,6 +362,7 @@ export function safeCounterCapacityPolicies(
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
+    partnerRead: 'current',
   }
   return { [highLevel]: counted, [lowLevel]: counted }
 }
@@ -420,6 +454,12 @@ export interface RunAbOptions {
   /** Which pair of overrides to install for the run. Defaults to the bidding
    *  comparison; pass `FOLD_AB_POLICIES` for the fold one. */
   readonly policies?: Record<string, SkillParams>
+  /** Trump-memory capacity for every seat on both sides. Defaults to
+   *  `SHIPPED_SKILL`'s, so a policy A/B measures the policy and not the +13 a
+   *  deal that `expert`'s recall has over `hard`'s (see `HeadlessGameOptions`).
+   *  `'seat'` lets each seat remember as its own level does, which is what the
+   *  `capacity` and `safe` commands exist to compare. */
+  readonly memoryLevel?: SkillLevel | 'seat'
 }
 
 /**
@@ -441,7 +481,9 @@ export function runAb(options: RunAbOptions): AbReport {
     levelA = DISTILLED_LEVEL,
     levelB = STATIC_LEVEL,
     policies = BID_AB_POLICIES,
+    memoryLevel = SHIPPED_SKILL,
   } = options
+  const memory = memoryLevel === 'seat' ? undefined : memoryLevel
 
   const restore = installPolicies(policies)
   const realRandom = Math.random
@@ -478,7 +520,7 @@ export function runAb(options: RunAbOptions): AbReport {
         const teamB: TeamId = aFirst ? 1 : 0
         const stats = { [teamA]: statsA, [teamB]: statsB } as Record<TeamId, SideStats>
 
-        const result = playHeadlessGame({ seatSkills, dealSeed, stats })
+        const result = playHeadlessGame({ seatSkills, dealSeed, stats, memoryLevel: memory })
         marginsA.push(result.scoresByTeam[teamA] - result.scoresByTeam[teamB])
         if (result.winner === teamA) {
           winsA++
