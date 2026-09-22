@@ -208,9 +208,11 @@ export type SafeCounterPolicy = 'off' | 'counted'
  * up rung by rung while the evaluator still tolerated the next one, landed by
  * construction on the marginal contract, lost 52-56 points a deal and was
  * retired by #221. `'valuation'` is not a walk: it is one number, named once,
- * that stops well under the ceiling. Whether that is cheap enough is what the
- * `anchor` A/B measures, and until it has, this arm is selectable only from
- * `ab/`.
+ * that stops well under the ceiling. The `anchor` A/B measured the price at
+ * -13 to -21 a deal for a flat 330 (against -52 to -56 for the walk), and Paul
+ * switched it on for the shipped AI on 2026-09-21 with that number in front of
+ * him: a table that bids like people, bought at one extra set in ~125
+ * contracts. `'floor'` is now the A/B control.
  */
 export type OpeningAnchor = 'floor' | 'valuation'
 
@@ -236,13 +238,17 @@ export interface SkillParams {
  * | `playPolicy`        | `cascade`   | `simple`                               |
  * | `autoSetPolicy`     | `forced`    | `off`                                  |
  * | `safeCounterPolicy` | `counted`   | `off`                                  |
- * | `openingAnchor`     | `floor`     | `valuation`                            |
+ * | `openingAnchor`     | `valuation` | `floor`                                |
  *
- * Read as prose: distilled bidding, cascade card play, `model` folding,
- * `forced` auto-SET, `counted` safe counters, and — since the shipped seat is
- * `SHIPPED_SKILL` — trump memory of 10 of the 12 trump.
+ * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
+ * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
+ * since the shipped seat is `SHIPPED_SKILL` — trump memory of 10 of the 12
+ * trump.
  *
- * Every one of those is the arm that measured better, and this configuration is
+ * Every one of those but the anchor is the arm that measured better; the anchor
+ * is the arm that measured *worse* on score and was chosen anyway for the
+ * distribution it buys — the one house-rules call in the table, recorded on
+ * `OpeningAnchor`. This configuration is
  * what `hard`, `proficient` and `expert` all already were apart from recall.
  * Epic #215 is where the dial went: three panel rows that were byte-identical
  * except for `TRUMP_MEMORY_CAPACITY` are a control a player cannot feel, and
@@ -281,7 +287,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   playPolicy: 'cascade',
   autoSetPolicy: 'forced',
   safeCounterPolicy: 'counted',
-  openingAnchor: 'floor',
+  openingAnchor: 'valuation',
 }
 
 /**

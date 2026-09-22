@@ -338,6 +338,44 @@ PARTNER_ESTIMATE_RANGE = (50, 100)
 # never to its ceiling. The ceiling is a limit, not a target. What is gone is
 # an artificial stop when the opponents push past 400.
 OPENER_THRESHOLD = 320  # minimum Base Bid to justify opening at all
+
+# -- The opening anchor: what a seat names once it has decided to open.
+#
+# Where a contract lands is set by the runner-up, not the winner. A +10
+# auction stops one rung past the last opposing seat's walk-away point, so
+# the winner pays the second-best hand's price and its own valuation never
+# reaches the table unless the opponents drag it there. Measured over 3000
+# browser auctions at 0-0 (web/README.md, "What the opener puts on the
+# table"): the winning seat's ceiling ran median 370, the contract median
+# 320, and 38.6% of contracts were an uncontested 300. Paul's account of
+# ~15 years at real tables is that a normal contract is 330-380 - which is
+# where the ceilings already were. Moving the valuation cannot fix that,
+# because it moves the runner-up by the same amount; only the number the
+# opener names can.
+#
+# The shape was measured, not chosen. Every slope of anchor from the ceiling
+# put ~57% of contracts in 330-380 against the floor opener's 32%, and the
+# cost per deal tracked the slope alone: -67 at slope 0.5, -35 at 0.25, and
+# -13 to -21 across three seeds for a flat 330. All of the distribution is
+# bought by naming 330 instead of 300 on a hand worth 330, so the slope is
+# zero and the anchor is one number - which is Paul's house rule with the
+# number on it: a bid asserts a hand. The constants stay general so the
+# sweep can be re-run.
+#
+# Switched on for the shipped AI on Paul's decision of 2026-09-21, knowing
+# the -17/deal. The TypeScript engine's `openingLevelFor` is this function.
+ANCHOR_INTERCEPT = 330
+ANCHOR_SLOPE = 0
+ANCHOR_CAP = 380
+
+
+def opening_level_for(ceiling, floor_level=OPENING_BID):
+    """The level an opener names, given it has decided to open. Never below
+    `floor_level`, and the floor itself for a ceiling under the intercept."""
+    if ceiling < ANCHOR_INTERCEPT:
+        return floor_level
+    compressed = ANCHOR_INTERCEPT + int(ANCHOR_SLOPE * (ceiling - ANCHOR_INTERCEPT) // 10) * 10
+    return max(floor_level, min(ANCHOR_CAP, compressed))
 # Minimum ceiling to justify a defensive push against an opening bid of 300.
 # Hands at or above this floor should almost always raise a 300 opener,
 # since even moderate hands can contribute toward making 300 with partner's
@@ -2419,11 +2457,16 @@ class Player:
             # no longer this rule's floor, and a seat near the end of the game
             # has #256's endgame protection in front of it doing that job with
             # thresholds chosen for it.
+            # A hand worth a contract names the anchor (`opening_level_for`);
+            # the positional open under it is still the bare OPENING_BID, since
+            # that open asserts position, not a hand.
             if context["passes_so_far"] == 2:
+                if ceiling >= OPENER_THRESHOLD:
+                    return opening_level_for(ceiling)
                 return OPENING_BID if ceiling >= THIRD_BIDDER_FLOOR else None
 
             # Normal opener threshold
-            return OPENING_BID if ceiling >= OPENER_THRESHOLD else None
+            return opening_level_for(ceiling) if ceiling >= OPENER_THRESHOLD else None
 
         # Someone has already bid this auction.
         last_bidder = context["bid_history"][-1][0]
@@ -2986,7 +3029,10 @@ class GeneralStrategy(Player):
         if ceiling < FORCED_BID:
             return None
 
-        next_bid = OPENING_BID if not context["ever_bid"] else current_bid + min_increment
+        # An opening is weighed at the level this seat would actually name
+        # (`opening_level_for`), not at the rules floor: "bid 330 or defend"
+        # is the question the table will pose, so it is the one to roll out.
+        next_bid = opening_level_for(ceiling) if not context["ever_bid"] else current_bid + min_increment
         evidence = self._auction_evidence(context) if params.get("use_auction_evidence") else None
 
         defence_samples = params.get("defence_samples", 0)

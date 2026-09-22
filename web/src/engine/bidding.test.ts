@@ -60,11 +60,17 @@ const pristine: Partial<Record<SkillLevel, SkillParams>> = {}
 beforeAll(() => {
   pristine[STATIC_LEVEL] = SKILL_PARAMS[STATIC_LEVEL]
   pristine[MELD_ONLY_LEVEL] = SKILL_PARAMS[MELD_ONLY_LEVEL]
-  SKILL_PARAMS[STATIC_LEVEL] = { ...SKILL_PARAMS[STATIC_LEVEL], bidPolicy: 'static' }
+  // `openingAnchor: 'floor'` on both: these tests are about *whether* the
+  // static thresholds open, asserted as `toBe(OPENING_BID)`. The shipped
+  // anchor names 330 on a hand worth a contract, which is tested on its own
+  // below and would otherwise turn every one of those assertions into a test
+  // of the anchor.
+  SKILL_PARAMS[STATIC_LEVEL] = { ...SKILL_PARAMS[STATIC_LEVEL], bidPolicy: 'static', openingAnchor: 'floor' }
   SKILL_PARAMS[MELD_ONLY_LEVEL] = {
     ...SKILL_PARAMS[MELD_ONLY_LEVEL],
     handValuation: 'meld_only',
     bidPolicy: 'static',
+    openingAnchor: 'floor',
   }
 })
 afterAll(() => {
@@ -602,7 +608,12 @@ describe('chooseBid', () => {
       // dealer-protection (which keys off the partner being dealer)
       // doesn't fire here.
       const context = baseContext({ dealer: 1 })
-      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
+      // The shipped seat: opens, and names the anchor rather than the rung.
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context)).toBe(
+        openingLevelFor(ceilingOf(strongHand), OPENING_BID, 'valuation'),
+      )
+      // The floor arm on the same hand: opens at the rung.
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBe(OPENING_BID)
     })
 
     it('passes when the ceiling does not clear OPENER_THRESHOLD and partner has already had a turn', () => {
@@ -702,7 +713,10 @@ describe('chooseBid', () => {
       // adjustment bucket nor #256 is what is answering.
       const context = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 850, 1: 600 } })
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context)).toBeNull()
-      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context)).toBe(OPENING_BID)
+      // The shipped seat names the anchor on a hand worth a contract.
+      expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, context)).toBe(
+        openingLevelFor(ceilingOf(strongHand), OPENING_BID, 'valuation'),
+      )
       // The band hand is the one that moved: under the old sub-case this was a
       // pass, because 850 sent it to OPENER_THRESHOLD instead of the floor.
       expect(chooseBid(0, belowOpenerHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBe(OPENING_BID)
@@ -1405,14 +1419,16 @@ describe('openingAnchor arms open on an identical set of deals (#204 shape)', ()
   // deals rather than on a fixture: for every seat that speaks first, the two
   // arms are both null or both non-null, the anchored level is never under the
   // floor arm's, and never over the cap unless the floor itself is.
-  const ANCHOR_LEVEL: SkillLevel = 'proficient'
+  // The shipped seat is the anchored one; the control is installed here.
+  const FLOOR_LEVEL: SkillLevel = 'proficient'
   let saved: SkillParams
   beforeAll(() => {
-    saved = SKILL_PARAMS[ANCHOR_LEVEL]
-    SKILL_PARAMS[ANCHOR_LEVEL] = { ...SKILL_PARAMS[SHIPPED_SKILL], openingAnchor: 'valuation' }
+    saved = SKILL_PARAMS[FLOOR_LEVEL]
+    SKILL_PARAMS[FLOOR_LEVEL] = { ...SKILL_PARAMS[SHIPPED_SKILL], openingAnchor: 'floor' }
+    expect(SKILL_PARAMS[SHIPPED_SKILL].openingAnchor).toBe('valuation')
   })
   afterAll(() => {
-    SKILL_PARAMS[ANCHOR_LEVEL] = saved
+    SKILL_PARAMS[FLOOR_LEVEL] = saved
   })
 
   it('agrees on whether to open, and only ever raises the level', () => {
@@ -1434,8 +1450,8 @@ describe('openingAnchor arms open on an identical set of deals (#204 shape)', ()
             scores: { 0: 0, 1: 0 },
             passedPlayers: partnerPassed ? [((p + 1) % 4) as PlayerIndex, ((p + 2) % 4) as PlayerIndex] : [],
           }
-          const floor = chooseBid(p, hands[p], OPENING_BID - 10, 10, context, SHIPPED_SKILL)
-          const anchored = chooseBid(p, hands[p], OPENING_BID - 10, 10, context, ANCHOR_LEVEL)
+          const floor = chooseBid(p, hands[p], OPENING_BID - 10, 10, context, FLOOR_LEVEL)
+          const anchored = chooseBid(p, hands[p], OPENING_BID - 10, 10, context, SHIPPED_SKILL)
           expect(anchored === null).toBe(floor === null)
           if (floor !== null && anchored !== null) {
             opened++

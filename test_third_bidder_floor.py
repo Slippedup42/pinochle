@@ -26,6 +26,7 @@ from pinochle_engine import (
     Card,
     OPENER_THRESHOLD,
     OPENING_BID,
+    opening_level_for,
     Player,
     Suit,
     THIRD_BIDDER_FLOOR,
@@ -175,7 +176,9 @@ def test_third_bidder_passes_a_hand_under_the_floor():
 
 
 def test_third_bidder_still_opens_positionally_over_the_floor():
-    assert _bid_as_third(STRONG_HAND) == OPENING_BID
+    # A hand worth a contract names the anchor; the positional open on the
+    # band hand is still the bare OPENING_BID, because it asserts position.
+    assert _bid_as_third(STRONG_HAND) == opening_level_for(_ceiling(STRONG_HAND))
     assert _bid_as_third(MIDDLING_HAND) == OPENING_BID
 
 
@@ -228,5 +231,5 @@ def test_the_positional_open_still_differs_from_the_normal_opener():
     # Either side of the band the two agree, as they should.
     assert _bid_as_third(JUNK_HAND) is None
     assert _bid_as_opener(JUNK_HAND) is None
-    assert _bid_as_third(STRONG_HAND) == OPENING_BID
-    assert _bid_as_opener(STRONG_HAND) == OPENING_BID
+    assert _bid_as_third(STRONG_HAND) == opening_level_for(_ceiling(STRONG_HAND))
+    assert _bid_as_opener(STRONG_HAND) == opening_level_for(_ceiling(STRONG_HAND))

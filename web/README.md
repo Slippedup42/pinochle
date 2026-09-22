@@ -1123,12 +1123,16 @@ The flat anchor's symmetric price is contracts going down about one extra time
 in every 125, for the share of contracts in the band going from under a third to
 well over half.
 
-**The arm ships flag-off.** This is a significant negative on the metric the
+**Switched on, 2026-09-21.** This is a significant negative on the metric the
 project judges strategy by, in exchange for the distribution Paul asked for,
 and whether that is worse play or a table that bids like people is the house's
-call and not the harness's. Python does not carry the arm; if it is switched
-on, `Player.choose_bid`'s opening branch has to gain the same one-line anchor
-so the reference engine and the browser agree on what a 330 open means.
+call and not the harness's. Paul made it with the −17 in front of him. The arm
+landed flag-off in one commit and was flipped in the next so the two are
+separable in the history; `'floor'` is now the A/B control. Python carries the
+same anchor (`opening_level_for`) in both the static opener and the rollout
+bidder's candidate level, and the rollout dataset, evaluator and its TypeScript
+export were regenerated against the flipped engine — the fingerprint guard is
+what said they had to be.
 
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an

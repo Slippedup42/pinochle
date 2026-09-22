@@ -28,6 +28,7 @@ from pinochle_engine import (
     ENDGAME_SCORE_FLOOR,
     GAME_WIN_SCORE,
     OPENING_BID,
+    opening_level_for,
     Player,
     Suit,
     Team,
@@ -142,7 +143,9 @@ def test_trigger_fires_at_the_score_floor_and_not_one_point_below():
     below = _opening_call(STRONG_HAND, ENDGAME_SCORE_FLOOR - 1, 100,
                           dealer_is_partner=False)
     assert at_floor is None
-    assert below == OPENING_BID
+    # Outside the trigger the ordinary opener answers, and it names the anchor
+    # for a hand worth a contract (`opening_level_for`), not the bare floor.
+    assert below == opening_level_for(_ceiling(STRONG_HAND, ENDGAME_SCORE_FLOOR - 1, 100))
 
 
 def test_trigger_fires_under_the_opponent_cap_and_not_at_it():
@@ -151,7 +154,7 @@ def test_trigger_fires_under_the_opponent_cap_and_not_at_it():
     at_cap = _opening_call(STRONG_HAND, ENDGAME_SCORE_FLOOR,
                            ENDGAME_OPP_SCORE_CAP, dealer_is_partner=False)
     assert under_cap is None
-    assert at_cap == OPENING_BID
+    assert at_cap == opening_level_for(_ceiling(STRONG_HAND, ENDGAME_SCORE_FLOOR, ENDGAME_OPP_SCORE_CAP))
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +240,7 @@ def test_outside_the_trigger_the_ordinary_rules_decide():
     # back for the new trigger, so a hopeless hand simply fails the opener
     # threshold instead of being talked into a bid.
     assert _opening_call(JUNK_HAND, 850, 500) is None
-    assert _opening_call(STRONG_HAND, 850, 500) == OPENING_BID
+    assert _opening_call(STRONG_HAND, 850, 500) == opening_level_for(_ceiling(STRONG_HAND, 850, 500))
 
 
 if __name__ == "__main__":

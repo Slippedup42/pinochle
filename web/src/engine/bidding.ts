@@ -182,13 +182,16 @@ export const OPENER_THRESHOLD = 320
 // The constants stay general so the curve above can be re-run, not because
 // anything reads the cap today.
 //
-// EXPECT IT TO COST SCORE, STILL. #204's walk proved the general point -
+// IT COSTS SCORE, AND SHIPS ANYWAY. #204's walk proved the general point -
 // naming a higher number on the same set of opens buys the same contracts for
 // more and gets set more often - and the evaluator that prefers 300 was fitted
 // to measured rollouts. What a paired A/B cannot measure is the thing being
-// asked for, which is that the AI's bids read like a real table's. That trade
-// is the house's, and this arm exists so it can be made with the number in
-// front of it.
+// asked for, which is that the AI's bids read like a real table's. Paul made
+// that trade on 2026-09-21 with the -17 in front of him, so `'valuation'` is
+// the shipped arm and `'floor'` is the control. `pinochle_engine.py`'s
+// `opening_level_for` is this function and moved in the same change; the
+// third-bidder *positional* open (under `OPENER_THRESHOLD`) stays at the bare
+// `OPENING_BID` in both, since it asserts position rather than a hand.
 export const ANCHOR_INTERCEPT = 330
 export const ANCHOR_SLOPE = 0
 export const ANCHOR_CAP = 380

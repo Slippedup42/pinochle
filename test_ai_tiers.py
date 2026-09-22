@@ -23,7 +23,7 @@ import random
 
 from pinochle_engine import (
     Deck, Player, EasyPlayer, Team, Game, Trick,
-    Suit, OPENING_BID, GAME_WIN_SCORE, GAME_LOSE_SCORE,
+    Suit, OPENING_BID, ANCHOR_CAP, GAME_WIN_SCORE, GAME_LOSE_SCORE,
     PASS_COUNT,
 )
 
@@ -169,7 +169,10 @@ def test_choose_bid_always_legal_or_none():
                 # OPENING_BID, not current_bid_arg + increment, since
                 # current_bid_arg is OPENING_BID - increment before anyone
                 # has bid - these are numerically identical anyway).
-                assert bid == expected_next or bid == OPENING_BID, (cls, bid, expected_next)
+                # An opening may name the anchor rather than the floor
+                # (`opening_level_for`), anywhere from OPENING_BID to ANCHOR_CAP.
+                opened = not ever_bid and OPENING_BID <= bid <= ANCHOR_CAP
+                assert bid == expected_next or opened, (cls, bid, expected_next)
                 assert bid % 10 == 0
 
 
