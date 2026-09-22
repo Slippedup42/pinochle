@@ -1201,6 +1201,27 @@ rarely leaves a King in a hand that also has a non-point. **`feedAhead` ships**
 evaluator and TypeScript export were regenerated behind it. `holdBack` is
 recorded as the null it is and stays an arm; `'current'` is now the control.
 
+#### #312 reverted: the browser follows Python's `choose_follow_card` again
+
+#312 (2026-09-19) made `chooseFollowCard` branch on who led the trick — partner-
+winning ahead of forced-beat after partner's lead, a never-a-counter rule for
+reclaiming, a flat-lowest ruff after an opponent's lead, a boss-trump holdback
+after partner's, and a non-point filter on the sluff. All of it landed in
+TypeScript only, none of it was measured, and on the ruff Python contradicts it
+outright (its expert tier plays the *highest* trump when the trick is worth
+winning). That is #118's bug class in the play layer, and on 2026-09-22 Paul
+ruled the way CLAUDE.md says to: Python is right. The five changes are reverted
+and the follow tiers are `choose_follow_card`'s again, with the two measured
+additions the browser had before #312 kept (#155/#158's forced-beat selection,
+and `feedAhead`, which Python now carries too).
+
+Two things this leaves on the table rather than settles. The sluff filter is
+what Python's *expert* tier does, and it reads well; porting it is a candidate
+for the `play` A/B, not something to assume. And the browser still ports the
+Proficient tier while Python ships the expert one at the table — a standing gap
+the parity net does not cover, since `engineParity.test.ts` replays a scripted
+round rather than comparing the two follow functions position by position.
+
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
 input to `vite build`, so it cannot reach a player or the PWA precache.
