@@ -96,7 +96,13 @@ describe('the exported model', () => {
     // A model fitted against a strategy flag that has since flipped is worse
     // than no model, so the artefact says what it describes rather than
     // leaving a reader to assume.
-    expect(MODEL_PROVENANCE.datasetRows).toBe(2000)
+    // 4000 since the sluff regeneration of 2026-09-22 (200 games, the
+    // generator's own default). At 2000 rows three relabels in one day gave
+    // three materially different models - the bid intercept swung from +0.93
+    // to -0.83 between two of them - and a 20-row bucket put the build on a
+    // knife edge (7 of 20 disagreeing against a 0.35 limit). Doubling the rows
+    // took that bucket to 5 of 37 and halved the five-fold interval.
+    expect(MODEL_PROVENANCE.datasetRows).toBe(4000)
     expect(MODEL_PROVENANCE.formatVersion).toBe(1)
   })
 
@@ -149,19 +155,23 @@ describe('the bid model responds to the level, not just the hand', () => {
     // refit. The `bid` weight roughly tripled in magnitude there (-0.0098 to
     // -0.0305), so both hands now fall away from the level far faster and 400
     // is below the threshold for either of them — a level that separates
-    // nothing. 340 is where the pair parts company now, with room on both
-    // sides (0.62 against 0.36) rather than the knife edge 340 used to be: the
-    // middling hand scored 0.4998 there under the old weights, which is why
-    // the test reached for 400 in the first place. #308's refit widened that
-    // to 0.74 against 0.34 at the same level.
+    // nothing. 340 is where the pair parted company from #226 through #308
+    // (0.62 against 0.36, then 0.74 against 0.34).
+    //
+    // It is 300 now - the opening rung itself. The 2026-09-22 regeneration
+    // (feed-ahead, the expert sluff, 4000 rows) fitted a model that is more
+    // conservative at every level: the Run hand reads 0.68 at 300 and 0.46 at
+    // 320, the middling one 0.34 at 300, so the pair separates at the rung a
+    // seat actually opens on and neither is worth 340 (0.25 against 0.08).
+    // Same property, one level lower, more room between them than before.
     expect(evaluateBid(at(strongHand, OPENING_BID)).ceiling).toBe(
       evaluateBid(at(middlingHand, OPENING_BID)).ceiling,
     )
 
     expect(shouldBid(at(strongHand, OPENING_BID))).toBe(true)
-    expect(shouldBid(at(middlingHand, OPENING_BID))).toBe(true)
+    expect(shouldBid(at(middlingHand, OPENING_BID))).toBe(false)
 
-    expect(shouldBid(at(strongHand, 340))).toBe(true)
+    expect(shouldBid(at(strongHand, 340))).toBe(false)
     expect(shouldBid(at(middlingHand, 340))).toBe(false)
   })
 
@@ -332,16 +342,40 @@ describe('bidPolicy selects the bid policy (#114, opened by #115)', () => {
     // upper one records how far short the miss is. If either
     // MELD_ONLY_TRICK_ESTIMATE or the opening rung moves back toward the other,
     // this fails on the specific number instead of going quietly random.
+    //
+    // The contrast used to be the shipped evaluator opening this hand at 300.
+    // The 2026-09-22 model declines it (a five-card bare Run values at 290 and
+    // reads under a coin flip at the rung), so the contrast is the *static*
+    // valuation on a hand it opens: the same Run with a Dix, two unmarried
+    // off-suit Kings and an unmarried off-suit Queen. Those add trick
+    // potential (30, 30 and 20) and no meld - three Kings is not Kings Around
+    // and a lone Queen marries nothing - so the meld-only ceiling stays at
+    // 160 + 60 +/- 30 = 190-250 and passes, while the static ceiling clears
+    // OPENER_THRESHOLD with room. (Three off-suit Aces would have been Aces
+    // Around with the Run's, 100 more meld, and opened on the meld-only arm
+    // too.) Static rather than shipped because it is deterministic; the
+    // shipped verdict on any one hand moves with every refit, which is the
+    // lesson of this test's history.
+    const runWithHonours = [
+      ...runOnlyHand,
+      new Card(Suit.Hearts, '9', 1),
+      new Card(Suit.Spades, 'K', 1),
+      new Card(Suit.Clubs, 'K', 1),
+      new Card(Suit.Diamonds, 'Q', 1),
+    ]
     const random = vi.spyOn(Math, 'random')
     try {
       withPolicy({ handValuation: 'meld_only' }, (meldOnly) => {
-        random.mockReturnValue(0) // noise -30 -> ceiling 180, 120 under the opener
+        random.mockReturnValue(0) // noise -30 -> ceiling 180 (bare Run) / 190 (with the Dix), under the opener
         expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, meldOnly)).toBeNull()
-        expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, SHIPPED_SKILL)).toBe(OPENING_BID)
+        expect(chooseBid(0, runWithHonours, OPENING_BID - 10, 10, context, meldOnly)).toBeNull()
 
-        random.mockReturnValue(1) // noise +30 -> ceiling 240, still 60 under it
+        random.mockReturnValue(1) // noise +30 -> ceiling 240 / 250, still under it
         expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, meldOnly)).toBeNull()
-        expect(chooseBid(0, runOnlyHand, OPENING_BID - 10, 10, context, SHIPPED_SKILL)).toBe(OPENING_BID)
+        expect(chooseBid(0, runWithHonours, OPENING_BID - 10, 10, context, meldOnly)).toBeNull()
+      })
+      withPolicy({ bidPolicy: 'static', openingAnchor: 'floor' }, (staticLevel) => {
+        expect(chooseBid(0, runWithHonours, OPENING_BID - 10, 10, context, staticLevel)).not.toBeNull()
       })
     } finally {
       random.mockRestore()

@@ -1222,6 +1222,45 @@ Proficient tier while Python ships the expert one at the table — a standing ga
 the parity net does not cover, since `engineParity.test.ts` replays a scripted
 round rather than comparing the two follow functions position by position.
 
+#### The sluff, measured (`sluffPolicy`)
+
+The one #312 change worth keeping was the one Python's *expert* tier already
+had: on a free sluff, protect counters before working toward a void. The
+browser ports the Proficient tier, whose sluff is suit length then rank with
+point value not consulted, so the two Python tiers disagreed with each other
+and the browser followed the weaker one. Paul's ruling: the expert tier is
+right. Measured first, as an arm, on the equalised harness:
+
+| `protect` vs `shortest` | margin/deal | 95% CI |
+|---|---|---|
+| seed 1, 2000 pairs | +4 | −1 to +9 |
+| seed 2, 2000 pairs | +5 | −1 to +11 |
+| seed 3, 5000 pairs | +2 | −1 to +6 |
+
+A null that leans the right way and never includes a loss. It ships on the
+ruling rather than on the number — the point is one sluff rule in Python and
+the browser following it, not a measured gain — and `choose_follow_card`'s
+sluff moved to the expert tier's in the same change. `'shortest'` is the
+control. The dataset, evaluator and export were regenerated behind the Python
+change, since the rollouts sluff with `choose_follow_card`.
+
+**The regeneration also doubled the dataset, to 200 games and 4000 rows** -
+the generator's own default; the stamp had run at 100 since #225. Three
+relabels in one day (feed-ahead, then the #312 revert's Python side, then the
+sluff) had fitted three materially different models at 2000 rows: the bid
+intercept swung from +0.93 to -0.83 between two of them, held-out errors went
+to 6 false-positive against 44 false-negative, and
+`test_no_hand_class_is_systematically_wrong` failed on a 20-row bucket at
+exactly its 0.35 limit. That is a dataset too small to pin the fit, not a
+model that learned the wrong thing. At 4000 rows the same bucket reads 5 of
+37, the errors are 43 against 56, the five-fold agreement is 0.865 ± 0.011
+(from ± 0.021), and held-out regret is 8.0 points a decision, the lowest of any
+model this file records. The refit is more conservative than its predecessors
+at every level - protecting counters on the sluff makes contracts harder to
+make, so the rollouts take fewer of them and the model follows - which moved
+three browser fixtures that pinned verdicts on specific hands; each is
+re-pointed with the reason beside it.
+
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
 input to `vite build`, so it cannot reach a player or the PWA precache.

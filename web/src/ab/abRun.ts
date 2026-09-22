@@ -53,6 +53,7 @@ import {
   SHIPPED_PARAMS,
   SHIPPED_SKILL,
   SKILL_PARAMS,
+  type SluffPolicy,
   type SkillLevel,
   type SkillParams,
 } from '../engine/skills'
@@ -78,6 +79,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -88,6 +90,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
 }
 
@@ -110,6 +113,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -120,6 +124,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
 }
 
@@ -150,6 +155,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -160,6 +166,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
 }
 
@@ -200,6 +207,7 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -210,6 +218,7 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
 }
 
@@ -234,6 +243,7 @@ export const OPENING_ANCHOR_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -244,6 +254,7 @@ export const OPENING_ANCHOR_AB_POLICIES: Record<string, SkillParams> = {
     safeCounterPolicy: 'counted',
     openingAnchor: 'valuation',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   },
 }
 
@@ -292,6 +303,17 @@ export function partnerReadAbPolicies(arm: PartnerRead): Record<string, SkillPar
   }
 }
 
+/**
+ * The sluff comparison: side A (`DISTILLED_LEVEL`) carries `arm`, side B the
+ * shipped rule, everything else `SHIPPED_PARAMS`.
+ */
+export function sluffAbPolicies(arm: SluffPolicy): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, sluffPolicy: arm },
+  }
+}
+
 export function safeCounterAbPolicies(
   countedLevel: SkillLevel,
   offLevel: SkillLevel,
@@ -307,6 +329,7 @@ export function safeCounterAbPolicies(
       safeCounterPolicy: 'counted',
       openingAnchor: 'floor',
       partnerRead: 'current',
+      sluffPolicy: 'shortest',
     },
     [offLevel]: {
       handValuation: 'base_bid',
@@ -317,6 +340,7 @@ export function safeCounterAbPolicies(
       safeCounterPolicy: 'off',
       openingAnchor: 'floor',
       partnerRead: 'current',
+      sluffPolicy: 'shortest',
     },
   }
 }
@@ -363,6 +387,7 @@ export function safeCounterCapacityPolicies(
     safeCounterPolicy: 'counted',
     openingAnchor: 'floor',
     partnerRead: 'current',
+    sluffPolicy: 'shortest',
   }
   return { [highLevel]: counted, [lowLevel]: counted }
 }

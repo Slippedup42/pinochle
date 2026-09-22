@@ -1142,8 +1142,19 @@ def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, t
             return min(points, key=lambda c: RANK_VALUE[c.rank])
         return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
 
-    # sluff - free choice across suits, work toward a void in the shortest suit
-    legal_sorted = sorted(legal_moves, key=lambda c: (_suit_length(hand, c.suit), RANK_VALUE[c.rank]))
+    # Sluff - free choice across suits. Protect count cards first, then work
+    # toward a void in the shortest suit, lowest rank within it. This is the
+    # expert tier's rule (`_expert_follow_card_honest`), adopted here on Paul's
+    # ruling of 2026-09-22 that the expert tier is right, so Python has one
+    # sluff rule rather than two that disagree. The old form - suit length
+    # then rank with point value not consulted - handed away a lone King from
+    # a one-card suit ahead of a 9 from a two-card one. Measured as the
+    # TypeScript `sluff` A/B on the equalised harness: +4, +5 and +2 a deal
+    # (95% CIs -1 to +9, -1 to +11, -1 to +6), a null that leans the right way
+    # and costs nothing detectable.
+    non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
+    pool = non_points if non_points else legal_moves
+    legal_sorted = sorted(pool, key=lambda c: (_suit_length(hand, c.suit), RANK_VALUE[c.rank]))
     return legal_sorted[0]
 
 
