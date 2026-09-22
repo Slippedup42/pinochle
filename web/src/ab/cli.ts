@@ -7,6 +7,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts fold --pairs 400
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts play --pairs 400
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts autoset --pairs 5000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts anchor --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts safe --pairs 400 --level expert
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts capacity --high expert --low easy
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
@@ -38,6 +39,7 @@ import {
   BID_AB_POLICIES,
   DISTILLED_LEVEL,
   FOLD_AB_POLICIES,
+  OPENING_ANCHOR_AB_POLICIES,
   PLAY_AB_POLICIES,
   SAFE_COUNTER_CONTROL,
   STATIC_LEVEL,
@@ -59,6 +61,12 @@ const SELFTEST_ARMS: Record<string, { level: SkillLevel; policies: Record<string
   simple: { level: STATIC_LEVEL, policies: PLAY_AB_POLICIES },
   cascade: { level: DISTILLED_LEVEL, policies: PLAY_AB_POLICIES },
   'auto-set': { level: DISTILLED_LEVEL, policies: AUTO_SET_AB_POLICIES },
+  // The opening-anchor pair. `anchor` doubles up the valuation-anchored opener
+  // against itself, which is also the "house feel" table - four seats all
+  // naming their hands - whose set rate and bid distribution are the numbers
+  // the head-to-head cannot give. `floor-open` doubles up the shipped opener.
+  anchor: { level: DISTILLED_LEVEL, policies: OPENING_ANCHOR_AB_POLICIES },
+  'floor-open': { level: STATIC_LEVEL, policies: OPENING_ANCHOR_AB_POLICIES },
   // #158's two arms. `counted` doubles up the expert capacity against itself;
   // `uncounted` doubles up the baseline, which is the control that says the
   // safe-counter change is the only thing separating the two sides of a `safe`
@@ -104,6 +112,20 @@ if (command === 'fold') {
     labelA: 'auto-set',
     labelB: 'play-it-out',
     policies: AUTO_SET_AB_POLICIES,
+  })
+  console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'anchor') {
+  // The opening-anchor measurement: identical distilled bidders that open on
+  // identical deals, one naming the floor and one naming a compressed read of
+  // its ceiling. The margin is the price of the higher number.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: 'anchor',
+    labelB: 'floor-open',
+    policies: OPENING_ANCHOR_AB_POLICIES,
   })
   console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'play') {

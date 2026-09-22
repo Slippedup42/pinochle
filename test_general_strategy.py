@@ -29,7 +29,7 @@ import random
 from pinochle_engine import (
     Card, Deck, Player, EasyPlayer, GeneralStrategy, RandomStrategy,
     Team, Game, Round, Trick, PlayTracker,
-    Suit, OPENING_BID, GAME_WIN_SCORE, GAME_LOSE_SCORE, PASS_COUNT,
+    Suit, OPENING_BID, ANCHOR_CAP, GAME_WIN_SCORE, GAME_LOSE_SCORE, PASS_COUNT,
 )
 from human_play import HumanPlayer, card_str, find_card
 
@@ -111,7 +111,10 @@ def test_choose_bid_always_legal_or_none():
             bid = p.choose_bid(current_bid_arg, min_increment, context)
             if bid is not None:
                 expected_next = current_bid_arg + min_increment
-                assert bid == expected_next or bid == OPENING_BID, (lvl, bid, expected_next)
+                # An opening may name the anchor rather than the floor
+                # (`opening_level_for`), anywhere from OPENING_BID to ANCHOR_CAP.
+                opened = not ever_bid and OPENING_BID <= bid <= ANCHOR_CAP
+                assert bid == expected_next or opened, (lvl, bid, expected_next)
                 assert bid % 10 == 0
 
 

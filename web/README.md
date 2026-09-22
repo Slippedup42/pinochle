@@ -1064,6 +1064,76 @@ shipped wired-live and flag-off (#101) rather than being argued either way. It
 was never switched on, and #215 answered the house-rules question by retiring
 the arm rather than by leaving it disabled indefinitely.
 
+#### The opening anchor (`openingAnchor`)
+
+Paul's account of ~15 years at real tables is that a normal contract lands
+330-380, and that he could not find the knob that puts it there. Measured over
+3000 browser auctions at 0-0 on the shipped engine, the reason is structural
+rather than a constant: **the winning seat's own ceiling runs median 370 - the
+band is where the hands already are - while the contract runs median 320, and
+38.6% of contracts are an uncontested 300.** A +10 auction stops one rung past
+the last opposing seat's walk-away point, so the runner-up sets the price and
+the winner's valuation never reaches the table unless the opponents drag it
+there. Every valuation change moves winner and runner-up together, which is why
++40 off the adjustment and 90 -> 80 on its baseline could not move this number.
+
+The only number that can is the one the opener names, which is #204's second
+question again. `openingAnchor: 'valuation'` answers it with one level read off
+the ceiling; `'floor'` is the shipped behaviour. Both arms open on an identical
+set of deals by construction (`bidding.test.ts` asserts it on real deals), so
+the `anchor` A/B measures the price of the number and nothing else. 2000 pairs
+per run, side A the anchored arm, every shape applied only to a hand whose
+ceiling reaches the intercept:
+
+| anchor shape | margin/deal | 95% CI | in 330-380 | set | auto-set |
+|---|---|---|---|---|---|
+| floor opener (control column) | — | — | 32% | 34.5% | 8.6% |
+| 330 + 0.5·(c−330), cap 380 | **−67** | −79 to −55 | 57% | 38.3% | 12.4% |
+| 340 + 0.5·(c−340), cap 380 | −73 | −85 to −62 | 55% | 38.6% | 12.5% |
+| 330 + 0.5·(c−330), cap 360 | −51 | −63 to −40 | 57% | 37.5% | 11.5% |
+| 330 + 0.34·(c−330), cap 380 | −52 | −63 to −41 | 57% | 37.7% | 11.6% |
+| 330 + 0.25·(c−330), cap 360 | −35 | −45 to −24 | 57% | 36.8% | 10.6% |
+| 330 + 0.25·(c−330), cap 350 | −32 | −42 to −22 | 57% | 36.7% | 10.5% |
+| **flat 330** (slope 0), seed 1 | **−17** | −27 to −6 | 57% | 35.9% | 9.8% |
+| flat 330, seed 2 | −13 | −23 to −3 | 58% | 37.0% | 10.7% |
+| flat 330, seed 3 | −21 | −31 to −11 | 56% | 37.5% | 10.9% |
+
+The band share is the same in every row. **All of the distribution is bought by
+naming 330 instead of 300 on a hand worth 330, and every point of slope above
+that is price paid for nothing the target asks for.** The seed-1 slope-0.5 run
+was replicated at −51 (CI −63 to −39) on seed 2. So the arm as committed is the
+flat 330, and the constants stay general only so this table can be re-run.
+
+The mechanism is the one #204 named, at a gentler exchange rate: the anchored
+seat *wins more contracts* (10,505 vs 10,442 on seed 1 - a 330 open shuts out
+pushes a 300 open invites) and is set on more of them, with auto-SET hands up
+about a point. The flat anchor lifts the average bid 320 -> 326 for its −13 to
+−21; the walk lifted it 301 -> 322 for its −52 to −56.
+
+House feel - what a player at a table of four identical seats meets - from
+each arm against itself (`selftest`, 1000 pairs, seed 1):
+
+| table | avg bid | set | auto-set | at/under 300 | in 330-380 | over 380 |
+|---|---|---|---|---|---|---|
+| all-`floor` (shipped) | 320 | 34.8% | 8.8% | 48% | 31% | 4.3% |
+| all-`anchor`, flat 330 | 326 | 35.6% | 9.9% | 27% | 57% | 4.2% |
+| all-`anchor`, slope 0.5 | 335 | 37.5% | 12.5% | 27% | 58% | 3.8% |
+
+The flat anchor's symmetric price is contracts going down about one extra time
+in every 125, for the share of contracts in the band going from under a third to
+well over half.
+
+**Switched on, 2026-09-21.** This is a significant negative on the metric the
+project judges strategy by, in exchange for the distribution Paul asked for,
+and whether that is worse play or a table that bids like people is the house's
+call and not the harness's. Paul made it with the −17 in front of him. The arm
+landed flag-off in one commit and was flipped in the next so the two are
+separable in the history; `'floor'` is now the A/B control. Python carries the
+same anchor (`opening_level_for`) in both the static opener and the rollout
+bidder's candidate level, and the rollout dataset, evaluator and its TypeScript
+export were regenerated against the flipped engine — the fingerprint guard is
+what said they had to be.
+
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
 input to `vite build`, so it cannot reach a player or the PWA precache.

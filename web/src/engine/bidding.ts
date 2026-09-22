@@ -45,6 +45,7 @@ import { isProtectedTen } from './handShape'
 import {
   MELD_ONLY_BID_NOISE,
   MELD_ONLY_TRICK_ESTIMATE,
+  type OpeningAnchor,
   SHIPPED_SKILL,
   SKILL_PARAMS,
   type SkillLevel,
@@ -143,6 +144,69 @@ export const PARTNER_ESTIMATE_RANGE: readonly [number, number] = [50, 100]
 
 // Minimum Base Bid to justify opening at all.
 export const OPENER_THRESHOLD = 320
+
+// -- The valuation-anchored opening (`openingAnchor: 'valuation'`).
+//
+// Where a contract lands is set by the runner-up, not the winner: a +10
+// auction stops one rung past the last opposing seat's walk-away point, so
+// the winner pays the second-best hand's price and its own valuation never
+// reaches the table unless the opponents drag it there. Measured over 3000
+// browser auctions at 0-0 on the shipped engine: the winning seat's own
+// ceiling ran median 370, the contract median 320, and 38.6% of contracts were
+// an uncontested 300. Paul's account of ~15 years at real tables is that a
+// normal contract is 330-380 - which is where the *ceilings* already are.
+// Moving the valuation cannot fix that, because it moves the runner-up by the
+// same amount; the only number that can put the winner's own level on the
+// table is the one the opener names.
+//
+// The anchor is a read of the ceiling, and the shape of that read was
+// measured rather than chosen. The general form is
+//
+//   anchor = min(ANCHOR_CAP, ANCHOR_INTERCEPT + floor10(ANCHOR_SLOPE * (ceiling - ANCHOR_INTERCEPT)))
+//
+// applied only to a ceiling at or above the intercept, and never lowering a
+// level (`max(floor, anchor)`). Over 2000 paired deals per run on the `anchor`
+// A/B (`web/README.md`, "What the opener puts on the table"), every shape put
+// about 57% of contracts in 330-380 against the floor opener's 32% - and the
+// cost per deal tracked the slope, not the band:
+//
+//   slope 0.5,  cap 380   -67/deal       slope 0.25, cap 360   -35/deal
+//   slope 0.5,  cap 360   -51/deal       slope 0.25, cap 350   -32/deal
+//   slope 0.34, cap 380   -52/deal       slope 0,    (flat 330) -17/deal  (-13 / -21 on two more seeds)
+//
+// The whole of the distribution is bought by naming 330 instead of 300 on a
+// hand worth 330; every point of slope above that is price paid for nothing
+// the target asks for. So the slope is zero, the cap is unreached, and the
+// anchor is one number: a hand worth a contract asserts 330. That is also the
+// house rule as Paul states it - a bid asserts a hand - with the number on it.
+// The constants stay general so the curve above can be re-run, not because
+// anything reads the cap today.
+//
+// IT COSTS SCORE, AND SHIPS ANYWAY. #204's walk proved the general point -
+// naming a higher number on the same set of opens buys the same contracts for
+// more and gets set more often - and the evaluator that prefers 300 was fitted
+// to measured rollouts. What a paired A/B cannot measure is the thing being
+// asked for, which is that the AI's bids read like a real table's. Paul made
+// that trade on 2026-09-21 with the -17 in front of him, so `'valuation'` is
+// the shipped arm and `'floor'` is the control. `pinochle_engine.py`'s
+// `opening_level_for` is this function and moved in the same change; the
+// third-bidder *positional* open (under `OPENER_THRESHOLD`) stays at the bare
+// `OPENING_BID` in both, since it asserts position rather than a hand.
+export const ANCHOR_INTERCEPT = 330
+export const ANCHOR_SLOPE = 0
+export const ANCHOR_CAP = 380
+
+/**
+ * The level an opener names, given that its policy has already said it opens.
+ * `floorLevel` is the lowest legal opening for this seat (`OPENING_BID`, or
+ * `PARTNER_PASSED_FLOOR` once the partner is out); the `'floor'` arm returns it
+ * unchanged, and the `'valuation'` arm never goes below it.
+ */
+export function openingLevelFor(ceiling: number, floorLevel: number, anchor: OpeningAnchor): number {
+  if (anchor === 'floor' || ceiling < ANCHOR_INTERCEPT) return floorLevel
+  const compressed = ANCHOR_INTERCEPT + Math.floor((ANCHOR_SLOPE * (ceiling - ANCHOR_INTERCEPT)) / 10) * 10
+  return Math.max(floorLevel, Math.min(ANCHOR_CAP, compressed))
+}
 // Minimum ceiling to justify a defensive push against an opening bid (300
 // again since #257, 250 in between under #200). Hands at or above this floor
 // should almost always raise an opener, since even moderate hands can
@@ -860,21 +924,27 @@ export function chooseBid(
     // being committed to still differs: a partner-passed seat opens at the
     // floor rather than at OPENING_BID.
     //
-    // The level named here is the floor and nothing else, on purpose and not
-    // for want of asking. #204 split "should I open" from "at what level" and
-    // built `openingPolicy: 'walk'` to answer the second by stepping up while
-    // the seat's own policy still liked the next rung; over 5000 pairs on each
-    // of three seeds it lost 52-56 points per deal, and requiring more
-    // confidence per rung only bought the loss back by declining to walk. The
-    // arm was deleted by #221; the numbers stay in `web/README.md` under "What
-    // the opener puts on the table". Re-opening the question means re-running
-    // the measurement, not restoring the loop.
+    // "Should I open" and "at what level" are two questions (#204). The first
+    // is `opens`, asked of the floor - the cheapest contract this seat could
+    // take - and it decides the *set* of deals opened on, identically for both
+    // `openingAnchor` arms. The second is `openAt`: the shipped `'floor'` arm
+    // answers with the floor itself, as every opening here always has; the
+    // `'valuation'` arm answers from the ceiling (see `openingLevelFor`).
+    //
+    // The walk that #204 built to answer the second question stepped up while
+    // the policy still liked the next rung, lost 52-56 points a deal over 5000
+    // pairs on each of three seeds, and was deleted by #221; the numbers stay
+    // in `web/README.md` under "What the opener puts on the table". The anchor
+    // is not the walk restored - it names one number and does not ask the
+    // evaluator about it - but it is the same class of change, and it is
+    // measured by the same harness before it is anything but an A/B arm.
     const floorLevel = partnerPassed ? minBidAfterPartnerPass : OPENING_BID
     const opens = worthContract(floorLevel, ceiling >= OPENER_THRESHOLD)
+    const openAt = openingLevelFor(ceiling, floorLevel, SKILL_PARAMS[skill].openingAnchor)
 
     // 3rd bidder opens cheap — with a hand floor under it (#255).
     if (context.passesSoFar === 2) {
-      if (opens) return floorLevel
+      if (opens) return openAt
       // The positional arm: the seat's own policy has said the hand is not
       // worth a contract, and this used to put `OPENING_BID` on the table
       // anyway to deny the last player a cheap one. It still does — but only
@@ -918,7 +988,7 @@ export function chooseBid(
 
     // Normal opener threshold (4th bidder / dealer — partner has already
     // had their turn, so no pass-out protection needed).
-    return opens ? floorLevel : null
+    return opens ? openAt : null
   }
 
   // Someone has already bid this auction.

@@ -69,6 +69,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -77,6 +78,7 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   },
 }
 
@@ -97,6 +99,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -105,6 +108,7 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   },
 }
 
@@ -133,6 +137,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'off',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -141,6 +146,7 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   },
 }
 
@@ -171,14 +177,26 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
  * `hard` and above. Note that side A is `DISTILLED_LEVEL` and therefore
  * `'cascade'`, matching the other two maps, where A is the arm under test.
  */
-export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
+/**
+ * The opening-anchor comparison. Both sides bid on the distilled evaluator,
+ * fold on the model, play the cascade; the only thing separating them is the
+ * level the opener names once it has decided to open - the floor (shipped) or
+ * a compressed read of the hand's ceiling (`openingLevelFor`). Both arms open
+ * on an identical set of deals by construction, so a margin here is the price
+ * of the number and nothing else, which is what made #204's `opening` run
+ * readable and is why this one is shaped the same way.
+ *
+ * Side A (`DISTILLED_LEVEL`) is the arm under test.
+ */
+export const OPENING_ANCHOR_AB_POLICIES: Record<string, SkillParams> = {
   [STATIC_LEVEL]: {
     handValuation: 'base_bid',
     bidPolicy: 'distilled',
     foldPolicy: 'model',
-    playPolicy: 'simple',
+    playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   },
   [DISTILLED_LEVEL]: {
     handValuation: 'base_bid',
@@ -187,6 +205,28 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'valuation',
+  },
+}
+
+export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
+  [STATIC_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'simple',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
+  },
+  [DISTILLED_LEVEL]: {
+    handValuation: 'base_bid',
+    bidPolicy: 'distilled',
+    foldPolicy: 'model',
+    playPolicy: 'cascade',
+    autoSetPolicy: 'forced',
+    safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   },
 }
 
@@ -234,6 +274,7 @@ export function safeCounterAbPolicies(
       playPolicy: 'cascade',
       autoSetPolicy: 'forced',
       safeCounterPolicy: 'counted',
+      openingAnchor: 'floor',
     },
     [offLevel]: {
       handValuation: 'base_bid',
@@ -242,6 +283,7 @@ export function safeCounterAbPolicies(
       playPolicy: 'cascade',
       autoSetPolicy: 'forced',
       safeCounterPolicy: 'off',
+      openingAnchor: 'floor',
     },
   }
 }
@@ -286,6 +328,7 @@ export function safeCounterCapacityPolicies(
     playPolicy: 'cascade',
     autoSetPolicy: 'forced',
     safeCounterPolicy: 'counted',
+    openingAnchor: 'floor',
   }
   return { [highLevel]: counted, [lowLevel]: counted }
 }
@@ -469,6 +512,9 @@ export function runAb(options: RunAbOptions): AbReport {
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`
 const signed = (x: number) => `${x >= 0 ? '+' : ''}${x.toFixed(0)}`
 const rate = (n: number, d: number) => (d ? pct(n / d) : '—')
+/** Share of a side's contracts that landed inside [lo, hi]. */
+const band = (bids: readonly number[], lo: number, hi: number) =>
+  rate(bids.filter((b) => b >= lo && b <= hi).length, bids.length)
 const avg = (xs: readonly number[]) => (xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : 0)
 
 /** The Python harness's `summary()`, near enough line for line — including the
@@ -523,5 +569,11 @@ export function summarise(report: AbReport, analysis = analyse(report)): string 
     // above cannot mean much if this is near zero.
     `  ${'  auto-set hands'.padEnd(18)}${rate(report.statsA.autoSet, report.statsA.contracts).padStart(12)}${rate(report.statsB.autoSet, report.statsB.contracts).padStart(12)}`,
     `  ${'avg bid'.padEnd(18)}${avg(report.statsA.bids).toFixed(0).padStart(12)}${avg(report.statsB.bids).toFixed(0).padStart(12)}`,
+    // Where the contracts land, in the bands Paul's account of real tables uses
+    // (a normal contract is 330-380). The `anchor` A/B is about moving this
+    // row; the margin above is what moving it costs.
+    `  ${'  at 300 or under'.padEnd(18)}${band(report.statsA.bids, 0, 300).padStart(12)}${band(report.statsB.bids, 0, 300).padStart(12)}`,
+    `  ${'  in 330-380'.padEnd(18)}${band(report.statsA.bids, 330, 380).padStart(12)}${band(report.statsB.bids, 330, 380).padStart(12)}`,
+    `  ${'  over 380'.padEnd(18)}${band(report.statsA.bids, 381, 9999).padStart(12)}${band(report.statsB.bids, 381, 9999).padStart(12)}`,
   ].join('\n')
 }

@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { bestBaseBid, openingLevelFor } from '../engine/bidding'
 import { Card, Deck, FORCED_BID, OPENING_BID, Suit } from '../engine/card'
 import { partnerOf } from '../engine/round'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
@@ -343,8 +344,10 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
   it('opens as first bidder on a hand that clears the opener threshold', () => {
     vi.useFakeTimers()
     const hands = buildTestHands()
-    // Seat 2 gets a full club Run plus a spare Royal Marriage: Base Bid 190,
-    // ceiling 380 at 0/0 since #308 — over OPENER_THRESHOLD (320).
+    // Seat 2 gets a full club Run plus a spare Royal Marriage: Base Bid 190
+    // and a ceiling well over OPENER_THRESHOLD (320) — and over the anchor's
+    // intercept, so the seat names the anchor (`openingLevelFor`) rather than
+    // the bare opening rung.
     hands[2] = [
       ...(['A', '10', 'K', 'Q', 'J'] as const).map((r) => new Card(Suit.Clubs, r, 1)),
       new Card(Suit.Clubs, 'K', 2),
@@ -369,7 +372,9 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
     // the Scoreboard shows the same number as the standing contract, so a plain
     // text query matches both and cannot tell "seat 2 opened" from "the high
     // bid is the opener" — which is the whole point of the assertion (#191).
-    expect(screen.getByLabelText(`Partner: bid ${OPENING_BID}`)).not.toBeNull()
+    const named = openingLevelFor(bestBaseBid(hands[2], 0, 0).total, OPENING_BID, 'valuation')
+    expect(named).toBeGreaterThan(OPENING_BID)
+    expect(screen.getByLabelText(`Partner: bid ${named}`)).not.toBeNull()
   })
 
   /**
