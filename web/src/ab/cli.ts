@@ -9,6 +9,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts autoset --pairs 5000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts anchor --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts partner --arm feedAhead --pairs 2000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts sluff --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts safe --pairs 400 --level expert
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts capacity --high expert --low easy
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
@@ -43,6 +44,7 @@ import {
   OPENING_ANCHOR_AB_POLICIES,
   PLAY_AB_POLICIES,
   partnerReadAbPolicies,
+  sluffAbPolicies,
   SAFE_COUNTER_CONTROL,
   STATIC_LEVEL,
   analyse,
@@ -73,6 +75,7 @@ const SELFTEST_ARMS: Record<string, { level: SkillLevel; policies: Record<string
   'feed-ahead': { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('feedAhead') },
   'hold-back': { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('holdBack') },
   likely: { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('likely') },
+  protect: { level: DISTILLED_LEVEL, policies: sluffAbPolicies('protect') },
   // #158's two arms. `counted` doubles up the expert capacity against itself;
   // `uncounted` doubles up the baseline, which is the control that says the
   // safe-counter change is the only thing separating the two sides of a `safe`
@@ -132,6 +135,19 @@ if (command === 'fold') {
     labelA: 'anchor',
     labelB: 'floor-open',
     policies: OPENING_ANCHOR_AB_POLICIES,
+  })
+  console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'sluff') {
+  // The expert tier's sluff (protect counters first) against the Proficient
+  // one the browser ports (shortest suit, points not consulted).
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: 'protect',
+    labelB: 'shortest',
+    policies: sluffAbPolicies('protect'),
   })
   console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'partner') {

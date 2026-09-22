@@ -177,7 +177,7 @@ is where the next round of strategy work will run. See
   `defend_ev` / `should_fold`. Which configuration gets labelled is read
   out of `GENERAL_STRATEGY_SKILL_PARAMS` at runtime rather than assumed —
   `--config` prints it. Output is `rollout_dataset.csv`; the committed
-  file is a reproducible 2000-row prefix of a longer run, not a
+  file is a reproducible 4000-row prefix of a longer run (200 games, the generator's default, since 2026-09-22), not a
   hand-edited artifact. Generating also writes
   `rollout_dataset.meta.json` beside it (issue #225): the commit, the
   args, and a SHA over how that engine labelled a fixed four-game re-run.

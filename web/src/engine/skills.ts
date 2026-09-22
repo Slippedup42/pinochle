@@ -247,6 +247,24 @@ export type OpeningAnchor = 'floor' | 'valuation'
  */
 export type PartnerRead = 'current' | 'feedAhead' | 'holdBack' | 'likely'
 
+/**
+ * What a free sluff spends (void in the lead suit and in trump, any card
+ * legal).
+ *
+ * `'shortest'` is `choose_follow_card`'s rule, the Proficient tier the browser
+ * ports: work toward a void in the shortest suit, lowest rank within it, point
+ * value not consulted - so a lone King in a one-card suit goes ahead of a 9 in
+ * a two-card suit. `'protect'` is `_expert_follow_card_honest`'s: the same
+ * sort, run over the non-point cards first, so a counter goes out only when
+ * nothing else is legal. Paul's ruling is that the expert tier is right, and
+ * the `sluff` A/B priced it at +4 / +5 / +2 a deal on three seeds (2000, 2000
+ * and 5000 pairs; every CI includes zero, none includes a loss) - a null that
+ * leans the right way. `'protect'` ships on that ruling; Python's Proficient
+ * tier moved to the same rule in the same change, so Python has one sluff.
+ * `'shortest'` is the A/B control.
+ */
+export type SluffPolicy = 'shortest' | 'protect'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -256,6 +274,7 @@ export interface SkillParams {
   readonly safeCounterPolicy: SafeCounterPolicy
   readonly openingAnchor: OpeningAnchor
   readonly partnerRead: PartnerRead
+  readonly sluffPolicy: SluffPolicy
 }
 
 /**
@@ -272,6 +291,7 @@ export interface SkillParams {
  * | `safeCounterPolicy` | `counted`   | `off`                                  |
  * | `openingAnchor`     | `valuation` | `floor`                                |
  * | `partnerRead`       | `feedAhead` | `current`, `holdBack`, `likely`        |
+ * | `sluffPolicy`       | `protect`   | `shortest`                             |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -322,6 +342,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   safeCounterPolicy: 'counted',
   openingAnchor: 'valuation',
   partnerRead: 'feedAhead',
+  sluffPolicy: 'protect',
 }
 
 /**

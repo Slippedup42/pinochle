@@ -813,12 +813,20 @@ describe('chooseBid', () => {
       // that is no longer an opener, so `currentBid <= OPENING_BID` went false
       // and the push it exists to check stopped firing at all.
       const opener = { player: 1 as PlayerIndex, amount: OPENING_BID }
-      // belowOpenerHand has ceiling 270 >= DEFENSIVE_PUSH_FLOOR (200)
+      // belowOpenerHand has ceiling 260 >= DEFENSIVE_PUSH_FLOOR (200). The
+      // *rule* is `DEFENSIVE_PUSH_FLOOR`, so it is pinned on the static arm;
+      // the shipped evaluator declines this very push, which is the mechanism
+      // #115 credited its whole gain to ("the model declines the cheap
+      // contracts DEFENSIVE_PUSH_FLOOR tells the static rule to buy"). Until
+      // the 2026-09-22 refit the model happened to agree with the rule here,
+      // which is what let this assertion sit on the shipped seat unnoticed.
       const context = baseContext({ everBid: true, bidHistory: [opener] })
-      expect(chooseBid(0, belowOpenerHand, OPENING_BID, 10, context)).toBe(OPENING_BID + 10)
+      expect(chooseBid(0, belowOpenerHand, OPENING_BID, 10, context, STATIC_LEVEL)).toBe(OPENING_BID + 10)
+      expect(chooseBid(0, belowOpenerHand, OPENING_BID, 10, context)).toBeNull()
 
       // weakHand has ceiling 100 (a Dix at its best trump, no aces) < DEFENSIVE_PUSH_FLOOR (200) — truly hopeless
       const hopelessContext = baseContext({ everBid: true, bidHistory: [opener] })
+      expect(chooseBid(0, weakHand, OPENING_BID, 10, hopelessContext, STATIC_LEVEL)).toBeNull()
       expect(chooseBid(0, weakHand, OPENING_BID, 10, hopelessContext)).toBeNull()
     })
 

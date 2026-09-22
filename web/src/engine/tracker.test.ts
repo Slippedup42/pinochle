@@ -414,6 +414,18 @@ describe('chooseLeadCard', () => {
   })
 })
 
+/** Runs `play` with one level temporarily on the given `sluffPolicy` arm. */
+function withSluff<T>(arm: 'shortest' | 'protect', play: (skill: SkillLevel) => T): T {
+  const level: SkillLevel = 'proficient'
+  const saved = SKILL_PARAMS[level]
+  SKILL_PARAMS[level] = { ...saved, sluffPolicy: arm }
+  try {
+    return play(level)
+  } finally {
+    SKILL_PARAMS[level] = saved
+  }
+}
+
 /** Runs `play` with one level temporarily on the given `partnerRead` arm. */
 function withPartnerRead<T>(arm: 'feedAhead' | 'holdBack' | 'likely', play: (skill: SkillLevel) => T): T {
   const level: SkillLevel = 'medium'
@@ -992,20 +1004,30 @@ describe('chooseFollowCard', () => {
     expect(chooseFollowCard(hand, hand, partnerLed, trump, [0, 2], new PlayTracker()).rank).toBe('K')
   })
 
-  it('sluffing: shortest suit first, even when that hands away a lone counter', () => {
-    // Python's Proficient rule, which the browser ports: suit length, then
-    // rank, point value not consulted - so the lone King in the one-card suit
-    // goes ahead of the Clubs 9. #312 filtered to non-point cards first and
-    // asserted the 9; that reads well, Python's *expert* tier does it, and it
-    // was never measured here. Porting it is a `play` A/B candidate.
+  it('sluffing: the two SluffPolicy arms part on a lone counter in the shortest suit', () => {
+    // `'shortest'` is Python's Proficient rule: suit length, then rank, point
+    // value not consulted, so the lone King in the one-card suit goes ahead of
+    // the Clubs 9. `'protect'` is the expert tier's: non-point cards first, so
+    // the 9 goes and the King stays home. Both arms asserted so the `sluff`
+    // A/B is a comparison of two rules that really differ.
     const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Diamonds, 'K', 1) }]
     const hand = [
       new Card(Suit.Hearts, 'K', 1), // lone point card, shortest suit
       new Card(Suit.Clubs, '9', 1), // two-card suit, non-point
       new Card(Suit.Clubs, '10', 1),
     ]
-    const legalMoves = hand
-    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    const shortest = withSluff('shortest', (skill) => chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], undefined, skill))
+    expect(shortest.suit).toBe(Suit.Hearts)
+    expect(shortest.rank).toBe('K')
+    const protect = withSluff('protect', (skill) => chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], undefined, skill))
+    expect(protect.suit).toBe(Suit.Clubs)
+    expect(protect.rank).toBe('9')
+  })
+
+  it('sluffing: protect still falls back to shortest-suit-first when every legal card is a counter', () => {
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Diamonds, 'Q', 1) }]
+    const hand = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Clubs, '10', 1), new Card(Suit.Clubs, 'A', 1)]
+    const played = withSluff('protect', (skill) => chooseFollowCard(hand, hand, trickPlays, Suit.Spades, [0, 2], undefined, skill))
     expect(played.suit).toBe(Suit.Hearts)
     expect(played.rank).toBe('K')
   })

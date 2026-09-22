@@ -675,13 +675,16 @@ export function chooseFollowCard(
   }
 
   // Sluff - free choice across suits: work toward a void in the shortest suit,
-  // lowest rank within it. This is `choose_follow_card`'s rule exactly, point
-  // value not consulted. #312 filtered to non-point cards first, which reads
-  // well and is what Python's *expert* tier does — but the browser ports the
-  // Proficient tier, the filter was never measured, and Paul's call on the
-  // drift was that Python is right. Porting the expert tier's counter
-  // protection is a candidate for the `play` A/B, not a thing to slip in.
-  const legalSorted = [...legalMoves].sort((a, b) => {
+  // lowest rank within it. `'shortest'` is `choose_follow_card`'s rule
+  // exactly, point value not consulted; `'protect'` (`SluffPolicy`) is the
+  // expert tier's, the same sort over the non-point cards first so a counter
+  // goes out only when nothing else is legal. #312 shipped the filter
+  // unmeasured; the `sluff` A/B is what it should have been, and `'protect'`
+  // ships on its numbers plus Paul's ruling (see `SluffPolicy`).
+  const nonPointLegal = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
+  const sluffPool =
+    SKILL_PARAMS[skill].sluffPolicy === 'protect' && nonPointLegal.length > 0 ? nonPointLegal : legalMoves
+  const legalSorted = [...sluffPool].sort((a, b) => {
     const bySuitLength = suitLength(hand, a.suit) - suitLength(hand, b.suit)
     return bySuitLength !== 0 ? bySuitLength : a.rankValue - b.rankValue
   })
