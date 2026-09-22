@@ -365,7 +365,7 @@ OPENER_THRESHOLD = 320  # minimum Base Bid to justify opening at all
 # sweep can be re-run.
 #
 # Switched on for the shipped AI on Paul's decision of 2026-09-21, made on
-# -17/deal; the equalised figure is about -30 and the call is his to remake.
+# -17/deal; shown the equalised figure of about -30 on 2026-09-22, he kept it.
 # The TypeScript engine's `openingLevelFor` is this function.
 ANCHOR_INTERCEPT = 330
 ANCHOR_SLOPE = 0
@@ -1028,6 +1028,35 @@ def _feed_partner(legal_moves):
     return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])  # avoid donating a live Ace unless forced
 
 
+def _feed_ahead(hand, trick_plays, my_team_players, tracker):
+    """
+    Paul's follow rule read with position (`PartnerRead` 'feedAhead' in the
+    TypeScript engine, shipped 2026-09-22): "if partner is likely to take the
+    trick, put in the lowest point you can."
+
+    "Likely" is the seat. An opponent led and this seat is second, so partner
+    plays *last* - the best seat at the table - and the card currently winning
+    is not boss in its suit (some higher copy is still unaccounted for, which
+    partner may hold). The caller has already established a forced beat, so
+    every legal card takes the trick as it stands; the shipped rule took it as
+    cheaply as it could, and this one feeds the King for partner to collect.
+
+    Measured on the capacity-equalised TypeScript harness at +5 a deal (95% CI
+    +2 to +9, 5000 pairs); its sibling `holdBack` - hold the King when an
+    opponent still sits behind you - was a null and does not ship. Without a
+    tracker nothing is known to be accounted for, so the winner is read as
+    beatable, which is what the TypeScript side does too.
+    """
+    if len(trick_plays) != 1:
+        return False
+    leader, winner_card = trick_plays[0]
+    if leader in my_team_players:
+        return False
+    if tracker is None:
+        return True
+    return not is_safe(winner_card, hand, tracker)
+
+
 def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, tracker=None):
     """
     Choose which legal card to play when following (not leading).
@@ -1087,6 +1116,10 @@ def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, t
         forced_beat = winner_card is not None and all(
             c.beats(winner_card, trump) for c in legal_moves
         )
+        # Second seat after an opponent's lead, partner last: feed the King
+        # for partner rather than beat cheaply (`_feed_ahead`).
+        if forced_beat and _feed_ahead(hand, trick_plays, my_team_players, tracker):
+            return _feed_partner(legal_moves)
         if forced_beat:
             return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
         if partner_winning:
@@ -2290,6 +2323,10 @@ def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_pl
         forced_beat = winner_card is not None and all(
             c.beats(winner_card, trump) for c in legal_moves
         )
+        # Same positional read as `choose_follow_card`: this is the copy skills
+        # 4-5 follow with at the table, so it moves with it (`_feed_ahead`).
+        if forced_beat and _feed_ahead(hand, trick_plays, my_team_players, tracker):
+            return _feed_partner(legal_moves)
         if forced_beat:
             return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
         if partner_winning:

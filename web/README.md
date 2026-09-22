@@ -1142,8 +1142,8 @@ well over half.
 significant negative on the metric the project judges strategy by, in exchange
 for the distribution Paul asked for, and whether that is worse play or a table
 that bids like people is the house's call and not the harness's. Paul made it
-with −17 in front of him; the equalised figure is about −30, and the decision
-is his to remake with that number. The house-feel table above is unaffected —
+with −17 in front of him; shown the equalised figure of about −30 on
+2026-09-22, he kept it. The house-feel table above is unaffected —
 a self-test seats one level on both sides, so it never carried the confound —
 and one extra set in ~125 contracts is still the symmetric price. The arm
 landed flag-off in one commit and was flipped in the next so the two are
@@ -1195,9 +1195,11 @@ lowest point you can; if you can take the trick, do so* — were implemented as
 
 `feedAhead` is real and small; `holdBack` is a null — instrumented over 150
 games it fires 77 times and changes the card on 21 of them, since the position
-rarely leaves a King in a hand that also has a non-point. Neither ships yet:
-`feedAhead` is worth taking to Python and the rollout pipeline if Paul wants
-the +5; `holdBack` is recorded as the null it is.
+rarely leaves a King in a hand that also has a non-point. **`feedAhead` ships**
+(Paul, 2026-09-22): Python carries the same rule as `_feed_ahead` in both
+`choose_follow_card` and `_expert_follow_card_honest`, and the rollout dataset,
+evaluator and TypeScript export were regenerated behind it. `holdBack` is
+recorded as the null it is and stays an arm; `'current'` is now the control.
 
 `bench/index.html` is the browser side of the latency measurement, served by
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an

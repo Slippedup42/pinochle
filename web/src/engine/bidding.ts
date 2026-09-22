@@ -193,9 +193,9 @@ export const OPENER_THRESHOLD = 320
 // more and gets set more often - and the evaluator that prefers 300 was fitted
 // to measured rollouts. What a paired A/B cannot measure is the thing being
 // asked for, which is that the AI's bids read like a real table's. Paul made
-// that trade on 2026-09-21 with -17 in front of him; the equalised price is
-// about -30, and remaking the call with that number is his. `'valuation'` is
-// the shipped arm and `'floor'` is the control. `pinochle_engine.py`'s
+// that trade on 2026-09-21 with -17 in front of him, and remade it on
+// 2026-09-22 with the equalised -30: kept. `'valuation'` is the shipped arm
+// and `'floor'` is the control. `pinochle_engine.py`'s
 // `opening_level_for` is this function and moved in the same change; the
 // third-bidder *positional* open (under `OPENER_THRESHOLD`) stays at the bare
 // `OPENING_BID` in both, since it asserts position rather than a hand.

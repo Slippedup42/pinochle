@@ -1,7 +1,28 @@
-import { describe, expect, it } from 'vitest'
-import type { SkillLevel } from './skills'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { SkillLevel, SkillParams } from './skills'
 import { Card, Suit } from './card'
-import { SKILL_PARAMS } from './skills'
+import { SHIPPED_PARAMS, SKILL_LEVELS, SKILL_PARAMS } from './skills'
+
+/**
+ * Every level is pinned to `partnerRead: 'current'` for this file, and
+ * restored after it. The forced-beat and feed-partner tests below put this
+ * seat second after an opponent's lead with a beatable card on the table -
+ * which is precisely the position the shipped `'feedAhead'` read acts on, so
+ * under it seven of them would be asserting the King fed rather than the tier
+ * they are named for. The position read is tested in its own block, which
+ * installs the arm it means explicitly, the way `withSimplePlay` and
+ * `withSafeCounterOff` do for theirs.
+ */
+const pristinePartnerRead: Partial<Record<SkillLevel, SkillParams>> = {}
+beforeAll(() => {
+  for (const level of SKILL_LEVELS) {
+    pristinePartnerRead[level] = SKILL_PARAMS[level]
+    SKILL_PARAMS[level] = { ...SKILL_PARAMS[level], partnerRead: 'current' }
+  }
+})
+afterAll(() => {
+  for (const level of SKILL_LEVELS) SKILL_PARAMS[level] = pristinePartnerRead[level] as SkillParams
+})
 import { Trick, type TrickPlay } from './trick'
 import { chooseFollowCard, chooseLeadCard, PlayTracker } from './tracker'
 import { TrumpMemory } from './trumpMemory'
@@ -406,7 +427,13 @@ function withPartnerRead<T>(arm: 'feedAhead' | 'holdBack' | 'likely', play: (ski
 }
 
 describe('chooseFollowCard partner read (position-aware)', () => {
-  // Team [0, 2]; this seat is player 2 throughout.
+  // Team [0, 2]; this seat is player 2 throughout. Every level in this file is
+  // pinned to `'current'` (top of file), so the default call below is the
+  // control and the arm under test is installed by name.
+  it('the shipped configuration reads feedAhead', () => {
+    expect(SHIPPED_PARAMS.partnerRead).toBe('feedAhead')
+  })
+
   const HEARTS = (rank: 'A' | '10' | 'K' | 'Q' | 'J' | '9', copy: 1 | 2 = 1) => new Card(Suit.Hearts, rank, copy)
 
   it('feed-ahead: second to play after an opponent lead, partner last, forced to beat — puts the King in', () => {

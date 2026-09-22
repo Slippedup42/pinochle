@@ -212,8 +212,9 @@ export type SafeCounterPolicy = 'off' | 'counted'
  * deal for a flat 330, and Paul switched it on for the shipped AI on 2026-09-21
  * with that number in front of him. That number carried the capacity confound
  * `web/README.md` records; equalised, the price is about -30 a deal (-31, CI
- * -36 to -25, at 5000 pairs). The symmetric price - one extra set in ~125
- * contracts - never carried it and stands. `'floor'` is the A/B control.
+ * -36 to -25, at 5000 pairs), and shown that on 2026-09-22 he kept it. The
+ * symmetric price - one extra set in ~125 contracts - never carried it and
+ * stands. `'floor'` is the A/B control.
  */
 export type OpeningAnchor = 'floor' | 'valuation'
 
@@ -237,7 +238,12 @@ export type OpeningAnchor = 'floor' | 'valuation'
  *                    instead of feeding a King the opponent may collect.
  *   - `'likely'`     both.
  *
- * Only `'current'` ships until the `partner` A/B says otherwise.
+ * `'feedAhead'` ships, on Paul's decision of 2026-09-22: +5 a deal (95% CI +2
+ * to +9, 5000 pairs) on the capacity-equalised harness. `'holdBack'` measured
+ * +0 (CI -1 to +1) - it changes the card played 21 times in 834 rounds - and
+ * stays as the recorded null; `'likely'` adds nothing over `'feedAhead'` for
+ * that reason. `'current'` is the A/B control. Python carries the same rule
+ * (`_feed_ahead`) in both of its follow functions.
  */
 export type PartnerRead = 'current' | 'feedAhead' | 'holdBack' | 'likely'
 
@@ -265,7 +271,7 @@ export interface SkillParams {
  * | `autoSetPolicy`     | `forced`    | `off`                                  |
  * | `safeCounterPolicy` | `counted`   | `off`                                  |
  * | `openingAnchor`     | `valuation` | `floor`                                |
- * | `partnerRead`       | `current`   | `feedAhead`, `holdBack`, `likely`      |
+ * | `partnerRead`       | `feedAhead` | `current`, `holdBack`, `likely`        |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -315,7 +321,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   autoSetPolicy: 'forced',
   safeCounterPolicy: 'counted',
   openingAnchor: 'valuation',
-  partnerRead: 'current',
+  partnerRead: 'feedAhead',
 }
 
 /**

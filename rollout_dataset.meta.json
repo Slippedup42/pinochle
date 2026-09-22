@@ -3,7 +3,7 @@
   "dataset": "rollout_dataset.csv",
   "dataset_rows": 2000,
   "generated_by": {
-    "commit": "a3656a87460c4f13cfcc4c33b4d6ea648813b915",
+    "commit": "c897e83cad6de16480785ed5ac24869b2bba3c04",
     "args": {
       "games": 100,
       "samples": 150,
@@ -31,7 +31,7 @@
       "seed": 112,
       "skill": 5
     },
-    "rows": 99,
-    "digest": "e5eef2aeff21de07ae65a7c45df8e968371d52bf5d561e1517d09c85830aff23"
+    "rows": 90,
+    "digest": "2e7bf26cfb71f2e74e79eea38054c8a85a48aad092d0767b24b31d1a46de0270"
   }
 }
