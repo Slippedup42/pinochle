@@ -195,6 +195,25 @@ export type AutoSetPolicy = 'forced' | 'off'
  */
 export type SafeCounterPolicy = 'off' | 'counted'
 
+/**
+ * What the opener puts on the table, once its policy has said it opens at all.
+ *
+ * `'floor'` names the lowest legal level - `OPENING_BID`, or the partner-passed
+ * floor - which is every opening this engine has ever made. `'valuation'`
+ * names a level read off the hand's own ceiling instead, compressed toward the
+ * 330-380 band Paul says a normal contract lives in (`openingLevelFor` in
+ * `bidding.ts` has the shape and the reasoning).
+ *
+ * This is the second time the question has had a dial. #204's `'walk'` stepped
+ * up rung by rung while the evaluator still tolerated the next one, landed by
+ * construction on the marginal contract, lost 52-56 points a deal and was
+ * retired by #221. `'valuation'` is not a walk: it is one number, named once,
+ * that stops well under the ceiling. Whether that is cheap enough is what the
+ * `anchor` A/B measures, and until it has, this arm is selectable only from
+ * `ab/`.
+ */
+export type OpeningAnchor = 'floor' | 'valuation'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -202,6 +221,7 @@ export interface SkillParams {
   readonly playPolicy: PlayPolicy
   readonly autoSetPolicy: AutoSetPolicy
   readonly safeCounterPolicy: SafeCounterPolicy
+  readonly openingAnchor: OpeningAnchor
 }
 
 /**
@@ -216,6 +236,7 @@ export interface SkillParams {
  * | `playPolicy`        | `cascade`   | `simple`                               |
  * | `autoSetPolicy`     | `forced`    | `off`                                  |
  * | `safeCounterPolicy` | `counted`   | `off`                                  |
+ * | `openingAnchor`     | `floor`     | `valuation`                            |
  *
  * Read as prose: distilled bidding, cascade card play, `model` folding,
  * `forced` auto-SET, `counted` safe counters, and — since the shipped seat is
@@ -260,6 +281,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   playPolicy: 'cascade',
   autoSetPolicy: 'forced',
   safeCounterPolicy: 'counted',
+  openingAnchor: 'floor',
 }
 
 /**

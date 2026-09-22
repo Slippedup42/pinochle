@@ -3,6 +3,8 @@ import { SHIPPED_SKILL, SKILL_LEVELS, SKILL_PARAMS, type SkillLevel, type SkillP
 import { Card, Deck, GAME_WIN_SCORE, OPENING_BID, Suit, SUITS } from './card'
 import {
   ACE_VALUE,
+  ANCHOR_CAP,
+  ANCHOR_INTERCEPT,
   type AuctionContext,
   bestBaseBid,
   chooseBid,
@@ -20,6 +22,7 @@ import {
   NEAR_DOUBLE_PINOCHLE_VALUE,
   NEAR_RUN_VALUE,
   OPENER_THRESHOLD,
+  openingLevelFor,
   PARTNER_PASSED_FLOOR,
   PARTNER_RAISE_FLOOR,
   PINOCHLE_NO_KING_OF_SPADES_BONUS,
@@ -1362,5 +1365,90 @@ describe('raising over a bid our own team already holds (#206)', () => {
       }
       expect(chooseBid(2, weakHand, oppBid, 10, context, SHIPPED_SKILL)).toBe(oppBid + 10)
     }
+  })
+})
+
+// -- The valuation-anchored opening (`openingAnchor`) ------------------------
+describe('openingLevelFor', () => {
+  it('names the floor on the floor arm, whatever the hand', () => {
+    for (const c of [0, 200, 330, 400, 600]) {
+      expect(openingLevelFor(c, OPENING_BID, 'floor')).toBe(OPENING_BID)
+      expect(openingLevelFor(c, PARTNER_PASSED_FLOOR, 'floor')).toBe(PARTNER_PASSED_FLOOR)
+    }
+  })
+
+  it('names a flat 330 for every hand worth a contract', () => {
+    // The slope is zero because it was measured to zero (the sweep is on the
+    // constants in `bidding.ts`): every slope bought the same 57% in 330-380 and
+    // the cost per deal tracked the slope alone. These are pinned as literals
+    // so putting a slope back has to come through here and re-run the sweep.
+    expect(ANCHOR_INTERCEPT).toBe(330)
+    expect(ANCHOR_CAP).toBe(380)
+    const at = (c: number) => openingLevelFor(c, OPENING_BID, 'valuation')
+    for (const c of [330, 345, 350, 370, 400, 430, 500, 1500]) expect(at(c)).toBe(330)
+  })
+
+  it('never goes below the floor, and names the floor under the intercept', () => {
+    expect(openingLevelFor(320, OPENING_BID, 'valuation')).toBe(OPENING_BID)
+    expect(openingLevelFor(329, PARTNER_PASSED_FLOOR, 'valuation')).toBe(PARTNER_PASSED_FLOOR)
+    // A partner-passed floor of 320 under a 330 anchor: the anchor wins.
+    expect(openingLevelFor(330, PARTNER_PASSED_FLOOR, 'valuation')).toBe(330)
+    // A floor above the cap (an opponent's earlier bid does not reach here,
+    // but the contract is a max, so the floor must still win if it is higher).
+    expect(openingLevelFor(500, 400, 'valuation')).toBe(400)
+  })
+})
+
+describe('openingAnchor arms open on an identical set of deals (#204 shape)', () => {
+  // What makes the `anchor` A/B readable is that the two arms differ only in
+  // the *level* named, never in *whether* a seat opens. This pins that on real
+  // deals rather than on a fixture: for every seat that speaks first, the two
+  // arms are both null or both non-null, the anchored level is never under the
+  // floor arm's, and never over the cap unless the floor itself is.
+  const ANCHOR_LEVEL: SkillLevel = 'proficient'
+  let saved: SkillParams
+  beforeAll(() => {
+    saved = SKILL_PARAMS[ANCHOR_LEVEL]
+    SKILL_PARAMS[ANCHOR_LEVEL] = { ...SKILL_PARAMS[SHIPPED_SKILL], openingAnchor: 'valuation' }
+  })
+  afterAll(() => {
+    SKILL_PARAMS[ANCHOR_LEVEL] = saved
+  })
+
+  it('agrees on whether to open, and only ever raises the level', () => {
+    let opened = 0
+    let lifted = 0
+    for (let deal = 0; deal < 120; deal++) {
+      // `deal()` empties the deck, so each deal is a fresh one.
+      const deck = new Deck()
+      deck.shuffle()
+      const hands = deck.deal()
+      for (const p of [0, 1, 2, 3] as PlayerIndex[]) {
+        for (const partnerPassed of [false, true]) {
+          const dealer = ((p + 3) % 4) as PlayerIndex
+          const context: AuctionContext = {
+            everBid: false,
+            passesSoFar: partnerPassed ? 2 : 0,
+            bidHistory: [],
+            dealer,
+            scores: { 0: 0, 1: 0 },
+            passedPlayers: partnerPassed ? [((p + 1) % 4) as PlayerIndex, ((p + 2) % 4) as PlayerIndex] : [],
+          }
+          const floor = chooseBid(p, hands[p], OPENING_BID - 10, 10, context, SHIPPED_SKILL)
+          const anchored = chooseBid(p, hands[p], OPENING_BID - 10, 10, context, ANCHOR_LEVEL)
+          expect(anchored === null).toBe(floor === null)
+          if (floor !== null && anchored !== null) {
+            opened++
+            expect(anchored).toBeGreaterThanOrEqual(floor)
+            expect(anchored).toBeLessThanOrEqual(Math.max(ANCHOR_CAP, floor))
+            expect(anchored % 10).toBe(0)
+            if (anchored > floor) lifted++
+          }
+        }
+      }
+    }
+    // Sanity: the loop actually exercised both outcomes.
+    expect(opened).toBeGreaterThan(50)
+    expect(lifted).toBeGreaterThan(10)
   })
 })
