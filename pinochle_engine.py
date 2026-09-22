@@ -356,14 +356,17 @@ OPENER_THRESHOLD = 320  # minimum Base Bid to justify opening at all
 # The shape was measured, not chosen. Every slope of anchor from the ceiling
 # put ~57% of contracts in 330-380 against the floor opener's 32%, and the
 # cost per deal tracked the slope alone: -67 at slope 0.5, -35 at 0.25, and
-# -13 to -21 across three seeds for a flat 330. All of the distribution is
+# -13 to -21 across three seeds for a flat 330 - all measured with a capacity
+# confound the TypeScript harness has since equalised; the flat 330 re-measures
+# at about -30 (web/README.md, "The capacity confound"). All of the distribution is
 # bought by naming 330 instead of 300 on a hand worth 330, so the slope is
 # zero and the anchor is one number - which is Paul's house rule with the
 # number on it: a bid asserts a hand. The constants stay general so the
 # sweep can be re-run.
 #
-# Switched on for the shipped AI on Paul's decision of 2026-09-21, knowing
-# the -17/deal. The TypeScript engine's `openingLevelFor` is this function.
+# Switched on for the shipped AI on Paul's decision of 2026-09-21, made on
+# -17/deal; the equalised figure is about -30 and the call is his to remake.
+# The TypeScript engine's `openingLevelFor` is this function.
 ANCHOR_INTERCEPT = 330
 ANCHOR_SLOPE = 0
 ANCHOR_CAP = 380

@@ -393,6 +393,79 @@ describe('chooseLeadCard', () => {
   })
 })
 
+/** Runs `play` with one level temporarily on the given `partnerRead` arm. */
+function withPartnerRead<T>(arm: 'feedAhead' | 'holdBack' | 'likely', play: (skill: SkillLevel) => T): T {
+  const level: SkillLevel = 'medium'
+  const saved = SKILL_PARAMS[level]
+  SKILL_PARAMS[level] = { ...saved, partnerRead: arm }
+  try {
+    return play(level)
+  } finally {
+    SKILL_PARAMS[level] = saved
+  }
+}
+
+describe('chooseFollowCard partner read (position-aware)', () => {
+  // Team [0, 2]; this seat is player 2 throughout.
+  const HEARTS = (rank: 'A' | '10' | 'K' | 'Q' | 'J' | '9', copy: 1 | 2 = 1) => new Card(Suit.Hearts, rank, copy)
+
+  it('feed-ahead: second to play after an opponent lead, partner last, forced to beat — puts the King in', () => {
+    // Opponent (1) led the 9; J and K both beat it, so the shipped rule takes
+    // cheaply with the J. Partner (0) still to play, and last.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: HEARTS('9') }]
+    const legalMoves = [HEARTS('J'), HEARTS('K')]
+    expect(chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2]).rank).toBe('J')
+    const fed = withPartnerRead('feedAhead', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(fed.rank).toBe('K')
+  })
+
+  it('feed-ahead does not fire from third seat — partner has already played', () => {
+    // Opponent (1) led, partner (0) followed low, an opponent sits behind.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: HEARTS('9') }, { player: 0, card: HEARTS('J') }]
+    const legalMoves = [HEARTS('Q'), HEARTS('K')]
+    const played = withPartnerRead('feedAhead', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(played.rank).toBe('Q')
+  })
+
+  it('hold-back: partner winning with a beatable card and an opponent still behind — plays a non-point', () => {
+    // Partner (0) led the Queen, opponent (1) could not beat it. This seat is
+    // third; the last opponent may still hold a King, 10 or Ace of hearts.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: HEARTS('Q') }, { player: 1, card: HEARTS('J') }]
+    const legalMoves = [HEARTS('9'), HEARTS('K'), HEARTS('10')]
+    expect(chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2]).rank).toBe('K')
+    const held = withPartnerRead('holdBack', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(held.rank).toBe('9')
+  })
+
+  it('hold-back still feeds when partner\'s card is boss', () => {
+    const trickPlays: TrickPlay[] = [{ player: 0, card: HEARTS('A') }, { player: 1, card: HEARTS('9') }]
+    const legalMoves = [HEARTS('J'), HEARTS('K'), HEARTS('10')]
+    const played = withPartnerRead('holdBack', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(played.rank).toBe('K')
+  })
+
+  it('hold-back does not apply from the last seat — nothing is behind', () => {
+    const trickPlays: TrickPlay[] = [
+      { player: 3, card: HEARTS('9') },
+      { player: 0, card: HEARTS('Q') },
+      { player: 1, card: HEARTS('J') },
+    ]
+    const legalMoves = [HEARTS('9', 2), HEARTS('K')]
+    const played = withPartnerRead('likely', (skill) =>
+      chooseFollowCard(legalMoves, legalMoves, trickPlays, Suit.Spades, [0, 2], undefined, skill),
+    )
+    expect(played.rank).toBe('K')
+  })
+})
+
 describe('chooseFollowCard', () => {
   it('plays the only legal move without consulting any other context', () => {
     const onlyCard = new Card(Suit.Hearts, '9', 1)

@@ -174,6 +174,12 @@ export const OPENER_THRESHOLD = 320
 //   slope 0.5,  cap 360   -51/deal       slope 0.25, cap 350   -32/deal
 //   slope 0.34, cap 380   -52/deal       slope 0,    (flat 330) -17/deal  (-13 / -21 on two more seeds)
 //
+// Those were taken with side A on `expert` and side B on `hard`, which differ
+// in trump-memory capacity and which the harness has since equalised - every
+// row above is about 13 too kind to the anchor (`web/README.md`, "The capacity
+// confound"). Re-measured equalised, the flat 330 is -31/deal (CI -36 to -25,
+// 5000 pairs), -27 and -24 on two more seeds. The ordering is unchanged.
+//
 // The whole of the distribution is bought by naming 330 instead of 300 on a
 // hand worth 330; every point of slope above that is price paid for nothing
 // the target asks for. So the slope is zero, the cap is unreached, and the
@@ -187,7 +193,8 @@ export const OPENER_THRESHOLD = 320
 // more and gets set more often - and the evaluator that prefers 300 was fitted
 // to measured rollouts. What a paired A/B cannot measure is the thing being
 // asked for, which is that the AI's bids read like a real table's. Paul made
-// that trade on 2026-09-21 with the -17 in front of him, so `'valuation'` is
+// that trade on 2026-09-21 with -17 in front of him; the equalised price is
+// about -30, and remaking the call with that number is his. `'valuation'` is
 // the shipped arm and `'floor'` is the control. `pinochle_engine.py`'s
 // `opening_level_for` is this function and moved in the same change; the
 // third-bidder *positional* open (under `OPENER_THRESHOLD`) stays at the bare

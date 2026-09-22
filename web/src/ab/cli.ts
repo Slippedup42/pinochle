@@ -8,6 +8,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts play --pairs 400
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts autoset --pairs 5000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts anchor --pairs 2000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts partner --arm feedAhead --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts safe --pairs 400 --level expert
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts capacity --high expert --low easy
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
@@ -33,7 +34,7 @@
 // the rest of the engine, and paying for that with one cast is the cheaper
 // trade than a second tsconfig project.
 
-import type { SkillLevel, SkillParams } from '../engine/skills'
+import type { PartnerRead, SkillLevel, SkillParams } from '../engine/skills'
 import {
   AUTO_SET_AB_POLICIES,
   BID_AB_POLICIES,
@@ -41,6 +42,7 @@ import {
   FOLD_AB_POLICIES,
   OPENING_ANCHOR_AB_POLICIES,
   PLAY_AB_POLICIES,
+  partnerReadAbPolicies,
   SAFE_COUNTER_CONTROL,
   STATIC_LEVEL,
   analyse,
@@ -67,6 +69,10 @@ const SELFTEST_ARMS: Record<string, { level: SkillLevel; policies: Record<string
   // the head-to-head cannot give. `floor-open` doubles up the shipped opener.
   anchor: { level: DISTILLED_LEVEL, policies: OPENING_ANCHOR_AB_POLICIES },
   'floor-open': { level: STATIC_LEVEL, policies: OPENING_ANCHOR_AB_POLICIES },
+  // The partner-read arms, each doubled up against itself.
+  'feed-ahead': { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('feedAhead') },
+  'hold-back': { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('holdBack') },
+  likely: { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('likely') },
   // #158's two arms. `counted` doubles up the expert capacity against itself;
   // `uncounted` doubles up the baseline, which is the control that says the
   // safe-counter change is the only thing separating the two sides of a `safe`
@@ -128,6 +134,26 @@ if (command === 'fold') {
     policies: OPENING_ANCHOR_AB_POLICIES,
   })
   console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'partner') {
+  // Paul's follow rules with "likely" defined by position: one arm against the
+  // shipped current-winner reading, everything else identical.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const armArg = args.includes('--arm') ? args[args.indexOf('--arm') + 1] : 'likely'
+  const arms: readonly PartnerRead[] = ['feedAhead', 'holdBack', 'likely']
+  const arm = arms.find((a) => a === armArg)
+  if (arm === undefined) {
+    console.log(`unknown --arm '${armArg}'; expected one of ${arms.join(', ')}`)
+  } else {
+    const report = runAb({
+      nPairs: pairs,
+      seed,
+      labelA: arm,
+      labelB: 'current',
+      policies: partnerReadAbPolicies(arm),
+    })
+    console.log(summarise(report, analyse(report, seed)))
+  }
 } else if (command === 'play') {
   // #153's measurement: identical bidders and folders, one side running the
   // Proficient cascade and one the simplified card play `easy` ships.
@@ -164,6 +190,8 @@ if (command === 'fold') {
       levelA: level,
       levelB: control,
       policies: safeCounterAbPolicies(level, control),
+      // The level *is* the arm here: capacity per seat, not equalised.
+      memoryLevel: 'seat',
     })
     console.log(summarise(report, analyse(report, seed)))
   }
@@ -190,6 +218,7 @@ if (command === 'fold') {
       levelA: high,
       levelB: low,
       policies: safeCounterCapacityPolicies(high, low),
+      memoryLevel: 'seat',
     })
     console.log(summarise(report, analyse(report, seed)))
   }
