@@ -2,6 +2,14 @@ import type { PlayerIndex, TrickPlay } from '../engine/trick'
 import { PlayingCard } from './PlayingCard'
 import { seatPosition, type SeatCall, type SeatPosition } from './tableTypes'
 
+/** One seat's name, placed at its own side of the circle. In the stacked
+ * layout the seats are not drawn around the board, so this is what says whose
+ * card — or whose empty place — each cell is. */
+export interface SeatLabelAt {
+  readonly player: PlayerIndex
+  readonly name: string
+}
+
 /** One seat's auction call, placed on the board the same way a played card is. */
 export interface SeatCallAt {
   readonly player: PlayerIndex
@@ -51,6 +59,43 @@ export interface TrickAreaProps {
    * exactly as `trick` places its cards. Omitted outside the auction, where
    * `trick` occupies the same cells. */
   calls?: readonly SeatCallAt[]
+  /** Auction layout: print each seat's name under its call, so the call reads
+   * as "Alexander: 320" without matching a side of the circle to a label
+   * somewhere else on the board. Off in the standard layout, where the seat's
+   * own label sits right beside the circle. */
+  namedCalls?: boolean
+  /** With `namedCalls`: the dealer, marked next to their name. The human's own
+   * marker lives on their seat header, so it is not repeated here. */
+  dealer?: PlayerIndex
+  /** Trick play in the stacked layout: every seat's name, printed under its
+   * cell. A seat that has not played yet still gets its name, so the circle
+   * shows who is still to play rather than three empty quarters. Omitted in
+   * the standard board layout, where each seat draws its own label. */
+  seatLabels?: readonly SeatLabelAt[]
+  /** Circle size. `'md'` (13rem) is the board layout's, sized against the two
+   * side seat columns it has to share a phone with. `'lg'` (18rem) is for the
+   * stacked layout during trick play, where there are no side columns and the
+   * circle is the only thing above the hand — the room the auction spends on
+   * its docked bid panel is spent here instead, on four cards that were
+   * overhanging a circle too small for them. */
+  size?: 'md' | 'lg'
+}
+
+const CIRCLE_SIZE = { md: 'w-52', lg: 'w-72' } as const
+
+/** The name under a cell — the same type in the same place whether it is
+ * sitting under a call or under a played card. */
+function SeatName({ name, isDealer }: { name: string; isDealer?: boolean }) {
+  return (
+    <span className="flex max-w-full items-center gap-0.5 text-[11px] leading-none font-medium text-white/80">
+      <span className="truncate">{name}</span>
+      {isDealer && (
+        <span className="shrink-0 rounded bg-neutral-700/80 px-1 text-[9px] leading-3 font-bold text-amber-300">
+          D
+        </span>
+      )}
+    </span>
+  )
 }
 
 const POSITION_CLASS: Record<SeatPosition, string> = {
@@ -102,9 +147,26 @@ function CallLabel({ call }: { call: SeatCall }) {
  * settled), so they share the same 3x3 placement grid rather than each getting
  * their own layout to keep in sync.
  */
-export function TrickArea({ trick, humanPlayer, winningPlayer, trickNumber, calls }: TrickAreaProps) {
+export function TrickArea({
+  trick,
+  humanPlayer,
+  winningPlayer,
+  trickNumber,
+  calls,
+  namedCalls,
+  dealer,
+  seatLabels,
+  size = 'md',
+}: TrickAreaProps) {
+  const played = new Set(trick.map((play) => play.player))
   return (
-    <div className="flex flex-col items-center gap-1">
+    // `gap-4` rather than `gap-1` for the trick counter's sake, and it is the
+    // cards that need the room rather than the text. A cell of the `lg` circle
+    // is 96px and a card with its seat name under it stands ~124px, so the top
+    // seat's card overhangs the circle by ~14px — the counter sat in exactly
+    // that band and was read through a playing card. The gap is only ever
+    // between these two, since the auction renders no counter.
+    <div className="flex flex-col items-center gap-4">
       {trickNumber !== undefined && (
         <span className="text-xs font-semibold text-white/70">Trick {trickNumber} of 12</span>
       )}
@@ -130,17 +192,35 @@ export function TrickArea({ trick, humanPlayer, winningPlayer, trickNumber, call
           columns end at 83 and start at 307, and the outermost card edges land
           at 85.7 and 304.3. Re-measure both if the card width, the column cap,
           or the board gutters change. */}
-      <div className="grid aspect-square w-52 max-w-full grid-cols-3 grid-rows-3 items-center justify-items-center rounded-full bg-green-950/40">
-        {trick.map((play) => (
-          <div
-            key={play.player}
-            className={`rounded-lg ${POSITION_CLASS[seatPosition(play.player, humanPlayer)]} ${
-              play.player === winningPlayer ? 'ring-4 ring-amber-400' : ''
-            }`}
-          >
-            <PlayingCard suit={play.card.suit} rank={play.card.rank} />
-          </div>
-        ))}
+      <div
+        className={`grid aspect-square ${CIRCLE_SIZE[size]} max-w-full grid-cols-3 grid-rows-3 items-center justify-items-center rounded-full bg-green-950/40`}
+      >
+        {trick.map((play) => {
+          const label = seatLabels?.find((seat) => seat.player === play.player)
+          return (
+            <div
+              key={play.player}
+              className={`flex min-w-0 flex-col items-center gap-0.5 ${POSITION_CLASS[seatPosition(play.player, humanPlayer)]}`}
+            >
+              <div className={`rounded-lg ${play.player === winningPlayer ? 'ring-4 ring-amber-400' : ''}`}>
+                <PlayingCard suit={play.card.suit} rank={play.card.rank} />
+              </div>
+              {label && <SeatName name={label.name} />}
+            </div>
+          )
+        })}
+        {/* A seat still to play keeps its place named, so the circle reads as
+            four seats with cards missing rather than as one card adrift. */}
+        {seatLabels
+          ?.filter((seat) => !played.has(seat.player))
+          .map((seat) => (
+            <div
+              key={`label-${seat.player}`}
+              className={`flex min-w-0 items-center justify-center ${POSITION_CLASS[seatPosition(seat.player, humanPlayer)]}`}
+            >
+              <SeatName name={seat.name} />
+            </div>
+          ))}
         {calls?.map(({ player, name, call }) => (
           <div
             key={`call-${player}`}
@@ -150,9 +230,10 @@ export function TrickArea({ trick, humanPlayer, winningPlayer, trickNumber, call
             // as loose text.
             role="img"
             aria-label={describeCall(name, call)}
-            className={`flex items-center justify-center text-center ${POSITION_CLASS[seatPosition(player, humanPlayer)]}`}
+            className={`flex min-w-0 flex-col items-center justify-center gap-1 text-center ${POSITION_CLASS[seatPosition(player, humanPlayer)]}`}
           >
             <CallLabel call={call} />
+            {namedCalls && <SeatName name={name} isDealer={player === dealer && player !== humanPlayer} />}
           </div>
         ))}
       </div>

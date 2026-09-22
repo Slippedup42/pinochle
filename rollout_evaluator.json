@@ -8,50 +8,50 @@
   "labelled_configuration": "GeneralStrategy skill 5, as configured in pinochle_engine.py:\n  hand_valuation       rollout_ev\n  bid_samples          50\n  defence_samples      20\n  fold_samples         50\n  use_auction_evidence False\n  use_win_probability  False\n  live bid path        choose_bid_vs_defence (bid_ev_differential vs defend_ev, 20 samples)\n  live fold path       should_fold (score differential)",
   "metrics": {
     "bid": {
-      "cross_validated_agreement": 0.8282598981142193,
+      "cross_validated_agreement": 0.818562874251497,
       "cross_validated_folds": [
         0.8353293413173652,
-        0.8413173652694611,
-        0.844311377245509,
-        0.8143712574850299,
-        0.8059701492537313
+        0.8053892215568862,
+        0.8383233532934131,
+        0.8023952095808383,
+        0.811377245508982
       ],
-      "cross_validated_spread": 0.015283008217005886,
-      "holdout_agreement": 0.8014354066985646,
+      "cross_validated_spread": 0.015219479074417753,
+      "holdout_agreement": 0.7990430622009569,
       "holdout_disagreement_direction": {
-        "agreed": 335,
-        "false_negative": 50,
+        "agreed": 334,
+        "false_negative": 51,
         "false_positive": 33
       },
-      "holdout_majority_baseline": 0.5311004784688995,
-      "holdout_mean_regret": 16.24593421052631,
-      "rows": 1671,
+      "holdout_majority_baseline": 0.5263157894736843,
+      "holdout_mean_regret": 14.588995215311002,
+      "rows": 1670,
       "test_rows": 418,
-      "train_agreement": 0.8467677573822825,
-      "train_rows": 1253
+      "train_agreement": 0.8258785942492013,
+      "train_rows": 1252
     },
     "fold": {
       "cross_validated_agreement": 0.9636363636363636,
       "cross_validated_folds": [
+        0.9696969696969697,
         1.0,
-        0.9242424242424242,
-        0.9848484848484849,
         0.9545454545454546,
-        0.9545454545454546
+        0.9545454545454546,
+        0.9393939393939394
       ],
-      "cross_validated_spread": 0.026417569354791972,
-      "holdout_agreement": 0.9759036144578314,
+      "cross_validated_spread": 0.02055251510037958,
+      "holdout_agreement": 0.963855421686747,
       "holdout_disagreement_direction": {
-        "agreed": 81,
-        "false_negative": 2,
+        "agreed": 80,
+        "false_negative": 3,
         "false_positive": 0
       },
-      "holdout_majority_baseline": 0.9156626506024097,
-      "holdout_mean_regret": 1.0128506024096384,
-      "rows": 329,
+      "holdout_majority_baseline": 0.891566265060241,
+      "holdout_mean_regret": 1.7108445783132533,
+      "rows": 330,
       "test_rows": 83,
-      "train_agreement": 0.975609756097561,
-      "train_rows": 246
+      "train_agreement": 0.9757085020242915,
+      "train_rows": 247
     }
   },
   "models": {
@@ -72,23 +72,23 @@
         "base_bid_ceiling",
         "ceiling_minus_bid"
       ],
-      "intercept": -1.1152735068739579,
+      "intercept": -1.298183430007183,
       "kind": "logistic",
       "threshold": 0.5,
       "weights": [
-        0.009212483417629263,
-        0.4084533264088503,
-        1.3393880626616694,
-        0.37134894719721007,
-        1.309980998163659,
-        -0.5329829736764788,
-        -1.8652380435580902,
-        -0.030389186889026025,
-        0.000489161771784831,
-        -0.13791007803516395,
-        0.04291224923410328,
-        0.006226667709407318,
-        0.007655870224238975
+        0.007405455653686215,
+        0.23648226521894464,
+        1.2356263736197965,
+        0.4306627433081938,
+        1.1445627235507434,
+        -0.7155501811719068,
+        -1.839581790682213,
+        -0.0277073870174289,
+        0.0004717421460660281,
+        -0.15896849936761973,
+        -0.01302121824634509,
+        0.006977244571274804,
+        0.008413917606048621
       ]
     },
     "fold": {
@@ -109,24 +109,24 @@
         "tricks_needed",
         "fold_cost"
       ],
-      "intercept": 5.471255089705032,
+      "intercept": 1.1058219773782731,
       "kind": "logistic",
       "threshold": 0.5,
       "weights": [
-        -0.005095683080360886,
-        -0.8848417471112148,
-        -1.7824571780573053,
-        -0.6093993229318959,
-        -0.6789493645625004,
-        -1.718760252698719,
-        -0.9983919058524636,
-        0.020676417368938018,
-        -0.014338455878461666,
-        -0.00408386442375053,
-        -0.0016796965172095355,
-        -0.0030812625929623324,
-        0.017445159976409805,
-        0.0028079092040927214
+        -0.00691841966140471,
+        -1.1301194564533592,
+        -1.483251894194343,
+        0.011297251580083954,
+        -0.43075327988408674,
+        -0.4998637224627371,
+        -0.25329155546468646,
+        0.021011465070913365,
+        -0.016521405039194824,
+        -0.003330395844617446,
+        -0.002202336102082262,
+        -0.0036857448934786903,
+        0.019713986930764,
+        0.0037172026851590954
       ]
     }
   },

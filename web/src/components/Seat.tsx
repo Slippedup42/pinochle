@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { Card } from '../engine/card'
 import { sortHandForDisplay } from '../engine/card'
 import { splitHandIntoRows } from './handRows'
@@ -21,6 +22,38 @@ export interface SeatProps {
    * is public information in Pinochle — it is laid down for everyone to see —
    * so this is a rules requirement, not a display preference. */
   exposeCards?: boolean
+  /** Human seat only: cards to mark as newly received (the pass-reveal step).
+   * Matched by value (`Card.toString()`), like the React keys below, rather
+   * than by identity. */
+  receivedCards?: readonly Card[]
+}
+
+/**
+ * A card just received in the pass, marked on the card itself.
+ *
+ * The mark is drawn *inside* the card's box (an inset ring plus a tint) rather
+ * than as an outer ring or a lift, because each hand row is `overflow-x-auto`,
+ * and a scroll container clips on both axes: an outer ring or a translate would
+ * be cut off at the row's edge. The "NEW" chip sits bottom-left so it lands in
+ * the strip of the card that the fan leaves uncovered (see the pitch note below).
+ */
+function ReceivedMark({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative rounded-lg">
+      {children}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 rounded-lg bg-amber-300/25 ring-4 ring-amber-400 ring-inset"
+      />
+      <span
+        aria-hidden="true"
+        className="absolute bottom-1 left-1.5 rounded bg-amber-400 px-1 text-[10px] leading-4 font-extrabold text-amber-950"
+      >
+        NEW
+      </span>
+      <span className="sr-only">received in the pass</span>
+    </div>
+  )
 }
 
 const POSITION_LAYOUT: Record<SeatPosition, string> = {
@@ -44,7 +77,8 @@ const POSITION_LAYOUT: Record<SeatPosition, string> = {
  * seat's own side of the circle — same information, at the size the rest of the
  * board uses, and in the place the eye is already on during trick play.
  */
-export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable, exposeCards }: SeatProps) {
+export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable, exposeCards, receivedCards }: SeatProps) {
+  const receivedKeys = new Set((receivedCards ?? []).map((card) => card.toString()))
   return (
     <div className={`flex gap-1 ${POSITION_LAYOUT[position]}`}>
       {/* Wraps and breaks (#161): the left/right seats live in columns that are
@@ -104,7 +138,8 @@ export function Seat({ seat, position, isHuman, isBidWinner, isDealer, playable,
           {splitHandIntoRows(sortHandForDisplay(seat.hand)).map((row, rowIndex) => (
             <div key={rowIndex} className="flex w-full justify-center gap-1 overflow-x-auto">
               {row.map((card) => {
-                const cardFace = <PlayingCard suit={card.suit} rank={card.rank} />
+                const face = <PlayingCard suit={card.suit} rank={card.rank} />
+                const cardFace = receivedKeys.has(card.toString()) ? <ReceivedMark>{face}</ReceivedMark> : face
                 if (!playable) {
                   return (
                     <div key={card.toString()} className="-ml-8 first:ml-0">

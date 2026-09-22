@@ -329,21 +329,26 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
     // only that their seeds never reach one. Nothing until now played into a
     // claim and checked what it paid out.
     //
-    // Seed 261 rather than 217, pinned for the same reason 217 is pinned: a
+    // Seed 191 rather than 217, pinned for the same reason 217 is pinned: a
     // deal that only sometimes reaches the claim reintroduces exactly the
     // intermittency #261 was filed about, and the run that missed the path
     // looks identical to the run that took it. #261's implementer probed a
-    // spread and found 2, 8 and 261 all claim mid-hand; re-verified here rather
-    // than trusted, since #273, #277, #280, #283 and #226 have all changed what
-    // the AI does with a fixed deal since that search. All three still claim.
+    // spread and found 2, 8 and 261 all claim mid-hand; #312's follow-card
+    // rewrite moved what every seat plays with a fixed deal enough that 261
+    // stopped reaching a claim at all (played out all twelve tricks instead),
+    // which is exactly the re-verify-don't-trust warning this comment already
+    // carried — #273, #277, #280, #283 and #226 had already done the same
+    // thing to 2 and 8 without disturbing 261's own path. 191 was found by
+    // resweeping for the same shape post-#312: Partner claims three tricks
+    // resting on a side suit, nine tricks played by hand first.
     //
-    // 261 is the one worth spending the runtime on. The claimer is Partner, an
+    // 191 is the one worth spending the runtime on. The claimer is Partner, an
     // AI, which is the `humanIsClaimer: false` wording the fixture cannot
     // reach; the claim runs three tricks rather than the two-trick floor; and
-    // it rests on K/Q of Clubs rather than on trump, which is `findClaim`'s
-    // *other* branch — nobody else holds a trump to ruff with, and no club
-    // outstanding beats them.
-    const hands = shuffledDeal(261)
+    // it rests on K/Q/10 of Spades rather than on trump, which is
+    // `findClaim`'s *other* branch — nobody else holds a Heart to ruff with,
+    // and no Spade outstanding beats them.
+    const hands = shuffledDeal(191)
     const onComplete = vi.fn()
 
     render(
@@ -384,8 +389,8 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
     const notice = within(screen.getByRole('dialog', { name: /the rest are mine/i }))
     expect(notice.getByText(/Partner holds/)).not.toBeNull()
     expect(notice.getByText('3')).not.toBeNull()
-    expect(notice.getByText('60')).not.toBeNull()
-    expect(screen.getByText(/took the last 3 tricks \(60 points\)/)).not.toBeNull()
+    expect(notice.getByText('30')).not.toBeNull()
+    expect(screen.getByText(/took the last 3 tricks \(30 points\)/)).not.toBeNull()
     expect(onComplete).not.toHaveBeenCalled()
 
     // What the claim is worth, derived from the log instead of copied out of
@@ -410,7 +415,7 @@ describe('TrickPlayFlow (component)', { timeout: COMPONENT_SUITE_TIMEOUT_MS }, (
     expect(result.claim?.name).toBe('Partner')
     expect(result.claim?.tricks).toBe(3)
     expect(result.claim?.points).toBe(expectedClaimPoints)
-    expect(result.claim?.points).toBe(60)
+    expect(result.claim?.points).toBe(30)
     // One card left in hand is one trick awarded — the notice showed three
     // cards face up as its evidence and the payload skipped three tricks.
     expect(result.claim?.cards).toHaveLength(3)

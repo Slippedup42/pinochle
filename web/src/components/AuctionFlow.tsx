@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useReducer, useRef } from 'react'
 import { bestBaseBid, chooseBid, chooseTrump, type AuctionContext } from '../engine/bidding'
-import { MIN_BID_INCREMENT, OPENING_BID } from '../engine/card'
+import { MIN_BID_INCREMENT, OPENING_BID, type Card } from '../engine/card'
 import { PASS_COUNT, choosePassCards } from '../engine/passing'
 import { partnerOf, teamOf, type Hands, type TeamId } from '../engine/round'
 import type { PlayerIndex } from '../engine/trick'
 import { DEFAULT_OPTIONS, type GameOptions } from '../persistence/options'
-import { auctionReducer, initAuctionState, passedPlayersOf } from './auctionReducer'
+import { auctionReducer, initAuctionState, passedPlayersOf, type AuctionState } from './auctionReducer'
 import type { AuctionResult } from './auctionTypes'
 import { BiddingControls } from './BiddingControls'
 import { PassRevealDialog } from './PassRevealDialog'
@@ -16,6 +16,15 @@ import type { SeatCall, SeatState, TableState } from './tableTypes'
 import { TrumpSelector } from './TrumpSelector'
 
 export const AI_BID_DELAY_MS = 600
+
+/** What the human was just handed in the pass, or null if they were not part of
+ * it (only the bidder and their partner trade cards). */
+function receivedByHuman(state: AuctionState, humanPlayer: PlayerIndex): readonly Card[] | null {
+  if (state.bidWinner === null) return null
+  if (humanPlayer === state.bidWinner) return state.passing.fromPartnerCards
+  if (humanPlayer === partnerOf(state.bidWinner)) return state.passing.fromBidderCards
+  return null
+}
 
 // Every AI seat plays `SHIPPED_SKILL` since #222 removed the difficulty
 // setting, so nothing here names a level: `chooseBid`, `chooseTrump` and
@@ -155,10 +164,16 @@ export function AuctionFlow({
       scoresByTeam: state.scoresByTeam,
       teamNames,
       dealer: state.dealer,
+      receivedCards: state.phase === 'pass-reveal' ? receivedByHuman(state, humanPlayer) ?? undefined : undefined,
     }
   }, [state, seatNames, humanPlayer, teamNames])
 
-  const overlay = useMemo(() => {
+  // The panels that only ask the human to *look and decide* dock under the
+  // call circle, above their hand (`Table`'s auction layout), so the hand and
+  // the circle stay on screen: the bid controls, and the pass reveal that
+  // points at the cards it marks in the hand. Trump and the pass selector stay
+  // modal — the selector draws the hand itself, and neither needs the circle.
+  const dock = useMemo(() => {
     if (state.phase === 'bidding' && state.bidding.turn === humanPlayer) {
       const minBid = state.bidding.everBid ? state.bidding.currentBid + MIN_BID_INCREMENT : OPENING_BID
       const myTeam = teamOf(humanPlayer)
@@ -178,29 +193,6 @@ export function AuctionFlow({
           onPass={() => dispatch({ type: 'PASS_BID', player: humanPlayer })}
         />
       )
-    }
-
-    if (state.phase === 'trump' && state.bidWinner === humanPlayer) {
-      return <TrumpSelector onSelect={(suit) => dispatch({ type: 'CHOOSE_TRUMP', player: humanPlayer, suit })} />
-    }
-
-    if (state.phase === 'passing' && state.bidWinner !== null && state.trumpSuit !== null) {
-      const bidder = state.bidWinner
-      const partner = partnerOf(bidder)
-      const myPassDone =
-        (humanPlayer === bidder && state.passing.fromBidderCards !== null) ||
-        (humanPlayer === partner && state.passing.fromPartnerCards !== null)
-
-      if (!myPassDone && (humanPlayer === bidder || humanPlayer === partner)) {
-        return (
-          <PassSelector
-            hand={state.hands[humanPlayer]}
-            count={PASS_COUNT}
-            trumpSuit={state.trumpSuit}
-            onConfirm={(cards) => dispatch({ type: 'PASS_CARDS', from: humanPlayer, cards })}
-          />
-        )
-      }
     }
 
     if (state.phase === 'pass-reveal') {
@@ -226,6 +218,33 @@ export function AuctionFlow({
     return null
   }, [state, humanPlayer, options.showBaseBidHint])
 
+  const overlay = useMemo(() => {
+    if (state.phase === 'trump' && state.bidWinner === humanPlayer) {
+      return <TrumpSelector onSelect={(suit) => dispatch({ type: 'CHOOSE_TRUMP', player: humanPlayer, suit })} />
+    }
+
+    if (state.phase === 'passing' && state.bidWinner !== null && state.trumpSuit !== null) {
+      const bidder = state.bidWinner
+      const partner = partnerOf(bidder)
+      const myPassDone =
+        (humanPlayer === bidder && state.passing.fromBidderCards !== null) ||
+        (humanPlayer === partner && state.passing.fromPartnerCards !== null)
+
+      if (!myPassDone && (humanPlayer === bidder || humanPlayer === partner)) {
+        return (
+          <PassSelector
+            hand={state.hands[humanPlayer]}
+            count={PASS_COUNT}
+            trumpSuit={state.trumpSuit}
+            onConfirm={(cards) => dispatch({ type: 'PASS_CARDS', from: humanPlayer, cards })}
+          />
+        )
+      }
+    }
+
+    return null
+  }, [state, humanPlayer])
+
   // No `logPanel` (#191). The auction used to run a corner feed — "Molly bid
   // 320", "Amanda passed" — naming seats the board was already drawing, in a
   // box that covered part of it. Every event it reported is now on the circle at
@@ -238,5 +257,5 @@ export function AuctionFlow({
   // auction, as opposed to where it now stands. `state.log` is still built and
   // still handed to `onComplete`, so restoring a view of it is a render, not a
   // rebuild.
-  return <Table state={tableState} overlay={overlay} onOpenMenu={onOpenMenu} />
+  return <Table state={tableState} layout="stacked" dock={dock} overlay={overlay} onOpenMenu={onOpenMenu} />
 }

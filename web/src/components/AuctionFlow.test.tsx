@@ -250,6 +250,9 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
     )
 
     // Left of dealer (3) is seat 0 — the human bids first.
+    // The bid panel is docked in the board, not a modal over it: a modal would
+    // sit on the human's own hand, which is what they are bidding on.
+    expect(screen.getByRole('button', { name: 'Bid' }).closest('.fixed')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Bid' }))
 
     // West, Partner, and East all pass automatically (weak hands) after delays.
@@ -275,6 +278,10 @@ describe('AuctionFlow (component)', { timeout: 20_000 }, () => {
 
     // Pass-reveal dialog shows before completing
     expect(screen.getByText('Partner passed you 3 cards')).not.toBeNull()
+    // The three received cards are marked in the hand, and the dialog that
+    // announces them is docked rather than covering that hand.
+    expect(screen.getAllByText('NEW')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Continue' }).closest('.fixed')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(onComplete).toHaveBeenCalledOnce()

@@ -447,6 +447,38 @@ function chooseForcedBeat(
 }
 
 /**
+ * Forced to beat when your OWN team led the trick (#312) — an opponent has
+ * overtaken your partner's lead and every legal card here already beats them.
+ * This is the your-team-led counterpart to `chooseForcedBeat` above, and it is
+ * a separate function rather than that one reshaped by a boolean, because the
+ * two answer different questions, not just reach different callers.
+ *
+ * `chooseForcedBeat` (opponent led) is answering "which of these certain-to-
+ * hold beats is cheapest" — the trick is being taken either way, so #158's
+ * boss search is about which counter to spend while doing it. Here the trick
+ * is not yet certain: another opponent may still be behind this seat, and
+ * paying a counter to reclaim a trick that a later card could rip right back
+ * off is a bad trade no boss search fixes, because the boss search answers
+ * "will this counter hold against what's outstanding in this suit", not "is a
+ * counter worth spending on this attempt at all". So the rule here is simpler
+ * and more conservative than `chooseForcedBeat`'s: play the Ace if held — it
+ * settles the trick outright, no counting needed — otherwise the lowest
+ * non-point card, never a point one, even when every legal card happens to be
+ * a counter and paying one is unavoidable.
+ */
+function chooseForcedBeatOwnLead(legalMoves: readonly Card[]): Card {
+  const aces = legalMoves.filter((c) => c.rank === 'A')
+  if (aces.length > 0) return minByRank(aces)
+
+  const nonPoints = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
+  if (nonPoints.length > 0) return minByRank(nonPoints)
+
+  // No Ace and no non-point escape: every legal card is a counter and one has
+  // to go in. Spend the cheapest, same floor `chooseForcedBeat` falls back to.
+  return minByRank(legalMoves)
+}
+
+/**
  * Who's currently winning the trick-in-progress: highest trump if any
  * trump has been played, else highest card of the lead suit. Ties go to
  * whichever copy was played first (`reduce` only replaces the running
@@ -466,37 +498,73 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  * `legalMoves` already has the mandatory beat-if-possible / trump-if-void
  * rules applied by `Trick.legalMoves` - this only picks which one to use.
  *
+ * The first branch, since #312, is who led the trick — `trickPlays[0].player`,
+ * checked against `myTeamPlayers` (this function is never called for the seat
+ * currently leading, so a lead by a teammate can only be partner's). The right
+ * action for the same situation differs depending on which side started the
+ * trick, not just on the outcome, so it is a branch and not a parameter:
+ *
+ *   - **Opponent led** — forced-to-beat is checked before partner-winning.
+ *     Being forced to beat here banks value now with nothing to lose: the
+ *     trick is already certain to be taken, so #158's boss search picks the
+ *     *cheapest* counter that will still be standing, trusting partner to
+ *     finish it off if it still needs finishing. See `chooseForcedBeat`.
+ *   - **Your team led** (i.e. partner led) — partner-winning is checked
+ *     *before* forced-to-beat, the natural first question when your own side
+ *     started the trick. Forced-to-beat here means an opponent has since
+ *     overtaken partner and this seat must reclaim it, which is not the same
+ *     certain win: another opponent may still be behind this seat, so paying
+ *     a counter to reclaim is only worth it when an Ace settles the question
+ *     outright. See `chooseForcedBeatOwnLead`.
+ *
  * `legalMoves` is always restricted to exactly one of three shapes by the
  * rules, and each gets its own tiered strategy:
- *   - Forced to follow a non-trump lead suit:
- *       1. Forced beat (every legal card already beats the current
- *          winner, measured as trick-winning power rather than raw rank
- *          - #155) - take it with a non-counter if one is legal, else
- *          with the cheapest counter that cannot itself be beaten in
- *          suit (#158). See `chooseForcedBeat`.
- *       2. Partner is currently winning - feed them points: the lowest
- *          King/10 available (#154 - every counter pays 10, so spend the
- *          weakest), or (if none) the lowest card, to avoid donating a
- *          live Ace unless forced.
- *       3. Otherwise - play the lowest non-point card, falling back to
- *          the lowest legal card if only point cards are available.
+ *   - Forced to follow a non-trump lead suit (tiers reordered by who led,
+ *     per above; outcomes below are opponent-led except where noted):
+ *       - Forced beat (every legal card already beats the current winner,
+ *         measured as trick-winning power rather than raw rank - #155) -
+ *         take it with a non-counter if one is legal, else with the
+ *         cheapest counter that cannot itself be beaten in suit (#158).
+ *         Your-team-led: Ace if held, else the lowest non-point card, never
+ *         a counter (#312) — see `chooseForcedBeatOwnLead`.
+ *       - Partner is currently winning - feed them points: the lowest
+ *         King/10 available (#154 - every counter pays 10, so spend the
+ *         weakest), or (if none) the lowest card, to avoid donating a
+ *         live Ace unless forced.
+ *       - Otherwise - play the lowest non-point card, falling back to
+ *         the lowest legal card if only point cards are available.
  *   - Forced to play trump (void in the lead suit, or trump was led):
  *       0. Forced to *overtrump* - a trump is already winning the trick
  *          and every legal move beats it, so the rules have restricted
- *          this seat to beaters. Same selection as the lead-suit forced
- *          beat above, and the one place #157's capacity-limited trump
- *          memory decides a card (#158).
- *       1. Trump is secure (every copy - in hand plus already played -
- *          is accounted for, i.e. no trump left unseen) - play the
- *          lowest trump, conserving high trump for later control.
- *       2. Not secure - surrender the lowest point trump if there is
- *          one (get a liability out before it's trapped), else the
- *          lowest trump.
- *   - Sluff (void in both lead suit and trump): free choice across
- *     suits - work toward voiding the shortest suit, lowest rank within
- *     it.
+ *          this seat to beaters. Same lead-aware selection as the lead-suit
+ *          forced beat above (#312), and (for the opponent-led case) the one
+ *          place #157's capacity-limited trump memory decides a card (#158).
+ *       Discretionary trumping-in otherwise (not a forced overtrump), and
+ *       deliberately asymmetric by who led as of #312:
+ *       1. Opponent led - flatly the lowest trump held. No boss check, and
+ *          (new here) no "surrender the lowest point trump" heuristic either
+ *          - that heuristic is dropped outright for this side, not merely
+ *          skipped for lack of a boss card. Reacting to survive a trick the
+ *          bidder is driving is not the moment to set up a later squeeze.
+ *       2. Your team led, and a trump in hand is individually unbeatable
+ *          (`isBoss`) - its last outstanding higher copy already played -
+ *          hold it back rather than spend it on a trick nothing can take off
+ *          you anyway. Play a different trump instead: a point one if held,
+ *          else the lowest.
+ *       3. Your team led, nothing held is individually locked: unchanged
+ *          from today. Trump is secure (every copy - in hand plus already
+ *          played - is accounted for, i.e. no trump left unseen) - play the
+ *          lowest trump, conserving high trump for later control. Not secure
+ *          - surrender the lowest point trump if there is one (get a
+ *          liability out before it's trapped), else the lowest trump.
+ *   - Sluff (void in both lead suit and trump), unaffected by who led:
+ *     filter to non-point legal cards first (#312 — the old sort ignored
+ *     point value entirely and could hand away a lone counter from the
+ *     shortest suit), then work toward voiding the shortest suit among
+ *     those, lowest rank within it. Only when every legal card is a point
+ *     card does a counter go out at all, same tie-break.
  *
- * Tier 0 of the trump branch is new in #158 and is worth saying why it is not
+ * Tier 0 of the trump branch was new in #158 and is worth saying why it is not
  * scope creep. #155 wrote the forced-beat selection rule but could only reach
  * the *lead-suit* branch, because that is where the detection lived; the trump
  * branch had no notion of a forced beat at all and answered an overtrump with
@@ -504,9 +572,9 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  * opponent's Ace is about to take. The issue's own worked example — both trump
  * Aces gone makes the 10 boss, then the Kings after the 10s — is a *trump*
  * example, so tier 2 of `chooseForcedBeat` cannot be implemented as specified
- * without a forced beat in trump to implement it in. Tier 1 comes along with it
- * because a rule that prefers a free beat everywhere except trump would be
- * incoherent, not because it was measured separately.
+ * without a forced beat in trump to implement it in. Tier 1 (now tier 2) came
+ * along with it because a rule that prefers a free beat everywhere except
+ * trump would be incoherent, not because it was measured separately.
  *
  * Note what is deliberately left alone: `trumpSecure` below still reads
  * `PlayTracker`'s exact count, not the memory. "Is every trump accounted for"
@@ -518,9 +586,9 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *   `safeCounterPolicy` (#158) from. The shipped configuration is `'cascade'`
  *   and `'counted'`, so the tiers are the same wherever this is called from;
  *   what the *level* changes is how much of the trump this seat can still recall
- *   when tier 2 of `chooseForcedBeat` asks. `'simple'` (play the lowest legal
- *   card) survives as an A/B arm, reachable only through an override. Defaults
- *   to `SHIPPED_SKILL`.
+ *   when tier 2 of `chooseForcedBeat` (or the #312 boss-holdback tier) asks.
+ *   `'simple'` (play the lowest legal card) survives as an A/B arm, reachable
+ *   only through an override. Defaults to `SHIPPED_SKILL`.
  * @param trumpMemory This seat's capacity-limited trump view (#157). Consulted
  *   only when `safeCounterPolicy` is `'counted'`; omitted, trump questions fall
  *   back to the exact `tracker`, which is the pre-#158 reading.
@@ -552,6 +620,9 @@ export function chooseFollowCard(
   const leadSuit = trickPlays.length > 0 ? trickPlays[0].card.suit : undefined
   const winner = trickPlays.length > 0 ? currentWinner(trickPlays, trump) : undefined
   const partnerWinning = winner !== undefined && myTeamPlayers.includes(winner.player)
+  // Who led (#312) — this function is never called for the seat currently
+  // leading, so a lead from `myTeamPlayers` can only be partner's.
+  const ledByTeam = trickPlays.length > 0 && myTeamPlayers.includes(trickPlays[0].player)
 
   const allLeadSuit = leadSuit !== undefined && legalMoves.every((c) => c.suit === leadSuit)
   const allTrump = legalMoves.every((c) => c.suit === trump)
@@ -568,11 +639,21 @@ export function chooseFollowCard(
     // returns false against any trump — correctly, since no card of the lead
     // suit can take a trick a trump is winning.
     const forcedBeat = winner !== undefined && legalMoves.every((c) => c.beats(winner.card, trump))
-    if (forcedBeat) {
-      return chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
-    }
 
-    if (partnerWinning) return feedPartner(legalMoves)
+    if (ledByTeam) {
+      // Partner led, so check partner-winning first (#312) — the natural first
+      // question when your own side started the trick — and only then ask
+      // whether an opponent has since overtaken and needs reclaiming.
+      if (partnerWinning) return feedPartner(legalMoves)
+      if (forcedBeat) return chooseForcedBeatOwnLead(legalMoves)
+    } else {
+      // Opponent led: forced-to-beat is checked first, because being forced to
+      // beat here is banking a certain trick, not gambling on one.
+      if (forcedBeat) {
+        return chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
+      }
+      if (partnerWinning) return feedPartner(legalMoves)
+    }
 
     const nonPoints = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
     if (nonPoints.length > 0) return minByRank(nonPoints)
@@ -583,24 +664,58 @@ export function chooseFollowCard(
     // Tier 0 (#158): forced to overtrump. A trump is already winning and every
     // legal move beats it, which `Trick.legalMoves` only produces by restricting
     // this seat to beaters — rule 3 when trump was led, rule 5 when a ruff has
-    // to be over-ruffed. Both are the same decision as the lead-suit forced beat
-    // above, so they take the same selection.
+    // to be over-ruffed. Lead-aware (#312) the same way the lead-suit forced
+    // beat above is: reclaiming after your own team led gets the more
+    // conservative `chooseForcedBeatOwnLead`, an opponent's trick being taken
+    // for certain gets `chooseForcedBeat`'s cheapest-safe-counter search.
     //
     // The `winner.card.suit === trump` test is what keeps a plain ruff out of
     // here: with no trump yet on the table every trump in hand "beats" the
-    // side-suit winner, but the rules restricted nothing and the seat is free to
-    // choose. That position keeps its existing tiers, where "surrender the
-    // lowest point trump" is a deliberate get-the-liability-out heuristic rather
-    // than a way of taking a trick.
+    // side-suit winner, but the rules restricted nothing and the seat is free
+    // to choose — this is discretionary trumping-in, tiers below.
     const forcedOvertrump =
       counted &&
       winner !== undefined &&
       winner.card.suit === trump &&
       legalMoves.every((c) => c.beats(winner.card, trump))
     if (forcedOvertrump) {
-      return chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
+      return ledByTeam
+        ? chooseForcedBeatOwnLead(legalMoves)
+        : chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
     }
 
+    // Discretionary trumping-in, deliberately asymmetric by who led (#312).
+    if (!ledByTeam) {
+      // Opponent led: this seat is reacting to survive a trick the bidder is
+      // driving, not setting up a later squeeze, so it is flatly the lowest
+      // trump held — no boss check, and (new here) no "surrender the lowest
+      // point trump" heuristic either. That heuristic stays, but only for the
+      // your-team-led fallback below; here it is dropped outright, not merely
+      // skipped for lack of a boss card.
+      return minByRank(legalMoves)
+    }
+
+    // Your team led. First: if tracking shows a trump card in hand is
+    // individually unbeatable (`isBoss` — the exact predicate
+    // `leadSafeCascade` already uses to decide what to *lead*), it cannot be
+    // improved on by holding it any longer than this trick, so playing it
+    // here spends a card nothing was ever going to take, for no more than the
+    // same trick a lesser trump would have won just as well. Hold it back and
+    // play a different trump instead — a point one, if giving it up costs
+    // nothing new, else the lowest.
+    if (counted) {
+      const nonBossTrump = legalMoves.filter((c) => !isBoss(c, hand, trump, tracker, memory))
+      if (nonBossTrump.length > 0 && nonBossTrump.length < legalMoves.length) {
+        const bossHoldbackPoints = nonBossTrump.filter((c) => POINT_RANKS.has(c.rank))
+        return bossHoldbackPoints.length > 0 ? minByRank(bossHoldbackPoints) : minByRank(nonBossTrump)
+      }
+    }
+
+    // Nothing held is individually locked: unchanged from today. Trump
+    // secure (every copy - in hand plus already played - is accounted for) -
+    // play the lowest, conserving high trump for later control. Not secure -
+    // surrender the lowest point trump if there is one (get a liability out
+    // before it's trapped), else the lowest trump.
     let trumpSecure = true
     if (tracker !== undefined) {
       const playedTrump = RANKS.reduce((sum, r) => sum + tracker.playedCount(trump, r), 0)
@@ -614,8 +729,15 @@ export function chooseFollowCard(
     return minByRank(legalMoves)
   }
 
-  // sluff - free choice across suits, work toward a void in the shortest suit
-  const legalSorted = [...legalMoves].sort((a, b) => {
+  // Sluff - free choice across suits, unaffected by who led. Filter to
+  // non-point legal cards first (#312): the old sort below ran over every
+  // legal card by suit length alone, with no regard for point value, so a
+  // lone counter in the shortest suit went out ahead of a longer suit that
+  // cost nothing. Only when every legal card is a point card — no non-point
+  // escape exists at all — does a counter go out, same tie-break.
+  const nonPointLegal = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
+  const sluffPool = nonPointLegal.length > 0 ? nonPointLegal : legalMoves
+  const legalSorted = [...sluffPool].sort((a, b) => {
     const bySuitLength = suitLength(hand, a.suit) - suitLength(hand, b.suit)
     return bySuitLength !== 0 ? bySuitLength : a.rankValue - b.rankValue
   })

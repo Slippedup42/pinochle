@@ -314,7 +314,10 @@ def test_the_competitive_adjustment_values_are_pinned():
     compute_competitive_adjustment's docstring). The pin stays, at the
     new values, for the same reason it was written - and the order of the
     three is asserted as well as their size, since keeping closing-out below
-    the baseline is why all three moved rather than the baseline alone."""
+    the baseline is why all three moved rather than the baseline alone.
+
+    The baseline alone then went 90 -> 80 on Paul's decision of 2026-09-19,
+    which keeps that order: closing-out at 60 is still under it."""
     from pinochle_engine import compute_competitive_adjustment
 
     empty = []
@@ -322,5 +325,5 @@ def test_the_competitive_adjustment_values_are_pinned():
     behind = compute_competitive_adjustment(empty, TRUMP, 0, 600)[0]
     closing_out = compute_competitive_adjustment(empty, TRUMP, 700, 500)[0]
 
-    assert (baseline, behind, closing_out) == (90, 120, 60)
+    assert (baseline, behind, closing_out) == (80, 120, 60)
     assert closing_out < baseline < behind

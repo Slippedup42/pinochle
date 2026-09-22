@@ -206,6 +206,20 @@ export function TrickPlayFlow({
       return
     }
 
+    // The mirror of auto-SET, on the same argument and for the same reason:
+    // when meld alone already covers the bid the contract is *made* before a
+    // card is led, so there is nothing for a probabilistic evaluator to be
+    // talked into. Arithmetic on both ends, the model strictly between them.
+    //
+    // This is a guard the fold path went without until the evaluator was
+    // refitted on a dataset relabelled at the 80 baseline, at which point the
+    // model started answering "concede" for a bid winner holding 320 of meld
+    // against a bid of 300 — throwing in a hand it had already won. The old
+    // model happened to answer "play on" there, which is why nothing caught it
+    // sooner. A fitted probability should not have been the only thing standing
+    // between that hand and a concession either way.
+    if (biddingMeld >= bid) return
+
     if (bidWinner === humanPlayer) return
     if (SKILL_PARAMS[SHIPPED_SKILL].foldPolicy !== 'model') return
 
@@ -388,29 +402,18 @@ export function TrickPlayFlow({
           onDismiss={() => setAutoSetFired(false)}
         />
       )}
-      {canConcede && (
-        <>
-          <button
-            type="button"
-            onClick={() => setShowConfirmDialog(true)}
-            // Safe-area insets (#161): pinned to the top-right corner, which is
-            // where the status bar / notch sits on an installed instance.
-            className="absolute top-[calc(0.5rem_+_var(--safe-top))] right-[calc(0.5rem_+_var(--safe-right))] z-20 rounded bg-red-800 px-3 py-1 text-xs font-semibold text-white hover:bg-red-900"
-          >
-            Concede hand
-          </button>
-          {showConfirmDialog && (
-            <ConfirmDialog
-              message={`Are you sure? Your team will score -${bid} points`}
-              confirmLabel="Concede"
-              onConfirm={handleConcede}
-              onCancel={() => setShowConfirmDialog(false)}
-            />
-          )}
-        </>
+      {canConcede && showConfirmDialog && (
+        <ConfirmDialog
+          message={`Are you sure? Your team will score -${bid} points`}
+          confirmLabel="Concede"
+          onConfirm={handleConcede}
+          onCancel={() => setShowConfirmDialog(false)}
+        />
       )}
       <Table
         state={tableState}
+        layout="stacked"
+        onConcede={canConcede ? () => setShowConfirmDialog(true) : undefined}
         // No auction log (#193). It survived #191 as the last view of the bid
         // history, on the reasoning that the circle can no longer show it once
         // it is holding cards. Paul's call: the history is not wanted after the

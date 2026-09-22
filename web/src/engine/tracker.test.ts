@@ -564,46 +564,80 @@ describe('chooseFollowCard', () => {
     expect(played.rank).toBe('K')
   })
 
-  it('void in the lead suit, forced to trump, no tracker supplied: defaults to trump-secure and conserves the lowest trump', () => {
-    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'K', 1) }]
-    const legalMoves = [new Card(Suit.Spades, '9', 1), new Card(Suit.Spades, 'A', 1)]
+  it('your team led, void in the lead suit, forced to trump, no tracker supplied: defaults to trump-secure and conserves the lowest trump', () => {
+    // Partner led (#312), so this is the your-team-led fallback. Nothing is
+    // tracked, so neither card qualifies as individually boss (#158's own
+    // higher-rank check needs evidence this hand doesn't have), and the
+    // boss-holdback tier has no card to exclude - falls straight through to
+    // the unchanged-from-today "trump secure defaults true with no tracker"
+    // answer.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'K', 1) }]
+    const legalMoves = [new Card(Suit.Spades, '9', 1), new Card(Suit.Spades, 'K', 1)]
     const hand = legalMoves
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
     expect(played.rank).toBe('9')
   })
 
-  it('forced to trump, trump secure per tracker (all 12 copies accounted for): plays the lowest trump', () => {
-    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, 'K', 1) }]
-    const hand = [new Card(Suit.Spades, '9', 1), new Card(Suit.Spades, 'A', 1)]
+  it('your team led, forced to trump, trump secure per tracker (all 12 copies accounted for): plays the lowest trump', () => {
+    // Partner led. Every trump copy is now accounted for, which as a side
+    // effect makes both held cards individually boss too - nothing at all is
+    // left outstanding - so the boss-holdback tier has nothing to substitute
+    // (excluding a boss card leaves no non-boss card to play) and gracefully
+    // falls through to the same secure-trump answer this position had before
+    // #312, still the lowest trump.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, 'K', 1) }]
+    const hand = [new Card(Suit.Spades, '9', 1), new Card(Suit.Spades, 'K', 1)]
     const legalMoves = hand
     const tracker = new PlayTracker()
-    for (const rank of ['J', 'Q', 'K', '10'] as const) {
+    for (const rank of ['J', 'Q', '10', 'A'] as const) {
       tracker.record(new Card(Suit.Spades, rank, 1))
       tracker.record(new Card(Suit.Spades, rank, 2))
     }
     tracker.record(new Card(Suit.Spades, '9', 2))
-    tracker.record(new Card(Suit.Spades, 'A', 2))
-    // 8 (J/Q/K/10 both copies) + 2 (spare 9/A copies) played, + 2 in hand = 12: fully accounted for.
+    tracker.record(new Card(Suit.Spades, 'K', 2))
+    // 8 (J/Q/10/A both copies) + 2 (spare 9/K copies) played, + 2 in hand = 12: fully accounted for.
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2], tracker)
     expect(played.rank).toBe('9')
   })
 
-  it('forced to trump, not secure per tracker, has a point trump available: surrenders the lowest point trump', () => {
+  it('opponent led, trumping in with a point trump available: plays the flatly lowest trump anyway (#312)', () => {
+    // Before #312 this asserted 'K' — the old "surrender the lowest point
+    // trump" heuristic fired for every seat, regardless of who led. #312
+    // drops that heuristic outright for the opponent-led side (not merely
+    // skips it for lack of a boss card): reacting to a trick the bidder is
+    // driving is not the moment to be shedding liabilities, so it is flatly
+    // the lowest trump held, full stop. The retained "cash a point trump if
+    // not secure" heuristic now lives only on the your-team-led fallback —
+    // see the team-led test below.
     const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
     const hand = [new Card(Suit.Spades, 'J', 1), new Card(Suit.Spades, 'K', 1)]
     const legalMoves = hand
     const tracker = new PlayTracker() // nothing played -> nowhere near 12 accounted for
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2], tracker)
-    expect(played.rank).toBe('K')
+    expect(played.rank).toBe('J')
   })
 
-  it('forced to trump, not secure, no point trump available: plays the lowest trump', () => {
+  it('opponent led, trumping in, not secure, no point trump available: plays the lowest trump', () => {
     const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
     const hand = [new Card(Suit.Spades, 'J', 1), new Card(Suit.Spades, '9', 1)]
     const legalMoves = hand
     const tracker = new PlayTracker()
     const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2], tracker)
     expect(played.rank).toBe('9')
+  })
+
+  it('your team led, trumping in, not secure, no boss trump: still cashes the lowest point trump (unchanged from today)', () => {
+    // The #312 boss-holdback fallback path — no card here is individually
+    // locked (nothing has been tracked at all), so the your-team-led branch
+    // falls through to the same "surrender the lowest point trump" heuristic
+    // the opponent-led side just gave up, per the issue's explicit "unchanged
+    // from today" fallback for this side.
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, '9', 1) }] // partner led
+    const hand = [new Card(Suit.Spades, 'J', 1), new Card(Suit.Spades, 'K', 1)]
+    const legalMoves = hand
+    const tracker = new PlayTracker()
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2], tracker)
+    expect(played.rank).toBe('K')
   })
 
   it('sluff (void in lead suit and trump): plays from the shortest suit', () => {
@@ -792,13 +826,150 @@ describe('chooseFollowCard', () => {
   it('counted: a plain ruff is not a forced overtrump and keeps its own tier', () => {
     // Void in Hearts with no trump yet on the table. Every trump in hand beats
     // the Heart winner, but the rules restricted nothing — the seat chose to
-    // ruff — so this is not the position #158 is about, and the existing
-    // "surrender the lowest point trump" tier still answers it. Pinned because
-    // the `Card.beats` test alone would have swallowed this case.
+    // ruff — so this is not the position #158 is about. Partner led (#312),
+    // no boss trump is in hand, so this falls through to the your-team-led
+    // fallback, where the existing "surrender the lowest point trump" tier
+    // still answers it unchanged. Pinned because the `Card.beats` test alone
+    // would have swallowed this case.
     const trump = Suit.Spades
-    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, '9', 1) }]
     const hand = [new Card(trump, 'J', 1), new Card(trump, 'K', 1)]
     const played = chooseFollowCard(hand, hand, trickPlays, trump, [0, 2], new PlayTracker(), 'expert', new TrumpMemory(trump, 'expert'))
+    expect(played.rank).toBe('K')
+  })
+
+  // -- Lead-aware follow play (#312) ----------------------------------------
+
+  it('forced beat with an Ace legal: plays it whether the opponent or your own team led', () => {
+    // The one point on which the two trees agree unconditionally: an Ace
+    // settles a forced beat outright, so there is nothing to weigh either way.
+    const legalMoves = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, 'A', 1)]
+
+    // Opponent (player 1) led the 9; both legal cards beat it.
+    const opponentLed: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
+    expect(chooseFollowCard(legalMoves, legalMoves, opponentLed, Suit.Spades, [0, 2]).rank).toBe('A')
+
+    // Partner (player 0) led the 9, an opponent (player 1) overtook with the
+    // Jack, and this seat must reclaim it - both legal cards beat the Jack too.
+    const teamLed: TrickPlay[] = [
+      { player: 0, card: new Card(Suit.Hearts, '9', 1) },
+      { player: 1, card: new Card(Suit.Hearts, 'J', 1) },
+    ]
+    expect(chooseFollowCard(legalMoves, legalMoves, teamLed, Suit.Spades, [0, 2]).rank).toBe('A')
+  })
+
+  it('forced beat without an Ace: opponent-led takes the counter that will hold; your-team-led just takes the cheapest', () => {
+    // Same legal cards, same "nothing tracked lets K stand safely, but the
+    // other 10 is already gone" fact, opposite lead sides. Hand holds one
+    // King and one 10 of the lead suit; the King is NOT provably safe (its
+    // own higher ranks, 10 and Ace, are not both fully accounted for - this
+    // seat's own 10 counts for only one of the two copies), while the 10 IS
+    // provably safe once both Aces are gone (#158's own rule, nothing above
+    // it left to beat it).
+    const hand = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, '10', 1)]
+    const legalMoves = hand
+    const tracker = new PlayTracker()
+    tracker.record(new Card(Suit.Hearts, 'A', 1))
+    tracker.record(new Card(Suit.Hearts, 'A', 2))
+
+    // Opponent led: `chooseForcedBeat`'s boss search finds the 10 is the one
+    // counter that will hold and spends that, exactly the "K-then-10" cascade
+    // (K is preferred only when it is the one that holds).
+    const opponentLed: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
+    expect(chooseFollowCard(hand, legalMoves, opponentLed, Suit.Spades, [0, 2], tracker).rank).toBe('10')
+
+    // Your team led (partner led, an opponent overtook, this seat reclaims):
+    // `chooseForcedBeatOwnLead` never runs a boss search at all - reclaiming
+    // isn't the certain win beating an opponent's lead is, so it just spends
+    // the cheapest counter without asking which one would hold.
+    const teamLed: TrickPlay[] = [
+      { player: 0, card: new Card(Suit.Hearts, '9', 1) },
+      { player: 1, card: new Card(Suit.Hearts, 'J', 1) },
+    ]
+    expect(chooseFollowCard(hand, legalMoves, teamLed, Suit.Spades, [0, 2], tracker).rank).toBe('K')
+  })
+
+  it('your-team-led forced beat spends a non-point card ahead of any counter, even a King that would hold', () => {
+    // The King here is provably boss - both other Hearts counters above it,
+    // the 10 and the Ace, are fully accounted for by the tracker - so
+    // `chooseForcedBeat`'s boss search would spend it without a second
+    // thought on the opponent-led side. #312's rule for this side is "never
+    // a counter" once a non-point escape is legal, full stop: it does not run
+    // that search at all, because the point of this branch is not spending a
+    // point when reclaiming might not even pay off, not spending the
+    // cheapest one that happens to be safe.
+    const hand = [new Card(Suit.Hearts, 'K', 1), new Card(Suit.Hearts, 'Q', 1)]
+    const legalMoves = hand
+    const tracker = new PlayTracker()
+    tracker.record(new Card(Suit.Hearts, '10', 1))
+    tracker.record(new Card(Suit.Hearts, '10', 2))
+    tracker.record(new Card(Suit.Hearts, 'A', 1))
+    tracker.record(new Card(Suit.Hearts, 'A', 2))
+    const teamLed: TrickPlay[] = [
+      { player: 0, card: new Card(Suit.Hearts, '9', 1) },
+      { player: 1, card: new Card(Suit.Hearts, 'J', 1) },
+    ]
+    const played = chooseFollowCard(hand, legalMoves, teamLed, Suit.Spades, [0, 2], tracker)
+    expect(played.rank).toBe('Q')
+  })
+
+  it('trumping in: an opponent-led seat plays the flatly lowest trump even with an individually-locked trump in hand', () => {
+    // The asymmetry's opponent-led half. This hand holds a trump Ace (always
+    // boss - nothing outranks it) and a King that is not boss (its own higher
+    // ranks, 10 and Ace, are not both accounted for). An opponent led the
+    // trick in a side suit this seat is void in, so it must trump in, and it
+    // is free to choose which trump - no boss check applies on this side, so
+    // it plays the plain lowest, 9, same as it would with no boss card at all.
+    const trump = Suit.Spades
+    const hand = [new Card(trump, 'A', 1), new Card(trump, '9', 1), new Card(trump, 'K', 1)]
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Hearts, '9', 1) }]
+    const played = chooseFollowCard(hand, hand, trickPlays, trump, [0, 2], new PlayTracker())
+    expect(played.rank).toBe('9')
+  })
+
+  it('trumping in: your-team-led seat holds back the individually-locked trump and sheds the King instead', () => {
+    // Identical hand and tracker to the opponent-led test above, partner led
+    // instead. The Ace is boss and held back; of the two cards left (9 and
+    // K), the King is a point card and the 9 is not, so the your-team-led
+    // rule ("a point-value one if you hold one you'd otherwise expect to lose
+    // anyway, else your lowest") spends the King rather than the 9 - visibly
+    // different from the opponent-led case above, which played the 9.
+    const trump = Suit.Spades
+    const hand = [new Card(trump, 'A', 1), new Card(trump, '9', 1), new Card(trump, 'K', 1)]
+    const trickPlays: TrickPlay[] = [{ player: 0, card: new Card(Suit.Hearts, '9', 1) }]
+    const played = chooseFollowCard(hand, hand, trickPlays, trump, [0, 2], new PlayTracker())
+    expect(played.rank).toBe('K')
+  })
+
+  it('sluffing: a lone point card in the shortest suit loses to a longer suit that costs nothing', () => {
+    // The old sort ran every legal card through suit-length only: Hearts
+    // (length 1) beats Clubs (length 2) on shortness alone, handing away the
+    // lone King. #312 filters to non-point cards first - the Clubs 9 is the
+    // only one, and it wins regardless of suit length.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Diamonds, 'K', 1) }]
+    const hand = [
+      new Card(Suit.Hearts, 'K', 1), // lone point card, shortest suit
+      new Card(Suit.Clubs, '9', 1), // two-card suit, non-point
+      new Card(Suit.Clubs, '10', 1),
+    ]
+    const legalMoves = hand
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.suit).toBe(Suit.Clubs)
+    expect(played.rank).toBe('9')
+  })
+
+  it('sluffing: every legal card a point card still falls back to shortest-suit-first', () => {
+    // No non-point escape exists at all, so the old behaviour is exactly
+    // right and #312 must not change it.
+    const trickPlays: TrickPlay[] = [{ player: 1, card: new Card(Suit.Diamonds, 'Q', 1) }]
+    const hand = [
+      new Card(Suit.Hearts, 'K', 1), // lone point card, shortest suit
+      new Card(Suit.Clubs, '10', 1),
+      new Card(Suit.Clubs, 'A', 1),
+    ]
+    const legalMoves = hand
+    const played = chooseFollowCard(hand, legalMoves, trickPlays, Suit.Spades, [0, 2])
+    expect(played.suit).toBe(Suit.Hearts)
     expect(played.rank).toBe('K')
   })
 
