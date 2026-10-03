@@ -41,6 +41,8 @@ Covers:
   9. Forced-beat *detection* on both follow paths (#173): a trump ruff is
      not something a lead-suit card can beat, in either direction, plus the
      all-trump `forced_beat` that is correct on raw rank and was left alone.
+ 10. Integer seats on both follow paths (#338): a partner winning from seat
+     0 is still read as winning, though 0 is falsy.
 
 Run directly (`python test_trick_play_strategy.py`) or via pytest.
 """
@@ -696,6 +698,33 @@ def test_the_worked_example_is_decided_before_the_comparison_matters():
     assert choose_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker()).rank == "A"
     expert = choose_expert_follow_card(hand, legal, trick.plays, trump, {partner}, PlayTracker())
     assert expert.rank == "A", expert
+
+
+# ---------------------------------------------------------------------------
+# 10. Integer seats (#338): seat 0 is falsy, and must still read as a winner.
+#     Real callers pass `Player` objects, which are always truthy; the old
+#     `... if winner_player else False` guard read a partner winning from seat
+#     0 as not winning, silently, for any caller using bare seat indices.
+# ---------------------------------------------------------------------------
+
+def test_proficient_follow_partner_winning_from_seat_zero():
+    """Partner in seat 0 leads the Queen; the 9 cannot beat it, so this is the
+    feed tier, and the King goes across. Under the truthiness bug
+    `partner_winning` was False and the seat dumped the 9 instead."""
+    trump = Suit.SPADES
+    trick_plays = [(0, C(Suit.HEARTS, "Q"))]
+    legal = [C(Suit.HEARTS, "9"), C(Suit.HEARTS, "K"), C(Suit.HEARTS, "10")]
+    card = choose_follow_card(legal, legal, trick_plays, trump, {0, 2}, PlayTracker())
+    assert card.rank == "K", card
+
+
+def test_expert_follow_partner_winning_from_seat_zero():
+    """The same position on the expert path (`_expert_follow_card_honest`)."""
+    trump = Suit.SPADES
+    trick_plays = [(0, C(Suit.HEARTS, "Q"))]
+    legal = [C(Suit.HEARTS, "9"), C(Suit.HEARTS, "K"), C(Suit.HEARTS, "10")]
+    card = choose_expert_follow_card(legal, legal, trick_plays, trump, {0, 2}, PlayTracker())
+    assert card.rank == "K", card
 
 
 if __name__ == "__main__":

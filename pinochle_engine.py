@@ -1138,7 +1138,7 @@ def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, t
 
     lead_suit = trick_plays[0][1].suit if trick_plays else None
     winner_player, winner_card = _current_winner(trick_plays, trump) if trick_plays else (None, None)
-    partner_winning = winner_player in my_team_players if winner_player else False
+    partner_winning = winner_player is not None and winner_player in my_team_players
 
     all_lead_suit = lead_suit is not None and all(c.suit == lead_suit for c in legal_moves)
     all_trump = all(c.suit == trump for c in legal_moves)
@@ -2353,7 +2353,7 @@ def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_pl
     """
     lead_suit = trick_plays[0][1].suit if trick_plays else None
     winner_player, winner_card = _current_winner(trick_plays, trump) if trick_plays else (None, None)
-    partner_winning = winner_player in my_team_players if winner_player else False
+    partner_winning = winner_player is not None and winner_player in my_team_players
 
     all_lead_suit = lead_suit is not None and all(c.suit == lead_suit for c in legal_moves)
     all_trump = all(c.suit == trump for c in legal_moves)
