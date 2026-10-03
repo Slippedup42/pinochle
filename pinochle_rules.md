@@ -361,11 +361,37 @@ Proficient tier landed. What they actually do:
   contract; what #255 changed is that it is no longer *forced*. It has a
   floor under it now (`THIRD_BIDDER_FLOOR`, 200 against the Max Bid
   ceiling), so the seat no longer opens on a hand with no meld and no
-  aces. The floor is well below the opener threshold on purpose: the
-  house rule at the table is that a bid means 320, but enforcing 320
-  here was measured at −57 points per deal against opening freely,
-  while 200 costs nothing detectable — all of what the position is
-  worth sits in that band. The constant carries both A/B runs.
+  aces. The floor is well below the opener threshold on purpose. The
+  house rule at the table is that a bid asserts a hand (see the opening
+  anchor below for the number on it); what #255 measured was holding
+  this open to `OPENER_THRESHOLD`, 320 — the floor a hand had to reach
+  to be "worth a contract" — and that cost −57 points per deal against
+  opening freely, while 200 costs nothing detectable: all of what the
+  position is worth sits in that band. The constant carries both A/B
+  runs.
+
+  **The opening anchor** (#315). Once a seat has decided to open on a
+  hand worth a contract, it names `ANCHOR_INTERCEPT`, 330, rather than
+  the bare `OPENING_BID` of 300 (`opening_level_for` in
+  `pinochle_engine.py`, `openingLevelFor` in `bidding.ts`; a ceiling
+  under 330 still opens at the floor). `ANCHOR_SLOPE` is 0 and
+  `ANCHOR_CAP` (380) is never reached, so it is one number, not a curve
+  read off the ceiling. This is an AI strategy rule sitting on top of
+  the 300 opening rung, not a change to Phase 1: a human may still open
+  at 300, and the AI's two opens that assert position rather than a
+  hand — the third bidder's positional open and the endgame rescue
+  below — still name `OPENING_BID`. It is the same house rule as above
+  with the number on it: Paul's account of real tables is that a normal
+  contract lives at 330–380, and since a +10 auction stops one rung past
+  the runner-up's walk-away point, only the number the opener names can
+  move contracts into that band. The anchor puts about 57% of contracts
+  in 330–380 against 32% for opening at the floor. It costs score — about
+  −30 points per deal on the capacity-equalised A/B (`web/README.md`,
+  "What the opener puts on the table") — and ships anyway: Paul switched
+  it on 2026-09-21 and kept it on 2026-09-22 with the equalised cost in
+  front of him, for bids that read like a real table's. It is the one
+  shipped AI rule that measured worse and was chosen on a house-rules
+  call.
 - `choose_trump` — the same per-suit Base Bid comparison, so trump
   follows real speculative hand strength rather than raw card count.
   The middle stage is #277's, Paul's rewrite of the valuation of
@@ -385,7 +411,28 @@ Proficient tier landed. What they actually do:
   `_bidder_pass_selection` / `_partner_pass_selection`.
 - `choose_card` — `choose_lead_card` / `choose_follow_card`, reasoning
   over `PlayTracker`'s record of which of the two copies of each card
-  have already been played.
+  have already been played. Two of its follow rules are recent enough
+  to name:
+  - **Feed-ahead** (#316; `_feed_ahead` in Python, `PartnerRead`
+    `'feedAhead'` in TypeScript). Paul's rule: if partner is likely to
+    take the trick, put in the lowest point you can. "Likely" is read
+    from the seat — an opponent led, this seat is second so partner
+    plays last, every legal card is forced to beat the lead, and the
+    card winning is not boss in its suit (a higher copy is still
+    unaccounted for). Then the seat feeds a counter, cheapest first
+    (King before Ten, never a live Ace unless forced), instead of
+    beating as cheaply as it can. Measured at +5 points per deal (95% CI
+    +2 to +9); its sibling `holdBack` measured null and does not ship.
+  - **The free sluff** (#318). Void in the lead suit and in trump, any
+    card is legal: play a non-point card (9, Jack or Queen) whenever one
+    is held, and among those work toward a void in the shortest suit,
+    lowest rank first. A counter goes out only when nothing else is
+    legal. This is the expert tier's rule, adopted for Python's
+    `choose_follow_card` and TypeScript's `chooseFollowCard`
+    (`SluffPolicy` `'protect'`) on Paul's ruling that the expert tier
+    was right, so each engine has one sluff rule. The A/B was a null
+    leaning the right way (+4, +5, +2 points per deal across three
+    seeds, every CI including zero).
 - `decide_fold` — whether to concede the contract rather than play it
   out, asked of the bid winner after meld and before the first lead.
   Proficient always plays on, deliberately: conceding well needs a read
