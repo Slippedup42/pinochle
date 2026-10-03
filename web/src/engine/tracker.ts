@@ -677,10 +677,12 @@ export function chooseFollowCard(
   }
 
   // Sluff - free choice across suits: work toward a void in the shortest suit,
-  // lowest rank within it. `'shortest'` is `choose_follow_card`'s rule
-  // exactly, point value not consulted; `'protect'` (`SluffPolicy`) is the
-  // expert tier's, the same sort over the non-point cards first so a counter
-  // goes out only when nothing else is legal. #312 shipped the filter
+  // lowest rank within it. `'protect'` (`SluffPolicy`, shipped) runs that sort
+  // over the non-point cards first so a counter goes out only when nothing
+  // else is legal - the rule both Python follow functions use since c897491
+  // (`choose_follow_card` and `_expert_follow_card_honest`). `'shortest'` is
+  // the pre-c897491 `choose_follow_card` rule, point value not consulted, now
+  // only the A/B control. #312 shipped the filter
   // unmeasured; the `sluff` A/B is what it should have been, and `'protect'`
   // ships on its numbers plus Paul's ruling (see `SluffPolicy`).
   const nonPointLegal = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))

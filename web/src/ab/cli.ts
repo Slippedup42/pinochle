@@ -138,8 +138,9 @@ if (command === 'fold') {
   })
   console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'sluff') {
-  // The expert tier's sluff (protect counters first) against the Proficient
-  // one the browser ports (shortest suit, points not consulted).
+  // The shipped sluff (protect counters first, both Python follow functions'
+  // rule since c897491) against the pre-c897491 `choose_follow_card` rule
+  // (shortest suit, points not consulted), now only the A/B control.
   const pairs = flag('pairs', 400)
   const seed = flag('seed', 1)
   const report = runAb({
