@@ -35,7 +35,9 @@ Covers:
      lead and follow entry points.
   8. The Proficient-tier `choose_follow_card`'s feed-partner tier (#164) -
      not a #62 function, but the same rule as section 4's feed case, so it
-     is asserted here rather than in a file of its own.
+     is asserted here rather than in a file of its own - and its free sluff
+     (#318, pinned by #322): counters protected first, then shortest suit /
+     lowest rank, falling back to every legal card when all are counters.
   9. Forced-beat *detection* on both follow paths (#173): a trump ruff is
      not something a lead-suit card can beat, in either direction, plus the
      all-trump `forced_beat` that is correct on raw rank and was left alone.
@@ -446,7 +448,8 @@ def test_follow_always_returns_a_legal_move():
 
 
 # ---------------------------------------------------------------------------
-# 8. Proficient-tier choose_follow_card - the feed-partner tier (#164).
+# 8. Proficient-tier choose_follow_card - the feed-partner tier (#164) and
+#    the free sluff (#318, #322).
 # ---------------------------------------------------------------------------
 
 def test_proficient_follow_feeds_partner_the_lowest_counter():
@@ -493,6 +496,45 @@ def test_proficient_follow_forced_beat_still_wins_cheaply():
     legal = [C(Suit.HEARTS, "K"), C(Suit.HEARTS, "A")]
     card = choose_follow_card(legal, legal, trick_plays, trump, {partner}, PlayTracker())
     assert card.rank == "K"
+
+
+def test_proficient_sluff_protects_a_lone_counter_in_the_shortest_suit():
+    """#318 moved `choose_follow_card`'s free sluff to the expert tier's rule:
+    non-point cards first, then shortest suit, then lowest rank. The old rule
+    (suit length then rank, point value not consulted) threw the lone King
+    from the one-card suit ahead of the Clubs 9. Same position as the TS test
+    "the two SluffPolicy arms part on a lone counter in the shortest suit" in
+    `web/src/engine/tracker.test.ts`, so both engines are pinned on it (#322).
+    """
+    trump = Suit.SPADES
+    opponent = object()
+    trick_plays = [(opponent, C(Suit.DIAMONDS, "K"))]
+    hand = [
+        C(Suit.HEARTS, "K"),  # lone point card, shortest suit
+        C(Suit.CLUBS, "9"),   # two-card suit, non-point
+        C(Suit.CLUBS, "10"),
+    ]
+    legal = list(hand)  # void of Diamonds and trump - free sluff
+    card = choose_follow_card(hand, legal, trick_plays, trump, set(), PlayTracker())
+    assert card.suit == Suit.CLUBS and card.rank == "9", card
+
+
+def test_proficient_sluff_all_counters_falls_back_to_shortest_suit_first():
+    """Every legal card a counter: the pool falls back to all of them and the
+    shortest-suit / lowest-rank sort runs over the lot. The first hand mirrors
+    the TS fallback test; the second puts an Ace alone in the short suit so
+    that suit length, not rank, is visibly what decides it."""
+    trump = Suit.SPADES
+    opponent = object()
+    trick_plays = [(opponent, C(Suit.DIAMONDS, "Q"))]
+
+    hand = [C(Suit.HEARTS, "K"), C(Suit.CLUBS, "10"), C(Suit.CLUBS, "A")]
+    card = choose_follow_card(hand, list(hand), trick_plays, trump, set(), PlayTracker())
+    assert card.suit == Suit.HEARTS and card.rank == "K", card
+
+    hand = [C(Suit.HEARTS, "A"), C(Suit.CLUBS, "K"), C(Suit.CLUBS, "10")]
+    card = choose_follow_card(hand, list(hand), trick_plays, trump, set(), PlayTracker())
+    assert card.suit == Suit.HEARTS and card.rank == "A", card
 
 
 # ---------------------------------------------------------------------------
