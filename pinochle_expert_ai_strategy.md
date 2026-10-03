@@ -320,7 +320,7 @@ captured until trick-play lookahead exists.
 ### Bidder leading — draw trump
 
 1. **If you hold a trump Ace, it is always your first lead — unconditionally.** No other trump-leading heuristic needed; the Ace is unbeatable by rank so leading it is risk-free and immediately clarifies whether the second Ace is still live (if it doesn't reappear, someone still holds it and the Bidder's count-cards remain at risk from it until confirmed dead).
-2. If no trump Ace is held, this is a materially weaker hand — see open question below on "fold" behavior.
+2. If no trump Ace is held, this is a materially weaker hand, and the response is a **mid-hand shift, not a bid-time refusal**: the contract is kept (bid-time EV already priced this risk in), but the lead falls back to the conservative non-trump safe-card cascade instead of the aggressive trump-draw plan. The Bidder's partner runs the identical rule independently when *they* are on lead — one shared implementation of how the offense leads trump, with no deferral to a separate "Bidder's plan" (`_offense_trump_lead` in `pinochle_engine.py`; Section 9, items 3 and 4).
 3. **Mandatory-beat is what makes trump-drawing forceful, not hopeful**: per `pinochle_rules.md`, a player following suit must play higher than the current highest card on the table if able. This means leading even a low trump can force out a hidden high trump from an opponent who is unable to simply follow with a lower card.
 
 ### Endgame sequencing — protect the last-trick bonus
@@ -344,30 +344,43 @@ the bonus.
 - **Trump-in judgment when void**: over-trump only when it secures the
   trick and is worth it; otherwise sluff/under-trump to conserve trump.
 
-### Defending team (proposed default — see open question)
+### Defending team — two-tier lead rule
 
 Defenders' incentive is generally inverted from the Bidder's: leading
-trump helps the Bidder consolidate control, so defenders should
-generally **avoid leading trump** and instead attack the Bidder's
-weakest suit, forcing early ruffs that burn the Bidder's trump control.
-This is the standard defensive counter-pattern in trick-taking games
-generally, proposed here as a working default — **not yet explicitly
-confirmed** by the domain authority for this project.
+trump helps the Bidder consolidate control, so the baseline defensive
+lead **avoids trump** and instead attacks the Bidder's weakest suit,
+forcing early ruffs that burn the Bidder's trump control. That is not
+one fixed global rule, though; it splits by skill level (issue #62,
+Section 9 item 5), in `_defender_lead` in `pinochle_engine.py`:
 
-### Critical dependency: card-counting infrastructure
+- **Static / no-rollout-budget skill levels** use the avoid-trump
+  default unconditionally: the lead is chosen from non-trump whenever
+  the hand holds any. This is also the only mode the PWA runs —
+  `defenderLead` in `web/src/engine/tracker.ts` ports it.
+- **Rollout-budget skill levels** (issue #63's dial) compare the static
+  non-trump lead against a trump-lead candidate through the optional
+  `rollout_evaluator` callback and play whichever scores higher in the
+  exact game state. Measured in issue #65, this compare mode shows only a
+  small positive effect over the static rule (~53%, within noise at
+  100-game samples).
+
+### Card-counting infrastructure
 
 Everything above (trump-draw sequencing, "second Ace still live",
 suit-exhaustion inferences) depends on tracking **which of the two
 copies of each rank/suit have been played**, not just what's been played
-in aggregate. **This has been asked about multiple times in design
-discussion and not yet confirmed** — before implementing Section 4,
-verify whether the existing cascade trick-play strategy already tracks
-seen-cards per rank/suit, or whether that tracking needs to be built as
-part of this work. This also gates whether the current trick-play logic
-is purely reactive (best legal move this trick) or has any lookahead —
-if purely reactive, Monte Carlo rollouts will systematically undervalue
-sequenced plays like the elimination example in Section 3, on exactly
-the hands where they'd matter most.
+in aggregate. That tracking already exists (confirmed during issue #59,
+reused unchanged through #61/#62; Section 9 item 6): `PlayTracker` in
+`pinochle_engine.py`, present since the initial commit, records per-copy
+play counts. The Monte Carlo sampler's `played_counts_from_tracker`
+(`pinochle_rollout.py`) and the trick-play cascade's `is_safe` /
+`is_unsecured_ace` reuse it rather than rebuild it.
+
+The trick-play functions themselves are **purely reactive** — best legal
+move this trick, no built-in lookahead. Multi-trick sequencing (e.g. the
+elimination play in Section 3) emerges only from the Monte Carlo rollout
+trying many determinized samples, not from explicit planning inside the
+trick-play cascade.
 
 ---
 
