@@ -168,19 +168,64 @@ function git(...args: string[]): string | null {
 /**
  * `dirty` is `null` rather than `false` when the commit is unknown: "the working
  * tree was clean" is a claim a build outside a checkout cannot make, and a stamp
- * that guesses is the failure mode this whole section exists to remove. `git
- * status` reports the whole repository regardless of which directory it runs in,
- * so a build taken with uncommitted Python changes is flagged too — the SHA on
- * its own would otherwise describe a tree that was never built.
+ * that guesses is the failure mode this whole section exists to remove.
+ *
+ * What counts as dirty (#321):
+ *
+ * - **Tracked changes anywhere in the repository**, staged or not, in `web/` or
+ *   out of it. Uncommitted Python changes can change generated TypeScript
+ *   (`export_evaluator.py`, `export_parity_scenarios.py`), so without this the
+ *   SHA would describe a tree that was never built.
+ * - **Untracked files under `web/` only.** A new module under `web/src` can
+ *   change the bundle; a stray document at the repo root cannot. Counting
+ *   untracked files repo-wide made the flag true on every build from a working
+ *   checkout, and a flag that is always true carries no information.
+ *   Gitignored paths (`node_modules`, `dist`) never count.
+ *
+ * `dirtyPaths` lists what tripped the flag, repo-root-relative as `git status
+ * --porcelain` prints them, so a dirty stamp says *what* differed rather than
+ * only *that* something did. It is `null` whenever `dirty` is.
  */
-function buildStamp(): { commit: string; dirty: boolean | null; builtAt: string } {
+function buildStamp(): {
+  commit: string
+  dirty: boolean | null
+  dirtyPaths: string[] | null
+  builtAt: string
+} {
   const commit = git('rev-parse', '--short', 'HEAD')
-  const status = commit === null ? null : git('status', '--porcelain')
+  // Both run with cwd pinned to `web/` by `git()`: porcelain paths are
+  // repo-root-relative regardless, while the `.` pathspec scopes to `web/`.
+  const tracked = commit === null ? null : git('status', '--porcelain', '--untracked-files=no')
+  const untracked =
+    commit === null ? null : git('status', '--porcelain', '--untracked-files=all', '--', '.')
+  const dirtyPaths =
+    tracked === null || untracked === null
+      ? null
+      : [
+          ...porcelainPaths(tracked),
+          // The scoped call reports tracked changes under `web/` too; those are
+          // already in `tracked`, so keep only its untracked (`??`) entries.
+          ...porcelainPaths(untracked.split('\n').filter((line) => line.startsWith('??')).join('\n')),
+        ]
   return {
     commit: commit ?? 'unknown',
-    dirty: status === null ? null : status.length > 0,
+    dirty: dirtyPaths === null ? null : dirtyPaths.length > 0,
+    dirtyPaths,
     builtAt: new Date().toISOString(),
   }
+}
+
+/**
+ * Strips the two-letter status code from each porcelain line. Matched by
+ * pattern rather than sliced at column 3 because `git()` trims its output, which
+ * eats the leading space of a first line like ` M ROADMAP.md`.
+ */
+function porcelainPaths(status: string): string[] {
+  return status
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => line.replace(/^\S+\s+/, ''))
 }
 
 /**
