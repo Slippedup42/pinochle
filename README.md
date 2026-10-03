@@ -47,8 +47,9 @@ describes the deploy rather than the visitor's cache.
 
 The Python side has two live roles: it is the reference implementation
 the TypeScript port is checked against, *and* the harness all the AI
-research and measurement runs on. `pinochle_engine.py` implements the
-same rule set end-to-end, and `pinochle_ai.py` holds its strategy: real
+research and measurement runs on. `pinochle_rules_engine.py` implements
+the same rule set end-to-end, and `pinochle_ai.py` holds its strategy
+(`pinochle_engine.py` re-exports both): real
 **Proficient-tier** play on
 `Player` (hand valuation via Base Bid, positional/score-aware bidding,
 category-split passing, card-counting trick play) and, above it,
@@ -131,19 +132,26 @@ is where the next round of strategy work will run. See
   #63) rather than a separate hardcoded tier — see Section 8. All of
   Section 9's open design questions are now resolved, with pointers to
   which child issue of #57 resolved each.
-- [`pinochle_engine.py`](pinochle_engine.py) — the Python reference
-  rules engine: `Card`, `Deck`, meld scoring, the bid-valuation chain
-  (`compute_base_bid` through `best_base_bid`), `PlayTracker`, the shared
-  pass/trick-play runners (`run_forward_pass`, `play_tricks`, ...), `Trick`,
-  `Team`, `Round`, `determine_winner`, `Game`. The constants here are the
-  ones Python is authoritative for (#213) - rules and valuation. It also
-  re-exports every name in `pinochle_ai.py` (lazily, through a module
-  `__getattr__`), so `from pinochle_engine import Player` still works and
-  no caller changed an import when the AI half moved out (#249, epic #214).
-  #250 moves the rules half to `pinochle_rules_engine.py` and leaves this
-  file a pure shim.
+- [`pinochle_engine.py`](pinochle_engine.py) — a re-export shim over the
+  two modules below (epic #214): imports and `__all__`, no definitions.
+  Every caller that does `from pinochle_engine import ...` - the parity
+  exporters among them - kept its import when the engine was split, and
+  `python pinochle_engine.py` still runs the meld and full-game sanity
+  demo. New code should import from the module a name is defined in, and
+  a monkeypatch must target that module: rebinding a name on the shim is
+  not seen by the functions that read it.
+- [`pinochle_rules_engine.py`](pinochle_rules_engine.py) — the Python
+  reference rules engine (#250): `Card`, `Deck`, meld scoring, the
+  bid-valuation chain (`compute_base_bid` through `best_base_bid`),
+  `PlayTracker`, the shared pass/trick-play runners (`run_forward_pass`,
+  `play_tricks`, ...), `Trick`, `Team`, `Round`, `determine_winner`,
+  `Game`. **Python-authoritative (#213):** a rules or valuation constant
+  here is right, and a TypeScript port that disagrees has drifted. It is
+  what `export_parity_scenarios.py` records from.
 - [`pinochle_ai.py`](pinochle_ai.py) — the Python AI strategy layer, split
-  out of `pinochle_engine.py` by #249: the auction-strategy thresholds
+  out of `pinochle_engine.py` by #249. **Not authoritative (#213):**
+  TypeScript's `bidding.ts` owns the measured strategy constants. Holds
+  the auction-strategy thresholds
   (`OPENER_THRESHOLD`, the opening anchor, endgame protection, the #213
   partner floors - the constants TypeScript may own), Proficient trick play
   (`choose_lead_card` / `choose_follow_card`), pass selection
@@ -162,7 +170,8 @@ is where the next round of strategy work will run. See
   static-vs-rollout-compare split for whether defenders ever lead trump,
   and false-carding/fake-void deception as pluggable candidate moves gated
   behind an optional `deception_evaluator`. Imports its rules from
-  `pinochle_engine.py`; nothing on the rules side imports it at load time.
+  `pinochle_rules_engine.py`; nothing on the rules side imports it at load
+  time. `test_engine_split.py` pins the three-file shape.
 - [`pinochle_rollout.py`](pinochle_rollout.py) — Monte Carlo
   determinization sampler + Auto-SET guard (issue #59): deals the
   currently-unseen cards for a decision point (bidding / return-pass /
