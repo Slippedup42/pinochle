@@ -8,11 +8,13 @@
 // reasoning because no harness in this project seats a human — every A/B run,
 // on both sides, is AI-vs-AI, and ROADMAP.md carries "is a stronger AI a
 // better partner for a human?" as a standing open question no measurement
-// here can answer. The 330 competitive floor is likewise a TS-side decision.
-// None of the three are ported back. The matching Python branches still hold
-// their own bare literals; #213 traced that divergence and found it inert on
-// every path that still consumes Python's bidding, so it is a decision to
-// read, not a parity bug to fix.
+// here can answer. The 330 competitive floor (COMPETITIVE_CEILING_FLOOR) is
+// likewise a TS-side decision. None of the three are ported back. Python
+// names its own copies of the last two as ceiling gates; #213 traced that
+// divergence and found it inert on every path that still consumes Python's
+// bidding, so it is a decision to read, not a parity bug to fix.
+// `test_ported_constants.py` (#216) pins every number this file shares with
+// Python, and says which side is authoritative when one moves alone.
 //
 // The Base Bid constants below are the exception and still track Python
 // (#118). Python is not frozen either — it is the live AI-research and
@@ -370,6 +372,15 @@ export const PARTNER_PASSED_FLOOR = 320
  * happens.
  */
 export const PARTNER_RAISE_FLOOR = 340
+/**
+ * Once partner has bid, the ceiling this seat uses to contest an opponent's
+ * bid is lifted to at least this, since a partner bid is a signal worth
+ * backing. A TS-side auction decision (#213), named so that
+ * `test_ported_constants.py` can pin it against Python's
+ * `COMPETITIVE_CEILING_FLOOR`, which uses it the same way (#216). Before that
+ * it was a bare `330` inside `chooseBid`.
+ */
+export const COMPETITIVE_CEILING_FLOOR = 330
 
 /** Remove up to `count` cards matching suit/rank from `pool` in place; returns how many were removed. */
 function claim(pool: Card[], suit: Suit, rank: Rank, count = 1): number {
@@ -827,8 +838,9 @@ function meldOnlyBid(
  *     - Otherwise my own (or partner's) bid already stands - no need to
  *       raise myself.
  *   - The opponents currently hold the bid: raise to current + minIncrement
- *     if that's within my ceiling (relaxed to at least 330 once my partner
- *     has bid, since a partner bid is a signal worth backing), else pass.
+ *     if that's within my ceiling (relaxed to at least
+ *     COMPETITIVE_CEILING_FLOOR, 330, once my partner has bid, since a
+ *     partner bid is a signal worth backing), else pass.
  */
 export function chooseBid(
   player: PlayerIndex,
@@ -1024,7 +1036,7 @@ export function chooseBid(
   }
 
   // Opponent currently holds the bid.
-  const competitiveCeiling = partnerHasBid ? Math.max(ceiling, 330) : ceiling
+  const competitiveCeiling = partnerHasBid ? Math.max(ceiling, COMPETITIVE_CEILING_FLOOR) : ceiling
 
   const nextBid = currentBid + minIncrement
 
