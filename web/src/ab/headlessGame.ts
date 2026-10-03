@@ -155,11 +155,40 @@ export interface HeadlessGameOptions {
    *  of them. The #206 rig found the same trap and equalised it in a throwaway;
    *  this is that equaliser kept. */
   readonly memoryLevel?: SkillLevel
+  /** Appended to, one entry per round, if supplied: every auction decision
+   *  with the situation it was taken in, and how the contract came out.
+   *  `gateStats.ts` (#282) reads it to attribute contract outcomes to the
+   *  `chooseBid` gate that produced the winning bid. Observation only — the
+   *  game plays identically whether or not it is passed. */
+  readonly roundLog?: RoundRecord[]
+}
+
+/** One auction decision as `chooseBid` saw it, and what it answered. */
+export interface AuctionDecision extends BidSituationSample {
+  readonly decision: number | null
+}
+
+/** How a contract ended. `autoSet` and `conceded` are both concessions; an
+ *  auto-SET is reported as `autoSet` rather than `conceded`, so the four are
+ *  disjoint here (unlike `SideStats`, where `autoSet` is a subset). */
+export type ContractOutcome = 'made' | 'set' | 'conceded' | 'autoSet'
+
+/** One round of a headless game, for callers that want more than `SideStats`. */
+export interface RoundRecord {
+  readonly decisions: readonly AuctionDecision[]
+  readonly dealer: PlayerIndex
+  readonly bidWinner: PlayerIndex
+  readonly bid: number
+  /** Cumulative score going into the round. */
+  readonly scoresBefore: Record<TeamId, number>
+  readonly outcome: ContractOutcome
+  /** The bidding team's round score minus the defenders'. */
+  readonly bidderNet: number
 }
 
 /** Plays one complete game to the +/-1000 thresholds and reports who won. */
 export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
-  const { seatSkills, dealSeed, stats, collectBidSituations, memoryLevel } = options
+  const { seatSkills, dealSeed, stats, collectBidSituations, memoryLevel, roundLog } = options
   const scoresByTeam: Record<TeamId, number> = { 0: 0, 1: 0 }
   let dealer: PlayerIndex = 3
 
@@ -177,6 +206,8 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
 
     // -- Auction -----------------------------------------------------------
     let state: AuctionState = initAuctionState(hands, dealer, SEAT_NAMES, scoresByTeam)
+    const scoresBefore: Record<TeamId, number> = { 0: scoresByTeam[0], 1: scoresByTeam[1] }
+    const decisions: AuctionDecision[] = []
     let guard = 0
     while (state.phase === 'bidding' && guard++ < 100) {
       const turn = state.bidding.turn
@@ -204,6 +235,17 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
         context,
         seatSkills[turn],
       )
+      if (roundLog !== undefined) {
+        // `scores` is the live `scoresByTeam` object, which this loop mutates
+        // after the round; snapshot it so the record reads as it was decided.
+        decisions.push({
+          player: turn,
+          hand: state.hands[turn],
+          currentBid: state.bidding.currentBid,
+          context: { ...context, scores: { ...context.scores } },
+          decision,
+        })
+      }
       state =
         decision === null
           ? auctionReducer(state, { type: 'PASS_BID', player: turn })
@@ -287,6 +329,15 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
         side.conceded++
         if (autoSetCondition) side.autoSet++
       }
+      roundLog?.push({
+        decisions,
+        dealer,
+        bidWinner,
+        bid,
+        scoresBefore,
+        outcome: autoSet ? 'autoSet' : 'conceded',
+        bidderNet: roundScore[bidWinnerTeam] - roundScore[defendingTeam],
+      })
 
       scoresByTeam[0] += roundScore[0]
       scoresByTeam[1] += roundScore[1]
@@ -361,6 +412,15 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
       // out — the same statistic the enabled arm records above.
       if (autoSetCondition) side.autoSet++
     }
+    roundLog?.push({
+      decisions,
+      dealer,
+      bidWinner,
+      bid,
+      scoresBefore,
+      outcome: roundScore[bidWinnerTeam] < 0 ? 'set' : 'made',
+      bidderNet: roundScore[bidWinnerTeam] - roundScore[defendingTeam],
+    })
 
     scoresByTeam[0] += roundScore[0]
     scoresByTeam[1] += roundScore[1]

@@ -14,6 +14,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts capacity --high expert --low easy
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts latency --positions 4000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts gates --games 2000 --seed 1
 //
 // `selftest` is the harness's own correctness check, exactly as in
 // `ab_harness.py`: one policy against itself must not produce a significant
@@ -53,6 +54,7 @@ import {
   safeCounterCapacityPolicies,
   summarise,
 } from './abRun'
+import { aggregate, collectGateRounds, formatGateReport } from './gateStats'
 import { formatLatency, runLatencyBenchmark } from './latency'
 
 const SKILL_LEVELS: readonly SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
@@ -261,13 +263,20 @@ if (command === 'fold') {
         : runAb({ nPairs: pairs, seed, levelA: DISTILLED_LEVEL, levelB: STATIC_LEVEL })
     console.log(summarise(report, analyse(report, seed)))
   }
+} else if (command === 'gates') {
+  // #282's descriptive statistics: not an A/B. Every seat plays the shipped
+  // configuration; the report says where each auction gate binds.
+  const games = flag('games', 500)
+  const seed = flag('seed', 1)
+  const report = aggregate(collectGateRounds(games, seed))
+  console.log(formatGateReport(report, `gates: ${games} shipped-config games, seed ${seed}`))
 } else if (command === 'latency') {
   const positions = flag('positions', 3000)
   const repeats = flag('repeats', 40)
   console.log(formatLatency(runLatencyBenchmark(positions, repeats)))
 } else {
   console.log(
-    'usage: cli.ts [ab|fold|play|autoset|safe|capacity|selftest|latency] [--pairs N] [--seed N] ' +
+    'usage: cli.ts [ab|fold|play|autoset|safe|capacity|selftest|latency|gates] [--pairs N] [--games N] [--seed N] ' +
       `[--policy ${Object.keys(SELFTEST_ARMS).join('|')}] [--level ${SKILL_LEVELS.join('|')}] ` +
       '[--high LEVEL] [--low LEVEL] [--positions N] [--repeats N]',
   )
