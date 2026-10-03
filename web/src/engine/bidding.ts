@@ -44,6 +44,7 @@ import {
 } from './card'
 import { shouldBid } from './evaluator'
 import { isProtectedTen } from './handShape'
+import { bidderPassSelection, PASS_COUNT, type PassCategory } from './passing'
 import {
   MELD_ONLY_BID_NOISE,
   MELD_ONLY_TRICK_ESTIMATE,
@@ -112,6 +113,16 @@ export const PROTECTED_TEN_VALUE = 20
 // A non-trump King with no Queen of its suit behind it, and vice versa.
 export const LOOSE_KING_VALUE = 30
 export const LOOSE_QUEEN_VALUE = 20
+// The alternative reading of the same line (#326), OFF by default and not
+// shipped: Paul's written valuation (`pinochle_valuation.md`) says "for every K
+// or Q that is not a marriage *and you will pass* - 20". With the flag on, a
+// loose K/Q is worth LOOSE_KQ_PASSED_VALUE if the bid winner's return pass
+// would send it and 0 if it would be kept; see `computeTrickPotential`. This is
+// the engine default, paired with Python's constant of the same name by
+// `test_ported_constants.py`; a seat's own `SkillParams.looseKqPolicy` is what
+// `chooseBid` and `chooseTrump` actually read, so an A/B can split the table.
+export const LOOSE_KQ_PASS_ONLY = false
+export const LOOSE_KQ_PASSED_VALUE = 20
 // Proficient AI draws randomly in this range each bid (partner-strength
 // estimate). Not consumed by the pure valuation functions below — ported
 // for parity with the Python constant block, same as there.
@@ -567,8 +578,26 @@ export interface TrickPotentialResult {
  * Trump honours are excluded from the last two lines because the Run and Royal
  * Marriage lines in the Base Bid have already priced them, and trump 10s from
  * the protected-10 line for the same reason.
+ *
+ * `looseKqPassOnly` (#326, default `LOOSE_KQ_PASS_ONLY`, which is off) replaces
+ * the last two lines with Paul's written "and you will pass" reading: a loose
+ * K/Q - same suit-level test as above - is worth `LOOSE_KQ_PASSED_VALUE` if it
+ * would go into the pass and 0 if it would be kept. "Into the pass" is defined
+ * from the seat this valuation speaks for. The number is a ceiling - what the
+ * hand is worth *as the contract-holder* - so the pass is the bid winner's
+ * return pass, `bidderPassSelection(hand, trump, category, PASS_COUNT)`, run on
+ * the dealt 12 cards at the trump being valued. `partnerPassSelection` never
+ * enters: a hand is only ever valued for a contract it would hold. The bidder
+ * really passes from 15 cards, after partner's three arrive, but those three
+ * are unknown at bid time, so the dealt hand is the only honest input. Credit is
+ * per copy actually selected, so K-K with one K passed pays 20.
+ * Python's `compute_trick_potential` is the reference.
  */
-export function computeTrickPotential(hand: readonly Card[], trump: Suit): TrickPotentialResult {
+export function computeTrickPotential(
+  hand: readonly Card[],
+  trump: Suit,
+  looseKqPassOnly: boolean = LOOSE_KQ_PASS_ONLY,
+): TrickPotentialResult {
   const breakdown: Record<string, number> = {}
 
   const aceCount = hand.filter((c) => c.rank === 'A').length
@@ -592,6 +621,23 @@ export function computeTrickPotential(hand: readonly Card[], trump: Suit): Trick
     if (kings && !queens) looseKings += kings
     if (queens && !kings) looseQueens += queens
   }
+
+  if (looseKqPassOnly) {
+    if (looseKings || looseQueens) {
+      const category: PassCategory = trump === Suit.Spades || trump === Suit.Diamonds ? 'DS' : 'HC'
+      const passed = bidderPassSelection(hand, trump, category, PASS_COUNT)
+      const passedLoose = passed.filter(
+        (c) =>
+          c.suit !== trump &&
+          ((c.rank === 'K' && handCount(hand, c.suit, 'Q') === 0) ||
+            (c.rank === 'Q' && handCount(hand, c.suit, 'K') === 0)),
+      ).length
+      if (passedLoose) breakdown['Unmarried K/Q going into the pass'] = passedLoose * LOOSE_KQ_PASSED_VALUE
+    }
+    const total = Object.values(breakdown).reduce((sum, v) => sum + v, 0)
+    return { total, breakdown }
+  }
+
   if (looseKings) breakdown['Unmarried Kings'] = looseKings * LOOSE_KING_VALUE
   if (looseQueens) breakdown['Unmarried Queens'] = looseQueens * LOOSE_QUEEN_VALUE
 
@@ -711,9 +757,15 @@ export interface MaxBidResult {
  * hand melds, what it takes, and what the scoreboard is asking for; only the
  * last of them is not about the cards.
  */
-export function computeMaxBid(hand: readonly Card[], trump: Suit, myScore = 0, oppScore = 0): MaxBidResult {
+export function computeMaxBid(
+  hand: readonly Card[],
+  trump: Suit,
+  myScore = 0,
+  oppScore = 0,
+  looseKqPassOnly: boolean = LOOSE_KQ_PASS_ONLY,
+): MaxBidResult {
   const { total: baseTotal, breakdown: baseBreakdown } = computeBaseBid(hand, trump)
-  const { total: trickTotal, breakdown: trickBreakdown } = computeTrickPotential(hand, trump)
+  const { total: trickTotal, breakdown: trickBreakdown } = computeTrickPotential(hand, trump, looseKqPassOnly)
   const { value: adjTotal, breakdown: adjBreakdown } = computeCompetitiveAdjustment(hand, trump, myScore, oppScore)
   const breakdown = { ...baseBreakdown, ...trickBreakdown, ...adjBreakdown }
   return { total: baseTotal + trickTotal + adjTotal, breakdown }
@@ -739,10 +791,15 @@ export interface BestBidResult {
  * unclamped (#283) — so the suit named here is the one this hand is genuinely
  * worth most in, rather than the first suit that happened to reach a cap.
  */
-export function bestBaseBid(hand: readonly Card[], myScore = 0, oppScore = 0): BestBidResult {
+export function bestBaseBid(
+  hand: readonly Card[],
+  myScore = 0,
+  oppScore = 0,
+  looseKqPassOnly: boolean = LOOSE_KQ_PASS_ONLY,
+): BestBidResult {
   let best: BestBidResult | null = null
   for (const t of SUITS) {
-    const { total, breakdown } = computeMaxBid(hand, t, myScore, oppScore)
+    const { total, breakdown } = computeMaxBid(hand, t, myScore, oppScore, looseKqPassOnly)
     if (best === null || total > best.total) {
       best = { trump: t, total, breakdown }
     }
@@ -863,7 +920,8 @@ export function chooseBid(
   const myScore = context.scores[myTeam]
   const oppScore = context.scores[opponentTeam]
 
-  const { total: ceiling } = bestBaseBid(hand, myScore, oppScore)
+  const looseKqPassOnly = SKILL_PARAMS[skill].looseKqPolicy === 'passOnly'
+  const { total: ceiling } = bestBaseBid(hand, myScore, oppScore, looseKqPassOnly)
 
   const partner = partnerOf(player)
   const partnerIsDealer = partner === context.dealer
@@ -931,6 +989,7 @@ export function chooseBid(
           theirScore: oppScore,
           partnerHasBid,
           partnerHasPassed: partnerPassed,
+          looseKqPassOnly,
         })
       : staticVerdict
 
@@ -1087,6 +1146,6 @@ export function chooseTrump(hand: readonly Card[], skill: SkillLevel = SHIPPED_S
     }
     return best
   }
-  const { trump } = bestBaseBid(hand)
+  const { trump } = bestBaseBid(hand, 0, 0, SKILL_PARAMS[skill].looseKqPolicy === 'passOnly')
   return trump
 }

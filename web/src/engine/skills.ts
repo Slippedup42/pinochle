@@ -266,6 +266,27 @@ export type PartnerRead = 'current' | 'feedAhead' | 'holdBack' | 'likely'
  */
 export type SluffPolicy = 'shortest' | 'protect'
 
+/**
+ * How the trick-potential stage prices an unmarried non-trump King or Queen
+ * (#326).
+ *
+ * `'flat'` is what has shipped since #277: every loose K is worth
+ * `LOOSE_KING_VALUE` (30) and every loose Q `LOOSE_QUEEN_VALUE` (20), wherever
+ * the card ends up. `'passOnly'` is the literal reading of Paul's written
+ * valuation (`pinochle_valuation.md`): "for every K or Q that is not a marriage
+ * *and you will pass* - 20". A loose K/Q is worth `LOOSE_KQ_PASSED_VALUE` (20)
+ * if `bidderPassSelection` - the bid winner's return pass, run on the dealt
+ * hand at the trump being valued - would send it, and 0 if it would be kept.
+ * `computeTrickPotential` in `bidding.ts` has the full definition.
+ *
+ * `'flat'` ships; `'passOnly'` is an A/B arm only, unmeasured, and waiting on
+ * #288's valuation arm. `LOOSE_KQ_PASS_ONLY` in `bidding.ts` (paired with
+ * Python's constant of the same name) is the engine default this field must
+ * agree with in `SHIPPED_PARAMS`. Python carries the same switch as
+ * `Player.loose_kq_pass_only`.
+ */
+export type LooseKqPolicy = 'flat' | 'passOnly'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -276,6 +297,7 @@ export interface SkillParams {
   readonly openingAnchor: OpeningAnchor
   readonly partnerRead: PartnerRead
   readonly sluffPolicy: SluffPolicy
+  readonly looseKqPolicy: LooseKqPolicy
 }
 
 /**
@@ -293,6 +315,7 @@ export interface SkillParams {
  * | `openingAnchor`     | `valuation` | `floor`                                |
  * | `partnerRead`       | `feedAhead` | `current`, `holdBack`, `likely`        |
  * | `sluffPolicy`       | `protect`   | `shortest`                             |
+ * | `looseKqPolicy`     | `flat`      | `passOnly`                             |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -302,7 +325,9 @@ export interface SkillParams {
  * Every one of those but the anchor is the arm that measured better; the anchor
  * is the arm that measured *worse* on score and was chosen anyway for the
  * distribution it buys — the one house-rules call in the table, recorded on
- * `OpeningAnchor`. This configuration is
+ * `OpeningAnchor`. `looseKqPolicy` is the other exception, in a different way:
+ * neither of its arms has been measured, and `'flat'` ships only because it is
+ * what shipped before the arm existed (#326, waiting on #288). This configuration is
  * what `hard`, `proficient` and `expert` all already were apart from recall.
  * Epic #215 is where the dial went: three panel rows that were byte-identical
  * except for `TRUMP_MEMORY_CAPACITY` are a control a player cannot feel, and
@@ -344,6 +369,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   openingAnchor: 'valuation',
   partnerRead: 'feedAhead',
   sluffPolicy: 'protect',
+  looseKqPolicy: 'flat',
 }
 
 /**

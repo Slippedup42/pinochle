@@ -95,6 +95,11 @@ PAIRS = (
     ("bidding.ts", "PROTECTED_TEN_VALUE", "PROTECTED_TEN_VALUE", PYTHON),
     ("bidding.ts", "LOOSE_KING_VALUE", "LOOSE_KING_VALUE", PYTHON),
     ("bidding.ts", "LOOSE_QUEEN_VALUE", "LOOSE_QUEEN_VALUE", PYTHON),
+    # #326's off-by-default "and you will pass" reading: the default and its
+    # value both live in the valuation, so both are Python's. The flag is a
+    # boolean; `evaluate_ts` reads `true`/`false` for it.
+    ("bidding.ts", "LOOSE_KQ_PASS_ONLY", "LOOSE_KQ_PASS_ONLY", PYTHON),
+    ("bidding.ts", "LOOSE_KQ_PASSED_VALUE", "LOOSE_KQ_PASSED_VALUE", PYTHON),
     ("bidding.ts", "PARTNER_ESTIMATE_RANGE", "PARTNER_ESTIMATE_RANGE", PYTHON),
     # -- Auction strategy kept equal in both engines, with no declared owner.
     ("bidding.ts", "OPENER_THRESHOLD", "OPENER_THRESHOLD", SHARED),
@@ -204,8 +209,11 @@ def read_ts_exports(filename):
 def evaluate_ts(initializer, namespace):
     """The value of a numeric TS initializer, or raise ValueError. Handles
     literals, number tuples, `{ K: n }` records, `.length`, and arithmetic over
-    names already in `namespace`."""
+    names already in `namespace`. `true`/`false` read as Python booleans, so
+    a ported default-off flag can be pinned like a number (#326)."""
     expr = initializer.replace(" as const", "")
+    expr = re.sub(r"\btrue\b", "True", expr)
+    expr = re.sub(r"\bfalse\b", "False", expr)
     expr = re.sub(r"\b([A-Za-z_]\w*)\.length\b", r"len(\1)", expr)
     expr = re.sub(r"([{,]\s*)([A-Za-z_]\w*)\s*:", r"\1'\2':", expr)
     if not _SAFE_EXPR.match(expr):
@@ -336,6 +344,7 @@ def test_the_net_reads_values_not_just_names():
     assert TS_VALUES[("bidding.ts", "PARTNER_ESTIMATE_RANGE")] == [50, 100]
     assert TS_VALUES[("melds.ts", "AROUND_VALUES")] == {"A": 100, "K": 80, "Q": 60, "J": 40}
     assert TS_VALUES[("card.ts", "TOTAL_TRUMP_COPIES")] == 12
+    assert TS_VALUES[("bidding.ts", "LOOSE_KQ_PASS_ONLY")] is False
 
 
 def test_mismatch_messages_name_the_right_authority():

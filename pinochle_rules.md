@@ -442,6 +442,13 @@ Proficient tier landed. What they actually do:
   King of Spades 20 more, once, and deleted a "3 different Aces" bonus
   that paid more with hearts or clubs trump than with spades or
   diamonds — an asymmetry no rule of pinochle supports.
+  Paul's written account of the whole valuation, and of both pass
+  priority lists, is [`pinochle_valuation.md`](pinochle_valuation.md)
+  (#326). It is strategy, not rules, so it lives in its own file. It reads
+  the unmarried K/Q line as "20, and only if you will pass it". That
+  reading is an off-by-default arm (`LOOSE_KQ_PASS_ONLY`) waiting on an
+  A/B; the 30/20 above is what ships. Where its pass lists differ from
+  the code, the file flags it.
 - `choose_pass_cards` — role-aware (bidder vs. partner) and split by
   trump category (Spades/Diamonds vs. Hearts/Clubs), via
   `_bidder_pass_selection` / `_partner_pass_selection`.

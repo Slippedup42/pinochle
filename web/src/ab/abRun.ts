@@ -91,6 +91,7 @@ const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
   openingAnchor: 'floor',
   partnerRead: 'current',
   sluffPolicy: 'shortest',
+  looseKqPolicy: 'flat',
 })
 
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
