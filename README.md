@@ -259,6 +259,23 @@ is where the next round of strategy work will run. See
   edited" want different fixes. What it cannot cover, and says so: the
   expert-tier pass logic (#61), which has no TypeScript counterpart at
   all.
+- [`export_follow_parity.py`](export_follow_parity.py) — the same net
+  for the follow card (issue #319). `tracker.ts`'s `chooseFollowCard` is
+  a hand-port of `choose_follow_card`, and #312 forked it on who led the
+  trick, TypeScript only, with every suite green. This records Python's
+  answer at 253 positions — 238 from twelve seeded deals played out by
+  random legal cards (so a position depends only on the rules and the
+  seed, never on the AI), 15 built for the rarer tiers — into
+  `follow_parity_scenarios.json`, and renders
+  `web/src/engine/followParity.fixture.ts`. Every tier is covered after
+  both an opponent's and partner's lead: forced beat, feed-ahead (#316),
+  feeding a winning partner, dump-low, the discretionary trump tier and
+  the protecting sluff (#318). `followParity.test.ts` demands exact
+  agreement with `safeCounterPolicy: 'off'`, then lets the shipped
+  configuration differ only where #158's safe-counter tier fires — a
+  TypeScript-measured addition kept on purpose, with no Python
+  counterpart. `--check` re-records and re-renders, like the passer's.
+  Not covered: `choose_expert_follow_card`, which has no port.
 - [`export_stats_parity.py`](export_stats_parity.py) — the same net for
   the three statistics (issue #211). `web/src/ab/stats.ts` is a
   hand-port of `ab_harness.py`'s `binomial_two_sided_p`,
@@ -343,6 +360,8 @@ python export_parity_scenarios.py      # re-render the TS fixture from the commi
 python export_parity_scenarios.py --check  # fail if that fixture is stale
 python export_pass_parity.py --record  # re-record what the passer sends (instant)
 python export_pass_parity.py --check   # fail if the record or its fixture is stale
+python export_follow_parity.py --record  # re-record what the follower plays (instant)
+python export_follow_parity.py --check   # fail if the record or its fixture is stale
 python export_stats_parity.py --record # re-record the A/B statistics parity cases
 python export_stats_parity.py --check  # fail if those are stale in either direction
 python -m pytest -q                    # full test suite
