@@ -48,7 +48,8 @@ describes the deploy rather than the visitor's cache.
 The Python side has two live roles: it is the reference implementation
 the TypeScript port is checked against, *and* the harness all the AI
 research and measurement runs on. `pinochle_engine.py` implements the
-same rule set end-to-end, with real **Proficient-tier** strategy on
+same rule set end-to-end, and `pinochle_ai.py` holds its strategy: real
+**Proficient-tier** play on
 `Player` (hand valuation via Base Bid, positional/score-aware bidding,
 category-split passing, card-counting trick play) and, above it,
 `GeneralStrategy`
@@ -131,24 +132,37 @@ is where the next round of strategy work will run. See
   Section 9's open design questions are now resolved, with pointers to
   which child issue of #57 resolved each.
 - [`pinochle_engine.py`](pinochle_engine.py) — the Python reference
-  rules engine and the Proficient AI: `Card`, `Deck`, `Player`, `Team`, `Trick`, `Round`,
-  `Game`, meld scoring, bid valuation, passing strategy, trick-play
-  strategy. Also holds the General Strategy machinery: the forward/return
-  pass logic (`choose_forward_pass_cards` / `choose_return_pass_cards`,
-  issue #61, `pinochle_expert_ai_strategy.md` Sections 2-3) and
-  trick-play logic (`choose_expert_lead_card` / `choose_expert_follow_card`,
-  issue #62, Sections 4 and 7) as free functions independent of any
-  `Player` subclass, called into by both `GeneralStrategy` and the
-  rollout sampler's simulated players — plus `GeneralStrategy` and
-  `RandomStrategy` themselves (issue #63), which wire that machinery and
-  #59/#60's rollout sampler / bid-time EV together behind one skill-level
-  dial. Trick-play logic covers Ace-first trump leads (shared by the
-  Bidder and partner), endgame loser-first sequencing to protect the
-  12th-trick bonus, following-suit heuristics (duck/feed, count-card
-  protection, over/under-trump judgment), a static-vs-rollout-compare
-  split for whether defenders ever lead trump, and false-carding/
-  fake-void deception as pluggable candidate moves gated behind an
-  optional `deception_evaluator`.
+  rules engine: `Card`, `Deck`, meld scoring, the bid-valuation chain
+  (`compute_base_bid` through `best_base_bid`), `PlayTracker`, the shared
+  pass/trick-play runners (`run_forward_pass`, `play_tricks`, ...), `Trick`,
+  `Team`, `Round`, `determine_winner`, `Game`. The constants here are the
+  ones Python is authoritative for (#213) - rules and valuation. It also
+  re-exports every name in `pinochle_ai.py` (lazily, through a module
+  `__getattr__`), so `from pinochle_engine import Player` still works and
+  no caller changed an import when the AI half moved out (#249, epic #214).
+  #250 moves the rules half to `pinochle_rules_engine.py` and leaves this
+  file a pure shim.
+- [`pinochle_ai.py`](pinochle_ai.py) — the Python AI strategy layer, split
+  out of `pinochle_engine.py` by #249: the auction-strategy thresholds
+  (`OPENER_THRESHOLD`, the opening anchor, endgame protection, the #213
+  partner floors - the constants TypeScript may own), Proficient trick play
+  (`choose_lead_card` / `choose_follow_card`), pass selection
+  (`choose_forward_pass_cards` / `choose_return_pass_cards`, issue #61,
+  `pinochle_expert_ai_strategy.md` Sections 2-3), expert trick play
+  (`choose_expert_lead_card` / `choose_expert_follow_card`, issue #62,
+  Sections 4 and 7), and the players: `Player` (Proficient), `EasyPlayer`,
+  and `GeneralStrategy` / `RandomStrategy` (issue #63), which wire that
+  machinery and #59/#60's rollout sampler / bid-time EV together behind one
+  skill-level dial. The free functions are independent of any `Player`
+  subclass and are called into by both `GeneralStrategy` and the rollout
+  sampler's simulated players. Trick-play logic covers Ace-first trump
+  leads (shared by the Bidder and partner), endgame loser-first sequencing
+  to protect the 12th-trick bonus, following-suit heuristics (duck/feed,
+  count-card protection, over/under-trump judgment), a
+  static-vs-rollout-compare split for whether defenders ever lead trump,
+  and false-carding/fake-void deception as pluggable candidate moves gated
+  behind an optional `deception_evaluator`. Imports its rules from
+  `pinochle_engine.py`; nothing on the rules side imports it at load time.
 - [`pinochle_rollout.py`](pinochle_rollout.py) — Monte Carlo
   determinization sampler + Auto-SET guard (issue #59): deals the
   currently-unseen cards for a decision point (bidding / return-pass /
