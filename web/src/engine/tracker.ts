@@ -506,9 +506,11 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *          there is one (get a liability out before it's trapped), else
  *          the lowest trump.
  *   - Sluff (void in both lead suit and trump): work toward voiding the
- *     shortest suit, lowest rank within it. Point value is not consulted —
- *     Python's Proficient rule; its expert tier protects counters here and
- *     porting that is a candidate for measurement, not an assumption.
+ *     shortest suit, lowest rank within it, under `SluffPolicy`. The shipped
+ *     `'protect'` runs that sort over the non-point cards first, so a counter
+ *     goes out only when nothing else is legal - the same rule as Python's
+ *     `choose_follow_card`. `'shortest'`, which ignores point value, is the
+ *     A/B control.
  *
  * Tier 0 of the trump branch was new in #158 and is worth saying why it is not
  * scope creep. #155 wrote the forced-beat selection rule but could only reach
@@ -532,7 +534,7 @@ function currentWinner(trickPlays: readonly TrickPlay[], trump: Suit): TrickPlay
  *   `safeCounterPolicy` (#158) from. The shipped configuration is `'cascade'`
  *   and `'counted'`, so the tiers are the same wherever this is called from;
  *   what the *level* changes is how much of the trump this seat can still recall
- *   when tier 2 of `chooseForcedBeat` (or the #312 boss-holdback tier) asks.
+ *   when tier 2 of `chooseForcedBeat` asks.
  *   `'simple'` (play the lowest legal card) survives as an A/B arm, reachable
  *   only through an override. Defaults to `SHIPPED_SKILL`.
  * @param trumpMemory This seat's capacity-limited trump view (#157). Consulted
