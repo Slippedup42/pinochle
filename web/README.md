@@ -1401,10 +1401,14 @@ Max), each with and without insets. Landscape is not a target — the manifest i
   curl -s https://pinochle-house-rulez.netlify.app/version.json
   ```
 - **`version.json` is the build stamp (#237).** `vite.config.ts` emits it on
-  every `vite build` with `{ commit, dirty, builtAt }` — short SHA from `git
-  rev-parse`, whether the working tree had uncommitted changes, and an ISO
-  timestamp. Outside a git checkout the commit falls back to `"unknown"` and
-  `dirty` to `null` rather than the build failing, and `null` is used instead
+  every `vite build` with `{ commit, dirty, dirtyPaths, builtAt }` — short SHA
+  from `git rev-parse`, whether the working tree differed from it, which paths
+  did, and an ISO timestamp. `dirty` counts tracked changes anywhere in the
+  repo (uncommitted Python can change generated TS) but untracked files only
+  under `web/`, so a stray untracked file at the repo root does not mark every
+  build dirty (#321). Outside a git checkout the commit falls back to
+  `"unknown"` and `dirty`/`dirtyPaths` to `null` rather than the build failing,
+  and `null` is used instead
   of `false` because a build that cannot see a repository cannot honestly
   claim the tree was clean. Two things keep it from going stale, and both
   matter: `netlify.toml` serves it `max-age=0, must-revalidate`, and Workbox's
