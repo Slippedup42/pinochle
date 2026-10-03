@@ -39,9 +39,11 @@
 // harness reports the same numbers whether the shipped dial is gated off or
 // switched on.
 //
-// Which is also why each map below writes out every field of `SkillParams`
-// rather than spreading a shipped row: the discipline is that exactly one field
-// differs across a map and the reader can check that by eye. `passing.ts` and
+// Which is also why the frozen maps below spread `PRE_SHIP_PARAMS` rather than
+// a shipped row: their baseline must not move when the shipped dial does. Each
+// arm names only the field it overrides, so the discipline that exactly one
+// field differs across a map can still be checked by eye, and `ab.test.ts`
+// checks it in code. `passing.ts` and
 // `chooseTrump` branch on `handValuation` and `tracker.ts` on `playPolicy`, so
 // in `BID_AB_POLICIES` — same `base_bid`, same `cascade` — the two sides play
 // identical cards, pass identical cards and pick trump identically, and the
@@ -67,31 +69,35 @@ import { binomialTwoSidedP, bootstrapMeanCi, wilsonInterval } from './stats'
 export const STATIC_LEVEL: SkillLevel = 'hard'
 export const DISTILLED_LEVEL: SkillLevel = 'expert'
 
+/**
+ * The control row every frozen map below was recorded against: the dial as it
+ * stood before `openingAnchor: 'valuation'`, `partnerRead: 'feedAhead'` and
+ * `sluffPolicy: 'protect'` shipped. Deliberately not `SHIPPED_PARAMS`. These
+ * maps are historical baselines, so a shipped change must not move them, and
+ * `abPolicies.test.ts` pins every arm to its recorded values (#324).
+ *
+ * A new `SkillParams` field goes here at the value that reproduces what these
+ * runs played, which is usually the pre-existing behaviour, not the new arm.
+ * The newer comparisons (`partnerReadAbPolicies`, `sluffAbPolicies`) measure
+ * against the shipped dial instead and spread `SHIPPED_PARAMS`.
+ */
+const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
+  handValuation: 'base_bid',
+  bidPolicy: 'distilled',
+  foldPolicy: 'model',
+  playPolicy: 'cascade',
+  autoSetPolicy: 'forced',
+  safeCounterPolicy: 'counted',
+  openingAnchor: 'floor',
+  partnerRead: 'current',
+  sluffPolicy: 'shortest',
+})
+
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
  *  and both playing cards the same way. */
 export const BID_AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'static',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
-  [DISTILLED_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
+  [STATIC_LEVEL]: { ...PRE_SHIP_PARAMS, bidPolicy: 'static' },
+  [DISTILLED_LEVEL]: { ...PRE_SHIP_PARAMS },
 }
 
 /**
@@ -104,28 +110,8 @@ export const BID_AB_POLICIES: Record<string, SkillParams> = {
  * actually ship on `hard` and above.
  */
 export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'never',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
-  [DISTILLED_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
+  [STATIC_LEVEL]: { ...PRE_SHIP_PARAMS, foldPolicy: 'never' },
+  [DISTILLED_LEVEL]: { ...PRE_SHIP_PARAMS },
 }
 
 /**
@@ -146,28 +132,8 @@ export const FOLD_AB_POLICIES: Record<string, SkillParams> = {
  * As with `FOLD_AB_POLICIES`, side A (`DISTILLED_LEVEL`) is the arm under test.
  */
 export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'off',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
-  [DISTILLED_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
+  [STATIC_LEVEL]: { ...PRE_SHIP_PARAMS, autoSetPolicy: 'off' },
+  [DISTILLED_LEVEL]: { ...PRE_SHIP_PARAMS },
 }
 
 /**
@@ -198,28 +164,8 @@ export const AUTO_SET_AB_POLICIES: Record<string, SkillParams> = {
  * `'cascade'`, matching the other two maps, where A is the arm under test.
  */
 export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'simple',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
-  [DISTILLED_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
+  [STATIC_LEVEL]: { ...PRE_SHIP_PARAMS, playPolicy: 'simple' },
+  [DISTILLED_LEVEL]: { ...PRE_SHIP_PARAMS },
 }
 
 /**
@@ -234,28 +180,33 @@ export const PLAY_AB_POLICIES: Record<string, SkillParams> = {
  * Side A (`DISTILLED_LEVEL`) is the arm under test.
  */
 export const OPENING_ANCHOR_AB_POLICIES: Record<string, SkillParams> = {
-  [STATIC_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
-  [DISTILLED_LEVEL]: {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'valuation',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  },
+  [STATIC_LEVEL]: { ...PRE_SHIP_PARAMS },
+  [DISTILLED_LEVEL]: { ...PRE_SHIP_PARAMS, openingAnchor: 'valuation' },
+}
+
+/**
+ * The partner-read comparison (Paul's two follow rules, with "likely" given a
+ * definition). Side A (`DISTILLED_LEVEL`) carries `arm`; side B is the shipped
+ * `'current'` reading. Everything else on both sides is `SHIPPED_PARAMS`, so a
+ * margin here is the price of reading position into the follow decision and
+ * nothing else.
+ */
+export function partnerReadAbPolicies(arm: PartnerRead): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS, partnerRead: 'current' },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, partnerRead: arm },
+  }
+}
+
+/**
+ * The sluff comparison: side A (`DISTILLED_LEVEL`) carries `arm`, side B the
+ * shipped rule, everything else `SHIPPED_PARAMS`.
+ */
+export function sluffAbPolicies(arm: SluffPolicy): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, sluffPolicy: arm },
+  }
 }
 
 /**
@@ -289,59 +240,14 @@ export const OPENING_ANCHOR_AB_POLICIES: Record<string, SkillParams> = {
  *   being measured. `easy` = 2 trump remembered, `expert` = 10.
  * @param offLevel - Carries the baseline. Must differ from `countedLevel`.
  */
-/**
- * The partner-read comparison (Paul's two follow rules, with "likely" given a
- * definition). Side A (`DISTILLED_LEVEL`) carries `arm`; side B is the shipped
- * `'current'` reading. Everything else on both sides is `SHIPPED_PARAMS`, so a
- * margin here is the price of reading position into the follow decision and
- * nothing else.
- */
-export function partnerReadAbPolicies(arm: PartnerRead): Record<string, SkillParams> {
-  return {
-    [STATIC_LEVEL]: { ...SHIPPED_PARAMS, partnerRead: 'current' },
-    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, partnerRead: arm },
-  }
-}
-
-/**
- * The sluff comparison: side A (`DISTILLED_LEVEL`) carries `arm`, side B the
- * shipped rule, everything else `SHIPPED_PARAMS`.
- */
-export function sluffAbPolicies(arm: SluffPolicy): Record<string, SkillParams> {
-  return {
-    [STATIC_LEVEL]: { ...SHIPPED_PARAMS },
-    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, sluffPolicy: arm },
-  }
-}
-
 export function safeCounterAbPolicies(
   countedLevel: SkillLevel,
   offLevel: SkillLevel,
 ): Record<string, SkillParams> {
   if (countedLevel === offLevel) throw new Error('safe-counter A/B needs two distinct levels')
   return {
-    [countedLevel]: {
-      handValuation: 'base_bid',
-      bidPolicy: 'distilled',
-      foldPolicy: 'model',
-      playPolicy: 'cascade',
-      autoSetPolicy: 'forced',
-      safeCounterPolicy: 'counted',
-      openingAnchor: 'floor',
-      partnerRead: 'current',
-      sluffPolicy: 'shortest',
-    },
-    [offLevel]: {
-      handValuation: 'base_bid',
-      bidPolicy: 'distilled',
-      foldPolicy: 'model',
-      playPolicy: 'cascade',
-      autoSetPolicy: 'forced',
-      safeCounterPolicy: 'off',
-      openingAnchor: 'floor',
-      partnerRead: 'current',
-      sluffPolicy: 'shortest',
-    },
+    [countedLevel]: { ...PRE_SHIP_PARAMS },
+    [offLevel]: { ...PRE_SHIP_PARAMS, safeCounterPolicy: 'off' },
   }
 }
 
@@ -378,17 +284,7 @@ export function safeCounterCapacityPolicies(
   lowLevel: SkillLevel,
 ): Record<string, SkillParams> {
   if (highLevel === lowLevel) throw new Error('capacity A/B needs two distinct levels')
-  const counted: SkillParams = {
-    handValuation: 'base_bid',
-    bidPolicy: 'distilled',
-    foldPolicy: 'model',
-    playPolicy: 'cascade',
-    autoSetPolicy: 'forced',
-    safeCounterPolicy: 'counted',
-    openingAnchor: 'floor',
-    partnerRead: 'current',
-    sluffPolicy: 'shortest',
-  }
+  const counted: SkillParams = { ...PRE_SHIP_PARAMS }
   return { [highLevel]: counted, [lowLevel]: counted }
 }
 

@@ -1086,6 +1086,20 @@ def _feed_ahead(hand, trick_plays, my_team_players, tracker):
     return not is_safe(winner_card, hand, tracker)
 
 
+def _sluff_card(hand, legal_moves):
+    """
+    Python's one sluff rule, shared by `choose_follow_card` and
+    `_expert_follow_card_honest` (as `_feed_ahead` is): free choice across
+    suits, so protect count cards first, then work toward a void in the
+    shortest suit, lowest rank within it. Falls back to every legal card when
+    all of them count. Ties keep `legal_moves` order. Held in one place
+    because the two copies drifted apart before (issue #324).
+    """
+    non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
+    pool = non_points if non_points else legal_moves
+    return min(pool, key=lambda c: (_suit_length(hand, c.suit), RANK_VALUE[c.rank]))
+
+
 def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, tracker=None):
     """
     Choose which legal card to play when following (not leading).
@@ -1181,10 +1195,7 @@ def choose_follow_card(hand, legal_moves, trick_plays, trump, my_team_players, t
     # TypeScript `sluff` A/B on the equalised harness: +4, +5 and +2 a deal
     # (95% CIs -1 to +9, -1 to +11, -1 to +6), a null that leans the right way
     # and costs nothing detectable.
-    non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
-    pool = non_points if non_points else legal_moves
-    legal_sorted = sorted(pool, key=lambda c: (_suit_length(hand, c.suit), RANK_VALUE[c.rank]))
-    return legal_sorted[0]
+    return _sluff_card(hand, legal_moves)
 
 
 # ---------------------------------------------------------------------------
@@ -2414,13 +2425,9 @@ def _expert_follow_card_honest(hand, legal_moves, trick_plays, trump, my_team_pl
             return max(legal_moves, key=lambda c: RANK_VALUE[c.rank])
         return min(legal_moves, key=lambda c: RANK_VALUE[c.rank])
 
-    # Free sluff - no lead-suit card, no trump forced. Protect count cards
-    # first, then build toward a void in the shortest suit among whatever
-    # is left, same tie-break as the Proficient-tier choose_follow_card.
-    non_points = [c for c in legal_moves if c.rank not in POINT_RANKS]
-    pool = non_points if non_points else legal_moves
-    legal_sorted = sorted(pool, key=lambda c: (_suit_length(hand, c.suit), RANK_VALUE[c.rank]))
-    return legal_sorted[0]
+    # Free sluff - no lead-suit card, no trump forced. Same rule as the
+    # Proficient-tier choose_follow_card (`_sluff_card`).
+    return _sluff_card(hand, legal_moves)
 
 
 def choose_expert_follow_card(hand, legal_moves, trick_plays, trump, my_team_players,
