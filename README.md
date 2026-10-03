@@ -116,6 +116,10 @@ is where the next round of strategy work will run. See
 - [`pinochle_rules.md`](pinochle_rules.md) — the rule set this engine
   implements, including house rules (3-card pass, ±1000 game
   thresholds).
+- [`pinochle_valuation.md`](pinochle_valuation.md) — Paul's written
+  hand valuation (Base Bid, trick potential) and pass-priority lists,
+  converted from `Rules Extended.odt` (#326). Strategy, not rules; it
+  flags where the engines differ from it rather than resolving it.
 - [`pinochle_expert_ai_strategy.md`](pinochle_expert_ai_strategy.md) —
   design spec for the General Strategy AI: Monte Carlo determinization +
   rollout for bidding, passing, and trick play, on top of the

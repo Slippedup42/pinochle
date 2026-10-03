@@ -313,6 +313,17 @@ EXTRA_TRUMP_VALUE = 20
 PROTECTED_TEN_VALUE = 20    # see `_is_protected_ten`
 LOOSE_KING_VALUE = 30       # non-trump K with no Queen of its suit behind it
 LOOSE_QUEEN_VALUE = 20      # non-trump Q with no King of its suit behind it
+# The alternative reading of the same line (#326), OFF by default and not
+# shipped. `pinochle_valuation.md` - Paul's written valuation - says "for
+# every K or Q that is not a marriage *and you will pass* - 20". Read
+# literally, a loose K/Q is worth LOOSE_KQ_PASSED_VALUE when the bidder's own
+# return pass (`_bidder_pass_selection`, on the hand as dealt, at the trump
+# being valued) would send it to partner, and 0 when it would be kept. With
+# the flag off, the two constants above apply to every loose K/Q, which is
+# what has shipped since #277. Whether to switch is a paired-A/B question
+# (#288's valuation arm), not a judgement call; see compute_trick_potential.
+LOOSE_KQ_PASS_ONLY = False
+LOOSE_KQ_PASSED_VALUE = 20
 # A partner-strength estimate. Nothing reads it: the comment here used to say
 # Proficient draws randomly in this range each bid, and no code has ever done
 # so. It is kept because it names the quantity the competitive adjustment is
@@ -673,7 +684,7 @@ def compute_base_bid(hand, trump):
     return total, breakdown, pool  # pool = leftover cards, handed to the adjustment layer
 
 
-def compute_trick_potential(hand, trump):
+def compute_trick_potential(hand, trump, loose_kq_pass_only=None):
     """
     What this hand can win with cards rather than with meld - the stage
     between the Base Bid and the competitive adjustment (#277). Six lines,
@@ -703,8 +714,25 @@ def compute_trick_potential(hand, trump):
     Royal Marriage lines in the Base Bid have already priced them, and
     trump 10s from the protected-10 line for the same reason.
 
+    `loose_kq_pass_only` (#326; None means the module's LOOSE_KQ_PASS_ONLY,
+    which is False) replaces the last two lines with Paul's written
+    "and you will pass" reading: a loose K/Q - same suit-level test as
+    above - is worth LOOSE_KQ_PASSED_VALUE if it would go into the pass,
+    and 0 if it would be kept. "Into the pass" is defined from the seat
+    the valuation speaks for. This number is a ceiling - what the hand is
+    worth *as the contract-holder* - so the pass in question is the bid
+    winner's return pass, `_bidder_pass_selection(hand, trump, category,
+    PASS_COUNT)`, run on the dealt 12 cards at the trump being valued. The
+    partner's forward pass never enters: a hand is only valued for a
+    contract it would hold. The bidder really passes from 15 cards, after
+    partner's three arrive; those three are unknown at bid time, so the
+    dealt hand is the only honest input. Loose K/Q of one suit are
+    credited per copy actually selected, so K-K with one K passed pays 20.
+
     Returns (total, breakdown_dict).
     """
+    if loose_kq_pass_only is None:
+        loose_kq_pass_only = LOOSE_KQ_PASS_ONLY
     breakdown = {}
 
     ace_count = sum(1 for c in hand if c.rank == "A")
@@ -734,6 +762,21 @@ def compute_trick_potential(hand, trump):
             loose_kings += kings
         if queens and not kings:
             loose_queens += queens
+
+    if loose_kq_pass_only:
+        if loose_kings or loose_queens:
+            category = "DS" if trump in (Suit.SPADES, Suit.DIAMONDS) else "HC"
+            passed = _bidder_pass_selection(hand, trump, category, PASS_COUNT)
+            passed_loose = sum(
+                1 for c in passed
+                if c.suit != trump and (
+                    (c.rank == "K" and _hand_count(hand, c.suit, "Q") == 0)
+                    or (c.rank == "Q" and _hand_count(hand, c.suit, "K") == 0)))
+            if passed_loose:
+                breakdown["Unmarried K/Q going into the pass"] = (
+                    passed_loose * LOOSE_KQ_PASSED_VALUE)
+        return sum(breakdown.values()), breakdown
+
     if loose_kings:
         breakdown["Unmarried Kings"] = loose_kings * LOOSE_KING_VALUE
     if loose_queens:
@@ -831,13 +874,13 @@ def compute_competitive_adjustment(hand, trump, my_score=0, opp_score=0):
     return value, breakdown
 
 
-def compute_max_bid(hand, trump, my_score=0, opp_score=0):
+def compute_max_bid(hand, trump, my_score=0, opp_score=0, loose_kq_pass_only=None):
     """Base Bid + trick potential + competitive adjustment = Max Bid, the
     ceiling, full stop - nothing clamps this number (#283). The three
     stages are what the hand melds, what it takes, and what the scoreboard
     is asking for; only the last of them is not about the cards."""
     base_total, base_breakdown, pool = compute_base_bid(hand, trump)
-    trick_total, trick_breakdown = compute_trick_potential(hand, trump)
+    trick_total, trick_breakdown = compute_trick_potential(hand, trump, loose_kq_pass_only)
     adj_total, adj_breakdown = compute_competitive_adjustment(hand, trump, my_score, opp_score)
     breakdown = dict(base_breakdown)
     breakdown.update(trick_breakdown)
@@ -854,14 +897,14 @@ def compute_max_bid(hand, trump, my_score=0, opp_score=0):
 # is the ceiling now, and every caller says so in one line.
 
 
-def best_base_bid(hand, my_score=0, opp_score=0):
+def best_base_bid(hand, my_score=0, opp_score=0, loose_kq_pass_only=None):
     """Searches all 4 trump candidates, returns (trump, ceiling, breakdown).
     Ceiling = the whole `compute_max_bid` sum for the best trump, unclamped
     (#283) - so the suit named here is the one this hand is genuinely worth
     most in, rather than the first suit that happened to reach a cap."""
     best_trump, best_total, best_breakdown = None, -1, None
     for t in Suit:
-        total, b = compute_max_bid(hand, t, my_score, opp_score)
+        total, b = compute_max_bid(hand, t, my_score, opp_score, loose_kq_pass_only)
         if total > best_total:
             best_trump, best_total, best_breakdown = t, total, b
     return best_trump, best_total, best_breakdown
@@ -2480,6 +2523,12 @@ def choose_expert_follow_card(hand, legal_moves, trick_plays, trump, my_team_pla
 # ---------------------------------------------------------------------------
 
 class Player:
+    # Per-seat override for the #326 loose-K/Q reading, so a paired A/B can
+    # seat the two arms at one table: None follows the module's
+    # LOOSE_KQ_PASS_ONLY (False), True/False pin it for this seat. Read by
+    # choose_bid and choose_trump, the two places this seat values its hand.
+    loose_kq_pass_only = None
+
     def __init__(self, name, team):
         self.name = name
         self.team = team
@@ -2507,7 +2556,8 @@ class Player:
         opp_team = next(t for t in context["teams"] if t is not self.team)
         opp_score = opp_team.score
 
-        _trump, ceiling, _ = best_base_bid(self.hand, my_score, opp_score)
+        _trump, ceiling, _ = best_base_bid(self.hand, my_score, opp_score,
+                                           self.loose_kq_pass_only)
 
         partner = next(p for p in self.team.players if p is not self)
         is_dealer = (self is context["dealer"])
@@ -2592,7 +2642,7 @@ class Player:
         """Uses the same per-suit Base Bid comparison as choose_bid, so
         trump selection reflects real speculative hand strength rather
         than raw card count."""
-        trump, _, _ = best_base_bid(self.hand)
+        trump, _, _ = best_base_bid(self.hand, loose_kq_pass_only=self.loose_kq_pass_only)
         return trump
 
     def choose_pass_cards(self, count, trump_suit=None, is_bid_winner=None):
@@ -3089,7 +3139,8 @@ class GeneralStrategy(Player):
         my_score = self.team.score if self.team is not None else 0
         opp_team = next((t for t in context["teams"] if t is not self.team), None)
         opp_score = opp_team.score if opp_team is not None else 0
-        trump, ceiling, _ = best_base_bid(self.hand, my_score, opp_score)
+        trump, ceiling, _ = best_base_bid(self.hand, my_score, opp_score,
+                                          self.loose_kq_pass_only)
 
         # Endgame protection (#256) is a hard rule in front of the simulation,
         # not an input to it. `Player.choose_bid` applies it for the skill

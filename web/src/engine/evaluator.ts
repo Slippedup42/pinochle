@@ -117,6 +117,10 @@ export interface BidSituation {
   readonly theirScore: number
   readonly partnerHasBid: boolean
   readonly partnerHasPassed: boolean
+  /** The seat's `looseKqPolicy` (#326), so the ceiling the model reads is the
+   *  one this seat's valuation produced. Omitted means the engine default,
+   *  `LOOSE_KQ_PASS_ONLY` (off). The model was fitted on the flat reading. */
+  readonly looseKqPassOnly?: boolean
 }
 
 export interface Evaluation {
@@ -145,7 +149,12 @@ export interface Evaluation {
  * since #283 — i.e. exactly Python's `base_bid_ceiling` at that trump.
  */
 export function evaluateBid(situation: BidSituation): Evaluation {
-  const { trump, total: ceiling } = bestBaseBid(situation.hand, situation.ourScore, situation.theirScore)
+  const { trump, total: ceiling } = bestBaseBid(
+    situation.hand,
+    situation.ourScore,
+    situation.theirScore,
+    situation.looseKqPassOnly,
+  )
   const features: Record<string, number> = {
     ...handShapeFeatures(situation.hand, trump),
     bid: situation.bid,
