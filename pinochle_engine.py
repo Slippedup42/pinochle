@@ -453,6 +453,35 @@ ENDGAME_RESCUE_CEILING = 200
 # valuation as it was that day and a re-measurement is owed.
 THIRD_BIDDER_FLOOR = 200
 
+# -- Two auction-strategy numbers this file does NOT rule (#213).
+#
+# Python is authoritative for rules constants; the TypeScript engine is
+# authoritative for these, because they were measured or reasoned there
+# (CLAUDE.md, pinochle_rules.md's "Which engine is the real one"). They are
+# named here so the next reader sees a deliberate divergence, not an
+# oversight. Naming them is not porting them, and nothing here changed value.
+#
+# PARTNER_RAISE_FLOOR: when partner has raised over this seat's own earlier
+# bid, raise again only on a ceiling that reaches it. Python uses it as that
+# gate alone and then bids the next rung; `bidding.ts`'s PARTNER_RAISE_FLOOR
+# (#206) uses the same gate and also *bids* at least 340, because a ten-point
+# nudge over one's own partner tells a human partner nothing - a reason with
+# no referent in an all-AI Python game.
+#
+# COMPETITIVE_CEILING_FLOOR: once partner has bid, the ceiling used to contest
+# an opponent's bid is lifted to at least this, since a partner bid is a signal
+# worth backing. Same value and same use in both engines today; the TypeScript
+# side owns it. TypeScript's further #180 rule - a seat whose partner has
+# passed commits to PARTNER_PASSED_FLOOR (320) - has no Python counterpart.
+#
+# #213 traced both divergences and found them inert on every path that still
+# consumes this bidding: the skill-5 rollout labeller
+# (`GeneralStrategy._rollout_ev_bid`) uses `choose_bid` only as a positional
+# gate and discards its level, and `export_parity_scenarios.py` writes bids as
+# scenario data that TypeScript replays rather than re-derives.
+PARTNER_RAISE_FLOOR = 340
+COMPETITIVE_CEILING_FLOOR = 330
+
 
 def endgame_protection_applies(my_score, opp_score):
     """True when this team should be banking its meld rather than buying a
@@ -2499,10 +2528,11 @@ class Player:
             # something - but there is a floor under it now, so a seat with no
             # meld and no aces lets the auction pass out instead.
             #
-            # The floor is deliberately well below OPENER_THRESHOLD. Paul's
-            # house rule is 320; measured against this rule, 320 cost 57 points
-            # a deal and 200 costs nothing detectable. The constant carries the
-            # numbers.
+            # The floor is deliberately well below OPENER_THRESHOLD (320).
+            # Paul's house rule is that a bid asserts a hand (ANCHOR_INTERCEPT
+            # is its number); holding this open to OPENER_THRESHOLD cost 57
+            # points a deal and 200 costs nothing detectable. The constant
+            # carries the numbers.
             #
             # The >800 sub-case is gone: it applied OPENER_THRESHOLD, which is
             # no longer this rule's floor, and a seat near the end of the game
@@ -2532,13 +2562,13 @@ class Player:
 
             if last_bidder is partner and my_own_bids and current_bid > my_own_bids[-1]:
                 # partner raised over my own earlier bid
-                return None if ceiling < 340 else current_bid + min_increment
+                return None if ceiling < PARTNER_RAISE_FLOOR else current_bid + min_increment
 
             return None  # our own bid already stands, no need to raise ourselves
 
         # Opponent currently holds the bid.
         partner_has_bid = any(p is partner for p, _ in context["bid_history"])
-        effective_ceiling = max(ceiling, 330) if partner_has_bid else ceiling
+        effective_ceiling = max(ceiling, COMPETITIVE_CEILING_FLOOR) if partner_has_bid else ceiling
 
         next_bid = current_bid + min_increment
 
