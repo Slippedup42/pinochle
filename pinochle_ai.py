@@ -1,12 +1,20 @@
 """
-Pinochle AI — the strategy half of the Python engine (#249, epic #214).
+Pinochle AI - the strategy half of the Python engine (#249, epic #214).
+
+AUTHORITY: this file is NOT authoritative for the TypeScript port. Its
+constants are auction and play strategy, and since #213 the measured
+strategy constants are owned by TypeScript - `web/src/engine/bidding.ts`
+- not by this file (`test_ported_constants.py`'s TYPESCRIPT and SHARED
+pairs). Python remains the research harness these numbers are measured
+on; it is not where a disagreement with the browser is settled. The rules
+and valuation numbers Python *does* own live in `pinochle_rules_engine.py`.
 
 Everything here is a *decision*: what to bid, which suit to name, what to
 pass, what to lead and follow with. The rules it decides within - cards,
 melds, the bid-valuation chain, tricks, rounds, the game - live in
-`pinochle_engine.py`, and this module imports them from there. Nothing
-here is a rule, and nothing on the rules side imports this module at load
-time.
+`pinochle_rules_engine.py`, and this module imports them from there.
+Nothing here is a rule, and nothing on the rules side imports this module
+at load time.
 
 What is here:
 
@@ -14,7 +22,7 @@ What is here:
     DEFENSIVE_PUSH_FLOOR, endgame protection, THIRD_BIDDER_FLOOR and the
     two #213 partner floors. These are the SHARED and TYPESCRIPT pairs in
     `test_ported_constants.py`; the PYTHON pairs (rules and valuation)
-    stayed in `pinochle_engine.py`, which is the point of the split.
+    are in `pinochle_rules_engine.py`, which is the point of the split.
   - Proficient trick play: `choose_lead_card`, `choose_follow_card` and
     their helpers.
   - Pass selection: `choose_forward_pass_cards`, `choose_return_pass_cards`
@@ -26,13 +34,12 @@ What is here:
 
 `pinochle_engine.py` re-exports every name defined here, so existing
 `from pinochle_engine import ...` callers did not change. New code may
-import from either; patch strategy names here, not on the shim (see the
-re-export block in `pinochle_engine.py`).
+import from either; patch strategy names here, not on the shim (#250).
 """
 
 import random
 
-from pinochle_engine import (
+from pinochle_rules_engine import (
     AROUND_DOUBLE_MULTIPLIER,
     AROUND_VALUES,
     COMMON_MARRIAGE_VALUE,
@@ -65,7 +72,7 @@ from pinochle_engine import (
 # ---------------------------------------------------------------------------
 # Auction strategy — the thresholds `Player.choose_bid` reads the valuation
 # ceiling against. The ceiling itself (`compute_max_bid`, `best_base_bid`) is
-# valuation and stays in pinochle_engine.py.
+# valuation and lives in pinochle_rules_engine.py.
 # ---------------------------------------------------------------------------
 
 OPENER_THRESHOLD = 320  # minimum Base Bid to justify opening at all

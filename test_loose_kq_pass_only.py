@@ -14,7 +14,7 @@ LOOSE_KING_VALUE and every loose Q LOOSE_QUEEN_VALUE, as since #277.
 
 import random
 
-import pinochle_engine
+import pinochle_rules_engine
 from pinochle_engine import (
     ACE_VALUE,
     Card,
@@ -109,7 +109,10 @@ def test_flag_on_pays_nothing_for_a_kept_king_or_queen():
 
 
 def test_the_module_default_follows_the_constant(monkeypatch):
-    monkeypatch.setattr(pinochle_engine, "LOOSE_KQ_PASS_ONLY", True)
+    # Patched on the defining module: since #250 `pinochle_engine` is a
+    # re-export shim, and rebinding a name there would not reach
+    # compute_trick_potential, which reads its own module's globals.
+    monkeypatch.setattr(pinochle_rules_engine, "LOOSE_KQ_PASS_ONLY", True)
     assert compute_trick_potential(BOTH_PASSED, H) == \
         compute_trick_potential(BOTH_PASSED, H, loose_kq_pass_only=True)
 
