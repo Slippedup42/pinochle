@@ -957,8 +957,10 @@ export function chooseBid(
       // anyway to deny the last player a cheap one. It still does — but only
       // on a hand that reaches `THIRD_BIDDER_FLOOR`, not on a lone 9.
       //
-      // The floor is 200 rather than the house rule's 320 because the two were
-      // measured against each other and 320 cost 57 points a deal; the reason
+      // The floor is 200 rather than `OPENER_THRESHOLD`'s 320 because the two
+      // were measured against each other and 320 cost 57 points a deal (the
+      // house rule is that a bid asserts a hand; its number is the 330
+      // opening anchor, not this floor); the reason
       // lives on `THIRD_BIDDER_FLOOR` and should be read before it is tidied
       // up to `OPENER_THRESHOLD`.
       //
@@ -984,7 +986,7 @@ export function chooseBid(
       // the auction passed out, and the human dealer was stuck with
       // `FORCED_BID` (250) — the exact outcome this tier exists to deny.
       //
-      // `pinochle_engine.py` is authoritative here (CLAUDE.md) and has always
+      // Both engines carry this tier, and `pinochle_engine.py` has always
       // read `passes_so_far == 2 -> OPENING_BID if ceiling >= THIRD_BIDDER_FLOOR`,
       // with no partner condition and no score sub-case. This is the
       // TypeScript side coming back to it — #118's bug class, caught by a

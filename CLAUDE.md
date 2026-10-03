@@ -25,10 +25,27 @@ Partnership Pinochle, in two implementations that are not peers:
 What crosses the boundary is a *generated artifact*, not a hand-port:
 `export_evaluator.py` emits `web/src/engine/evaluatorModel.ts` plus a
 parity fixture, and `export_evaluator.py --check` fails the Python suite
-if the committed TypeScript has drifted. Python also stays authoritative
-for ported rules constants — if a constant disagrees across the two
-engines, Python is right and the TS side has drifted — that is issue
-#118's bug class, and #125/#126 are the standing net and the audit.
+if the committed TypeScript has drifted. Authority splits by *what kind
+of number it is* (issue #213):
+
+- **Rules constants — Python is authoritative.** Trick points, the
+  opening and forced bids, last-trick +10, the ±1000 bounds, the 3-card
+  pass, meld values, and the Base Bid valuation constants: the things
+  `pinochle_rules.md` states or that `card.ts`, `melds.ts` and
+  `round.ts` port. If one disagrees across the two engines, Python is
+  right and the TS side has drifted — that is issue #118's bug class,
+  and #125/#126 are the standing net and the audit.
+- **Auction strategy measured or reasoned in TypeScript — TypeScript is
+  authoritative.** `bidding.ts`'s `PARTNER_PASSED_FLOOR` (#180),
+  `PARTNER_RAISE_FLOOR` (#206) and the 330 competitive floor were
+  decided on the TS side and are not ported back. Python's
+  `Player.choose_bid` has no partner-passed floor, and uses its own
+  named copies of the other two only as ceiling gates; #213 traced the
+  divergence and found it inert on every path that still consumes
+  Python's bidding, so it is a decision to read, not a parity bug to
+  fix. Strategy that is measured in Python and shipped
+  as an artifact (the evaluator) is not covered by this carve-out —
+  there the generated file and its `--check` are the authority.
 
 See [README.md](README.md) for current status, file-by-file contents, and
 architecture — keep that file in sync as the project evolves rather than

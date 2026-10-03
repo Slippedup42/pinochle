@@ -340,6 +340,39 @@ peers:
   distillation program lives here and is actively developed. See
   ROADMAP.md's "Settled questions" for the full statement of the split.
 
+When the two engines disagree on a number, which one is right depends on
+what kind of number it is (#213):
+
+- **Rules constants — Python is authoritative.** Everything this file
+  states as a rule (trick points, the 300 opening and 250 forced bids,
+  last-trick +10, the ±1000 bounds, the 3-card pass, meld values), plus
+  the Base Bid valuation constants that `bidding.ts` still ports. A
+  TypeScript value that differs has drifted; that is #118's bug class,
+  and the generated parity fixtures are the net for it.
+- **Auction strategy decided in TypeScript — TypeScript is
+  authoritative.** Three numbers in `bidding.ts` were measured or
+  reasoned on the TS side and are not ported back: `PARTNER_PASSED_FLOOR`
+  (320 — a seat whose partner has passed commits to the opener threshold;
+  #180, measured in `web/src/ab/`), `PARTNER_RAISE_FLOOR` (340 — a raise
+  over one's own partner jumps there rather than nudging ten; #206,
+  reasoned from what a raise tells a *human* partner, which an all-AI
+  Python game has no referent for), and the 330 competitive floor under
+  the ceiling once a partner has bid. Python's `Player.choose_bid` names
+  its own `PARTNER_RAISE_FLOOR` and `COMPETITIVE_CEILING_FLOOR` but uses
+  them only as ceiling gates, and has no partner-passed floor at all.
+  #213 traced that divergence and found it inert on every path that
+  still consumes Python's bidding — the rollout labeller uses
+  `choose_bid` only as a positional gate and discards its level, and the
+  parity scenarios replay bids as data — so it is a decision, not a
+  parity bug. Porting it would re-baseline every historical Python
+  tuning number and change nothing measurable.
+
+The other bidding thresholds are AI strategy too, not rules — this file
+does not state them, and a human seat is bound by none of them — but
+they are not divergent: `OPENER_THRESHOLD`, `DEFENSIVE_PUSH_FLOOR`,
+`THIRD_BIDDER_FLOOR` and the endgame constants hold the same values in
+both engines today.
+
 ### The AI is real strategy, not placeholders
 
 An earlier version of this section claimed `choose_bid`,
@@ -354,7 +387,10 @@ Proficient tier landed. What they actually do:
   #283 removed the 400 ceiling), plus positional and score-context
   rules: endgame protection
   (below), the opener threshold, the `DEFENSIVE_PUSH_FLOOR` response to
-  a minimum opener, and backing off once a partner is carrying the
+  a minimum opener (a strategy threshold on the ceiling, 200 in both
+  engines, not a rule — on the shipped TypeScript skill the evaluator
+  answers that question instead, and the constant is the static
+  fallback), and backing off once a partner is carrying the
   auction, and a positional open by the third bidder — two passes in,
   nobody having bid — to deny the last seat a cheap contract. That open
   is still positional rather than a judgement that the hand is worth a
