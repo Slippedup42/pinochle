@@ -367,7 +367,7 @@ export function TrickPlayFlow({
       meldPoints: meldPointsByTeam[teamOf(state.bidWinner)],
       trickWinner: state.phase === 'trick-complete' ? (state.trickWinners.at(-1) ?? null) : null,
     }
-  }, [state, seatNames, humanPlayer, bid, scoresByTeam, teamNames, meldPointsByTeam, legalMovesForHuman, notePlayed])
+  }, [state, seatNames, humanPlayer, bid, scoresByTeam, teamNames, meldPointsByTeam, legalMovesForHuman, notePlayed, dealer])
 
   const handleConcede = useCallback(() => {
     dispatch({ type: 'CONCEDE' })
