@@ -70,6 +70,47 @@ describe('sortHandForDisplay', () => {
     ])
   })
 
+  describe('with a suit missing, keeps same-coloured suits apart where it can', () => {
+    const order = (suits: Suit[]) =>
+      sortHandForDisplay(suits.map((s) => new Card(s, 'A', 1)))
+        .map((c) => c.suit)
+        .join('')
+
+    it('no Clubs: the Spades go between the Diamonds and the Hearts', () => {
+      expect(order([Suit.Hearts, Suit.Spades, Suit.Diamonds])).toBe('DSH')
+    })
+
+    it('no Diamonds: the Hearts go between the Spades and the Clubs', () => {
+      expect(order([Suit.Clubs, Suit.Hearts, Suit.Spades])).toBe('SHC')
+    })
+
+    it('leaves the already-alternating orders alone', () => {
+      expect(order([Suit.Hearts, Suit.Clubs, Suit.Spades, Suit.Diamonds])).toBe('SDCH')
+      expect(order([Suit.Clubs, Suit.Diamonds, Suit.Spades])).toBe('SDC') // no Hearts
+      expect(order([Suit.Hearts, Suit.Clubs, Suit.Diamonds])).toBe('DCH') // no Spades
+    })
+
+    it('two or fewer suits: plain SUITS order, nothing to separate', () => {
+      expect(order([Suit.Hearts, Suit.Diamonds])).toBe('DH')
+      expect(order([Suit.Clubs, Suit.Spades])).toBe('SC')
+      expect(order([Suit.Hearts])).toBe('H')
+    })
+
+    it('still sorts ranks high to low inside each rearranged suit', () => {
+      const hand = [
+        new Card(Suit.Diamonds, '9', 1),
+        new Card(Suit.Hearts, 'A', 1),
+        new Card(Suit.Spades, '10', 1),
+        new Card(Suit.Diamonds, 'A', 1),
+        new Card(Suit.Hearts, '9', 1),
+        new Card(Suit.Spades, 'K', 1),
+      ]
+      expect(sortHandForDisplay(hand).map((c) => `${c.rank}${c.suit}`)).toEqual([
+        'AD', '9D', '10S', 'KS', 'AH', '9H',
+      ])
+    })
+  })
+
   it('does not mutate the input array', () => {
     const hand = [new Card(Suit.Hearts, '9', 1), new Card(Suit.Spades, 'A', 1)]
     const original = [...hand]
