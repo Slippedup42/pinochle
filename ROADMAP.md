@@ -5,25 +5,62 @@ or priorities shift. Other team-lead agents should treat this as the
 top-level source of truth for sequencing; individual specs (rules, AI
 strategy) live in their own docs and are linked from here.
 
-**Current focus (2026-08-29).** Port fidelity is done — the parity net
+**Current focus (2026-10-04).** Port fidelity is done — the parity net
 (#125) and the constant-by-constant audit (#126) both landed on
 2026-08-01, and `export_parity_scenarios.py --check` now fails the Python
 suite when the committed fixture goes stale. What is actually open:
 
-- **Removing the difficulty setting — epic #215, decided.** Paul's call
-  is one AI shipped at the current `expert` configuration; #224 measures
-  the Easy-to-Hard span first, #222 is the coupled edit, #221 deletes the
-  `openingPolicy: 'walk'` arm, #223 writes the arm-retirement rule down.
-  The explicit boundary is that `web/src/ab/`'s policy types and
-  `*_AB_POLICIES` maps stay — the A/B ruler outlives the product dial.
-  This contradicts the per-tier language further down this file; those
-  passages are marked rather than rewritten ahead of the code.
+- **The deploy gap (#346).** The live site is still `377a5af`, a dirty
+  build from 2026-09-22 (`version.json`); `main` is thirty-odd commits
+  ahead. None of them changes default browser behaviour
+  (`LOOSE_KQ_PASS_ONLY` is off, the rest is A/B instrumentation, tests,
+  docs and the engine split), so players are not missing anything, but
+  the live build is not attributable to a clean commit. A deploy of
+  current `main` is pending; deploys are manual and merging does not ship.
+- **UAT on the live PWA (#349).** There is no e2e suite and no written
+  check of the shipped app in a real browser; #349 carries the checklist,
+  to be run after the deploy above.
+- **#342 — Paul's call.** Five places where the engines' pass priorities
+  disagree with `pinochle_valuation.md`. #326 added that document and the
+  off-by-default `LOOSE_KQ_PASS_ONLY` arm; the arm is not measured and
+  its fate rides on #342's decision.
+- **Housekeeping, #347 and #348.** `CODING_STANDARDS.md` still names
+  `pinochle_engine.py` for code that moved in the split, plus one
+  `TrickPlayFlow` exhaustive-deps warning; and
+  `pinochle_expert_ai_strategy.md` §6 still flags as open a question its
+  own §9 item 7 resolved.
+
+- **The capacity confound (#316, landed).** `web/src/ab/` was found to
+  seat the two sides of a two-level policy A/B with unequal
+  trump-memory capacity, crediting side A roughly +13/deal from that
+  alone, independent of the policy under test. Fixed by equalising
+  capacity across sides. Every historical A/B margin recorded before
+  2026-09-22 on a two-level policy map (`ab`, `fold`, `autoset`, `play`,
+  `opening`, `anchor`) carries that offset and has not been re-run,
+  except the opening anchor itself (#315). Treat pre-#316 margins on
+  those maps as upper bounds, not measurements, until re-run.
+- **#312 shipped, then reverted (#317).** `chooseFollowCard` branching
+  on who led the trick was unmeasured TypeScript-only drift from
+  Python's reference `choose_follow_card` — CLAUDE.md names Python
+  authoritative for exactly this kind of divergence, and the browser
+  now follows Python again. It surfaced late because
+  `engineParity.test.ts` replays one scripted round rather than
+  comparing the two follow functions position-by-position; see #319.
+
+- **Removing the difficulty setting — epic #215, done (2026-09-04).** One
+  AI ships at the former `expert` configuration. #224 measured the
+  Easy-to-Hard span, #222 made the coupled edit, #221 deleted the
+  `openingPolicy: 'walk'` arm, #223 wrote the arm-retirement rule into
+  `CODING_STANDARDS.md`. The boundary held: `web/src/ab/`'s policy types
+  and `*_AB_POLICIES` maps stay — the A/B ruler outlives the product dial.
+  Per-tier language further down this file is history and is marked as
+  such.
 - **#185** — the rollout dataset could not report its own staleness, so a
   Python trick-play change silently changed what the browser bids with.
   #225 (fingerprint the dataset and add `generate_rollout_dataset.py
   --check`) and #226 (regenerate, refit, re-export) have both landed;
-  #227 (re-measure the bidding baseline against the new model) is what
-  is left. #225 answered the question immediately — the engine at
+  #227 (re-measure the bidding baseline against the new model) has
+  closed too, so this item is done. #225 answered the question immediately — the engine at
   `ff236ef`, where the dataset was labelled, put 93 rows through the
   fixed four-game re-run and today's engine puts 115 through it with a
   different digest, so the dataset, `rollout_evaluator.json` fitted to
@@ -35,8 +72,9 @@ suite when the committed fixture goes stale. What is actually open:
   `known_mismatch` block is gone, and the strict `xfail` that carried
   the guard while it was known-red came off with it — the guard is an
   ordinary test again.
-- **#214** — splitting `pinochle_engine.py`, which this document has
-  carried as open while the tracker carried #3 as wont-fix.
+- **#214 — closed (2026-10-03).** `pinochle_engine.py` is a 329-line
+  shim over `pinochle_rules_engine.py` (rules, 1,346 lines) and
+  `pinochle_ai.py` (strategy, 2,631 lines); see Settled questions.
 - **#211 — closed.** `web/src/ab/stats.ts` now has the same shape of net
   as the rules engine: `export_stats_parity.py` records what
   `ab_harness.py`'s three statistics return into
@@ -210,11 +248,11 @@ because nothing needs them yet (see Open questions).
    hand-ports with nothing behind them. All five fire only from `python
    -m pytest -q`; see the CI note above.
 
-## Phase 2 — Post-MVP hardening
+## Phase 2 — Post-MVP hardening — done
 
-Most of this is now done. What shipped:
+**Done.** What shipped:
 
-- **Full `pytest` suite** — 310 tests, `python -m pytest -q`, ~1m45s.
+- **Full `pytest` suite** — 519 tests collected, `python -m pytest -q`.
 - **Tournament-simulation harness** — `tournament_sim.py` (+
   `test_tournament_sim.py`), issue #64: batch-runs N full games between
   two team configs, alternating seats to cancel positional bias.
@@ -228,26 +266,14 @@ Most of this is now done. What shipped:
   `pinochle_expert_ai_strategy.md` Section 9 is resolved, each with a
   pointer to the child issue of #57 that resolved it.
 
-What is still open:
-
-- **Split `pinochle_engine.py` — now #214, and it needs a decision
-  before it needs work.** The file is 3,107 lines, up from the 1,164 it
-  had when #3 asked for this and was closed as wont-fix "migrating to
-  the TS/PWA client and retiring the Python engine." That premise is
-  disowned in [Settled questions](#settled-questions) below, so this
-  document and the tracker have been saying opposite things. #214 exists
-  to settle it either way. The rollout, win-probability, dataset,
-  fitting, export and A/B layers already live in their own modules; the
-  engine file is the remaining lump, and it is what all of them import.
-- An explicit "changes to `Round` must be mirrored here" note on
-  `InteractiveRound` (`human_play.py:170`) — its docstring explains *how*
-  it differs from `Round`, not that it has to be kept in step with it.
-
-Dedupe of the win-condition logic was the third item here and **shipped
-in #6**: `determine_winner` in `pinochle_engine.py` is now the single
-home for the bust/over check, and `play_local.py:143` calls it rather
-than reimplementing it. The remaining item is cheap and rides along with
-#214 rather than being tracked separately.
+The two items this phase carried as open also closed. The
+`pinochle_engine.py` split is #214 (see Settled questions), which was
+decided in favour of splitting and landed 2026-10-03; its old
+3,107-line figure is gone with the lump. The "changes to `Round` must be
+mirrored" note now sits in `InteractiveRound`'s docstring in
+`human_play.py`. Dedupe of the win-condition logic shipped in #6:
+`determine_winner` is the single home for the bust/over check, and
+`play_local.py` calls it rather than reimplementing it.
 
 Deliberately **not** doing:
 
@@ -380,7 +406,7 @@ What is left of the Expert tier:
   stronger, **not** that it is a better partner for a human. Measuring
   that needs a different harness.
 
-## Phase 4 — UI/UX polish — largely shipped
+## Phase 4 — UI/UX polish — shipped
 
 This was "not yet scoped in detail" as recently as the last revision of
 this file. It was then scoped one issue at a time and mostly built. What
@@ -410,15 +436,17 @@ landed, all in `web/src/components/`:
   outcome-neutral and the parity net stays valid. This is the right shape
   for a TS-only addition; it is documented rather than merely absent.
 
-Still open:
+Resolved since the last revision:
 
-- **#129** — the PWA ships programmatic placeholder icons (solid
-  colour). Real art needs to keep the same filenames and sizes that
-  `vite.config.ts` references. Blocked on a human, not an agent.
-- **#194's three-level Options panel is being removed** — see #215 in
-  Current focus. The skill-presentation entry above records what shipped,
-  not where it is going.
-- Animation and transition work, which nothing has asked for yet.
+- **#129** (placeholder icons) is closed not-planned (2026-08-01): Paul's
+  call is to keep the programmatic icons. Real art would have to keep the
+  filenames and sizes `vite.config.ts` references.
+- **#194's three-level Options panel** is gone with the difficulty
+  setting (#215, #222); the skill-presentation entry above records what
+  shipped at the time, not what is there now.
+
+Still open: animation and transition work, which nothing has asked for
+yet. What remains of Phase 4 in practice is the hands-on pass in #349.
 
 ## Tooling & process (parallel track, not phase-gated)
 
@@ -448,6 +476,34 @@ lifecycle rules are all live.
   generates `evaluatorModel.ts` and a parity fixture, and `--check`
   fails the Python suite if the committed TS has drifted. Expensive
   thinking in Python, cheap conclusions in the browser.
+- **Authority splits by kind of number (#213, 2026-10-03).** Rules
+  constants — trick points, opening and forced bids, last-trick +10, the
+  ±1000 bounds, the 3-card pass, meld values, Base Bid valuation
+  constants — are Python-authoritative; if the engines disagree, the TS
+  side has drifted (#118's bug class). Auction strategy decided in
+  TypeScript (`PARTNER_PASSED_FLOOR` #180, `PARTNER_RAISE_FLOOR` #206, the
+  330 competitive floor) is TS-authoritative and is *not* ported back:
+  Python's `choose_bid` lacks the partner-passed floor and the divergence
+  is inert on every path still consuming it. Strategy measured in Python
+  and shipped as an artifact (the evaluator) is governed by the generated
+  file and its `--check`. Written into `CLAUDE.md`.
+- **The engine split (#214, 2026-10-03).** `pinochle_rules_engine.py`
+  holds the rules, `pinochle_ai.py` the strategy layer, and
+  `pinochle_engine.py` re-exports both so every existing import keeps
+  working. #3's "retire the Python engine" premise stays disowned.
+- **Two more parity nets (2026-10-03).** `test_ported_constants.py`
+  (#216) is the standing check on ported bidding constants that #126 did
+  once by hand, and `export_follow_parity.py` (#319) compares
+  `chooseFollowCard` with `choose_follow_card` position by position —
+  the net whose absence let #312's drift ship. Both fire only from
+  `python -m pytest -q`.
+- **The 300 open is the rule, not a tunable (#282, 2026-10-04).** "300 is
+  the open, 250 is what the dealer gets if no one opens": the third
+  bidder opening at 300 is how the game is played, so there is no A/B
+  over it. #282 (re-cut the thresholds) closed on that ruling and #288
+  (a valuation arm for the harness) closed as moot. The valuation
+  calibration question that motivated them is therefore decided by
+  rule, not by measurement.
 
 ### Where measurement runs
 
