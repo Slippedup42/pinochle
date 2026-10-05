@@ -10,25 +10,26 @@ strategy) live in their own docs and are linked from here.
 2026-08-01, and `export_parity_scenarios.py --check` now fails the Python
 suite when the committed fixture goes stale. What is actually open:
 
-- **The deploy gap (#346).** The live site is still `377a5af`, a dirty
-  build from 2026-09-22 (`version.json`); `main` is thirty-odd commits
-  ahead. None of them changes default browser behaviour
-  (`LOOSE_KQ_PASS_ONLY` is off, the rest is A/B instrumentation, tests,
-  docs and the engine split), so players are not missing anything, but
-  the live build is not attributable to a clean commit. A deploy of
-  current `main` is pending; deploys are manual and merging does not ship.
+- **Deployed 2026-10-04 (#346).** The live site was `377a5af`, a dirty
+  build from 2026-09-22, thirty-odd commits behind. It now serves
+  `d9da452` with `dirty: false` (`version.json`). None of those commits
+  changed default browser behaviour (`LOOSE_KQ_PASS_ONLY` is off, the
+  rest is A/B instrumentation, tests, docs and the engine split); the
+  one player-visible-adjacent change is the `TrickPlayFlow` dependency
+  fix (#347). Deploys stay manual and merging does not ship, so later
+  merges are not live until someone deploys. Still unchecked: that an
+  already-installed PWA picks up the new service worker, which UAT covers.
 - **UAT on the live PWA (#349).** There is no e2e suite and no written
   check of the shipped app in a real browser; #349 carries the checklist,
-  to be run after the deploy above.
+  to be run against the build deployed above.
 - **#342 — Paul's call.** Five places where the engines' pass priorities
   disagree with `pinochle_valuation.md`. #326 added that document and the
   off-by-default `LOOSE_KQ_PASS_ONLY` arm; the arm is not measured and
   its fate rides on #342's decision.
-- **Housekeeping, #347 and #348.** `CODING_STANDARDS.md` still names
-  `pinochle_engine.py` for code that moved in the split, plus one
-  `TrickPlayFlow` exhaustive-deps warning; and
-  `pinochle_expert_ai_strategy.md` §6 still flags as open a question its
-  own §9 item 7 resolved.
+- **Housekeeping, #347 and #348 — done 2026-10-04.** `CODING_STANDARDS.md`
+  names the post-split files and states the no-module-level-`pinochle_ai`
+  import rule, the `TrickPlayFlow` exhaustive-deps warning is cleared, and
+  `pinochle_expert_ai_strategy.md` §6 points at its §9 item 7 resolution.
 
 - **The capacity confound (#316, landed).** `web/src/ab/` was found to
   seat the two sides of a two-level policy A/B with unequal
