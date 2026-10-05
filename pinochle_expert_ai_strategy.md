@@ -5,8 +5,8 @@ defines what is *legal*, this doc defines what the **General Strategy
 AI** should do to play *well*. It captures design decisions made in a
 planning session with the project's domain authority (20+ years playing
 Pinochle) and should be treated as a spec to implement against — not a
-finished algorithm. Several open questions are called out explicitly at
-the end; resolve those before finalizing the affected sections.
+finished algorithm. The open questions it raised are listed, all now resolved, in
+Section 9.
 
 Scope: this doc is about the **General Strategy** AI only. Easy and
 Proficient are out of scope here and should not be changed based on this
@@ -440,10 +440,8 @@ rollout** from Section 0/1: use something like the 85th-90th percentile
 of simulated trick points as the realistic ceiling for that specific
 hand, and let P(make) from the same rollout drive bidding EV directly.
 
-**OPEN QUESTION:** Should a simplified "realistic ceiling" number also
-be exposed standalone (e.g., for a fast pre-filter before running full
-EV, or as a human-readable debug value), or should this live purely
-inside the P(make)/EV calculation with no separate interpretable output?
+**Resolved (#60):** no standalone ceiling number is exposed; it stays internal to the EV
+calculation (`bid_ev` / `choose_bid_by_ev`). See Section 9 item 7.
 
 ---
 
