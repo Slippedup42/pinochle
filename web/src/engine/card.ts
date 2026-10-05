@@ -149,16 +149,43 @@ export function minByRank(cards: readonly Card[]): Card {
   return cards.reduce((lowest, c) => (c.rankValue < lowest.rankValue ? c : lowest))
 }
 
+const isRedSuit = (suit: Suit): boolean => suit === Suit.Diamonds || suit === Suit.Hearts
+
 /**
- * Sort a hand for human display only: grouped by suit (Spades, Diamonds,
- * Clubs, Hearts — `SUITS` order), highest rank to lowest within each suit
- * (A, 10, K, Q, J, 9). Purely a UI convenience — game logic never depends
- * on hand order, so this is safe to apply anywhere a human's own hand
- * renders without touching gameplay state.
+ * The left-to-right order of the suits a hand actually holds, for display.
+ *
+ * `SUITS` order (Spades, Diamonds, Clubs, Hearts) alternates black and red, so
+ * a full four-suit hand never puts two same-coloured suits side by side. A
+ * missing suit breaks that: no Clubs leaves Diamonds against Hearts, no Diamonds
+ * leaves Spades against Clubs, and two adjacent suits of one colour are easy to
+ * misread. So when a hand holds three suits and two of them share a colour, the
+ * odd-coloured suit goes between them (S-H-C, D-S-H); the pair keeps its
+ * `SUITS` order. Every other case — four suits, or two or fewer, where no
+ * arrangement helps — is plain `SUITS` order.
+ */
+function displaySuitOrder(hand: readonly Card[]): readonly Suit[] {
+  const present = SUITS.filter((suit) => hand.some((c) => c.suit === suit))
+  if (present.length !== 3) return present
+  // Three of four suits always hold two of one colour and one of the other.
+  const red = present.filter(isRedSuit)
+  const pair = red.length === 2 ? red : present.filter((s) => !isRedSuit(s))
+  const odd = present.find((s) => !pair.includes(s))!
+  return [pair[0], odd, pair[1]]
+}
+
+/**
+ * Sort a hand for human display only: grouped by suit, highest rank to lowest
+ * within each suit (A, 10, K, Q, J, 9). Suits run in `SUITS` order (Spades,
+ * Diamonds, Clubs, Hearts), rearranged by `displaySuitOrder` when a missing
+ * suit would otherwise put two same-coloured suits next to each other. Purely
+ * a UI convenience — game logic never depends on hand order, so this is safe
+ * to apply anywhere a human's own hand renders without touching gameplay
+ * state.
  */
 export function sortHandForDisplay(hand: readonly Card[]): Card[] {
+  const suitOrder = displaySuitOrder(hand)
   return [...hand].sort((a, b) => {
-    if (a.suit !== b.suit) return SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit)
+    if (a.suit !== b.suit) return suitOrder.indexOf(a.suit) - suitOrder.indexOf(b.suit)
     if (a.rankValue !== b.rankValue) return b.rankValue - a.rankValue
     return a.copyId - b.copyId
   })
