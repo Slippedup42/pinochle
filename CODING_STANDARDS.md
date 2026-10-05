@@ -7,8 +7,10 @@ this doc in the same PR rather than leaving the code inconsistent with
 it.
 
 The two engines have genuinely different conventions, and neither is
-being converged onto the other. **Part 1 is Python** (`pinochle_engine.py`
-and the harnesses around it); **Part 2 is TypeScript** (`web/`). Read the
+being converged onto the other. **Part 1 is Python** (the rules in
+`pinochle_rules_engine.py`, the strategy layer in `pinochle_ai.py`, and the
+harnesses around them; `pinochle_engine.py` is only the re-export shim over
+the first two, pinned by `test_engine_split.py`); **Part 2 is TypeScript** (`web/`). Read the
 part that matches the file you are touching. Cross-engine concerns —
 which constants Python is authoritative for, what the parity fixtures pin
 — live in `CLAUDE.md` and `web/README.md`, not here.
@@ -23,8 +25,8 @@ which constants Python is authoritative for, what the parity fixtures pin
   resumable-state trick is the model to follow — a future contributor
   should be able to read it and understand the design before touching
   the code.
-- Large modules (`pinochle_engine.py`) are broken into sections with a
-  banner comment:
+- Large modules (`pinochle_ai.py`, `pinochle_rules_engine.py`,
+  `pinochle_rollout.py`) are broken into sections with a banner comment:
 
   ```python
   # ---------------------------------------------------------------------------
@@ -35,6 +37,15 @@ which constants Python is authoritative for, what the parity fixtures pin
   Keep related constants, helpers, and classes together under the
   section they belong to rather than grouping "all constants" or "all
   classes" separately.
+- **Rules code must not import `pinochle_ai` at module level.**
+  `pinochle_ai.py` imports its rules names from `pinochle_rules_engine.py`,
+  so the only load-time edge is strategy -> rules; the reverse would be a
+  cycle. The two sanctioned cycle-breaks are in-function imports in
+  `pinochle_rules_engine.py`: `Game.__init__` (the default `Player`) and
+  `compute_trick_potential`'s `loose_kq_pass_only` branch
+  (`_bidder_pass_selection`). Don't add a third without a reason that
+  beats moving the code. New code imports from the module that defines a
+  name, not from the `pinochle_engine.py` shim.
 
 ## Naming
 
@@ -169,7 +180,9 @@ Add a block when you expect to iterate on that module in isolation,
 skip it otherwise, and don't retrofit blocks into the nine that go
 without. `python -m pytest -q` is the suite either way.
 
-`pinochle_engine.py`'s own `__main__` block still exists and still
+The `__main__` block of the `pinochle_engine.py` shim (the real modules
+define no `__main__`; the shim is the one that can run as a script safely
+because it defines nothing) still exists and still
 asserts — Double Run scoring, ten full games to completion — but pytest
 does not collect it, and it is a demo and smoke run rather than part of
 the suite. New coverage goes in a `test_*.py` module.
@@ -177,13 +190,13 @@ the suite. New coverage goes in a `test_*.py` module.
 ## Known duplication (intentional, needs care)
 
 `InteractiveRound` in `human_play.py` mirrors `Round`'s
-`_bidding_loop` / `_passing_phase` / `_trick_taking_loop` phase for
-phase, substituting instance attributes for local variables so a
+`_bidding_loop` / `_passing_phase` / `_trick_taking_loop` (defined in
+`pinochle_rules_engine.py`) phase for phase, substituting instance attributes for local variables so a
 `NeedsHumanInput` exception can unwind and resume later. This
 duplication is a deliberate tradeoff (see `human_play.py`'s module
 docstring and `README.md`'s Architecture section), not an oversight —
 but it means **a rule or bug fix to those three methods in
-`pinochle_engine.py` must be manually mirrored into the matching
+`pinochle_rules_engine.py` must be manually mirrored into the matching
 `InteractiveRound` method**, and nothing currently enforces that. When
 you touch one side, check the other.
 
