@@ -320,6 +320,47 @@ export type LooseKqPolicy = 'flat' | 'passOnly'
  */
 export type PushPolicy = 'off' | 'slack20' | 'slack40' | 'quality'
 
+/**
+ * How far a raise over a standing bid may go in one step (Paul, 2026-10-10:
+ * "a player should never go more than 10 at a time in bidding").
+ *
+ *   `'jump'`  the rule before this field: `PARTNER_PASSED_FLOOR` and
+ *             `PARTNER_RAISE_FLOOR` are *levels* as well as gates, so a seat
+ *             over an opponent's 300 with its partner out bids 320, and a seat
+ *             over its partner's 310 bids 340.
+ *   `'step'`  every raise is exactly `minIncrement` over the standing bid. The
+ *             two floors stay as *gates* - the ceiling a seat needs to enter -
+ *             but no longer set the level, so the ladder climbs a rung at a
+ *             time and a stronger hand simply keeps climbing. A jump says "I
+ *             have a good hand" to the table before the hand has had to say
+ *             it with its own bids.
+ *
+ * Openings are not raises and are untouched: the opener still names its own
+ * level (`openingAnchor`), and a seat opening because its partner passed still
+ * opens at the floor.
+ */
+export type RaiseStep = 'jump' | 'step'
+
+/**
+ * What a seat must hold before it bids once its partner has bid (Paul,
+ * 2026-10-10: a team mate should not bid against its partner unless it is
+ * willing to bid on its next turn - over a 300 it should be willing to reach
+ * 330, over a 310 it should be willing to reach 340, because stepping in says
+ * "I have a better hand").
+ *
+ *   `'floor'`    the rule before this field. Once partner has bid, the ceiling
+ *                this seat contests an opponent with is lifted to at least
+ *                `COMPETITIVE_CEILING_FLOOR` (330), so a hand that is worth
+ *                little steps in over an opponent on the strength of its
+ *                partner's bid; and a raise over a partner who raised over our
+ *                own bid needs `PARTNER_RAISE_FLOOR` (340).
+ *   `'support'`  both gates become the same relative test: the seat's own
+ *                ceiling must reach `PARTNER_SUPPORT_MARGIN` (30) above its
+ *                partner's last bid, and there is no lift. Weak hands stay out
+ *                and leave the partner to defend their own bid.
+ */
+export type PartnerSupport = 'floor' | 'support'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -332,6 +373,8 @@ export interface SkillParams {
   readonly sluffPolicy: SluffPolicy
   readonly looseKqPolicy: LooseKqPolicy
   readonly pushPolicy: PushPolicy
+  readonly raiseStep: RaiseStep
+  readonly partnerSupport: PartnerSupport
 }
 
 /**
@@ -351,6 +394,8 @@ export interface SkillParams {
  * | `sluffPolicy`       | `protect`   | `shortest`                             |
  * | `looseKqPolicy`     | `flat`      | `passOnly`                             |
  * | `pushPolicy`        | `quality`   | `off`, `slack20`, `slack40`            |
+ * | `raiseStep`         | `step`      | `jump`                                 |
+ * | `partnerSupport`    | `support`   | `floor`                                |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -406,6 +451,8 @@ export const SHIPPED_PARAMS: SkillParams = {
   sluffPolicy: 'protect',
   looseKqPolicy: 'flat',
   pushPolicy: 'quality',
+  raiseStep: 'step',
+  partnerSupport: 'support',
 }
 
 /**
