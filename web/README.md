@@ -1265,6 +1265,47 @@ re-pointed with the reason beside it.
 `npm run dev` at `/bench/` (it follows `base`, which is `/`). It is never an
 input to `vite build`, so it cannot reach a player or the PWA precache.
 
+#### The competitive push, measured (`pushPolicy`)
+
+Paul's framing, 2026-10-09: the auction is competitive, and each team wants the
+other to go set without going set itself. `chooseBid` had only ever raised an
+opponent while the next rung stayed inside the seat's own ceiling, so an
+opponent was never made to pay for a rung the raiser would not itself hold. The
+arm lets a seat bid a little past its ceiling when an opponent holds the bid.
+
+The case for it came from an offline rollout run (2,000 random hands, 200
+samples each, uniform partner and opponents, scores 0-0). Each rung costs the
+bidder about 17 to 37 points of own-score EV, rising with the level, and it
+costs a pusher who is left holding the contract about the same. So a push is
+worth it only where the stuck cost is small, which is a steady hand: outcome
+spread tracked lumpy base meld, while the mean tracked trump length (~+25 a
+card) and Aces (~+28 each). A flat lift would ignore that.
+
+| arm | seed 1 | seed 2 | seed 3 |
+|---|---|---|---|
+| `slack20` | +14 (+6 to +21) | +4 (-3 to +12) | +10 (+3 to +18) |
+| `slack40` | +4 (-6 to +14) | -2 (-12 to +8) | +2 (-7 to +12) |
+| `quality` | +21 (+15 to +27) | +13 (+7 to +18) | +18 (+13 to +24) |
+
+Margin per deal against `'off'`, 5000 pairs a seed, mirrored seats. The flat
+lifts win more contracts but make fewer of them (`slack40`: 65.0-65.5% against
+67.1-67.4%) and give the margin back in sets. `quality` wins about 8% more
+contracts at an unchanged make rate. A sweep of the cap (20 to 80) and the scale
+(`(trump + Aces - k) / 4`, k = 5, 6, 7) on three fresh seeds at 3000 pairs found
+every one of 15 cells positive, from +5.7 to +14.3 a deal, and a surface flat
+within the seed noise (±5 inside a cell). The shipped cell (40, k = 6) averaged
++10.0 on the fresh seeds, so the effect to expect is roughly +10 to +15 a deal.
+A cap of 80 starts to cost make rate; 40 does not.
+
+**`'quality'` ships** (Paul, 2026-10-10). Scope and limits: the opponents in
+every number above are the same engine with the push off, so how a human
+responds to being pushed is not measured here; the quality scale and the cap
+are not tuned beyond that sweep; no push when either team is at 750 or more.
+Python is untouched on purpose - auction strategy decided in TypeScript is
+TypeScript-authoritative (`CLAUDE.md`, #213). `'off'` is the control, and the
+partner-passed floor (320) still names the *level* only: the push relaxes the
+ceiling test in front of it, so an opponent at 330 is raised to 340.
+
 ## Claiming the rest (#208)
 
 Paul's rule: if one seat holds all the trump and nobody else has any, stop

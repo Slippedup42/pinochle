@@ -52,6 +52,7 @@
 
 import {
   type PartnerRead,
+  type PushPolicy,
   SHIPPED_PARAMS,
   SHIPPED_SKILL,
   SKILL_PARAMS,
@@ -92,6 +93,7 @@ const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
   partnerRead: 'current',
   sluffPolicy: 'shortest',
   looseKqPolicy: 'flat',
+  pushPolicy: 'off',
 })
 
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
@@ -207,6 +209,21 @@ export function sluffAbPolicies(arm: SluffPolicy): Record<string, SkillParams> {
   return {
     [STATIC_LEVEL]: { ...SHIPPED_PARAMS },
     [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, sluffPolicy: arm },
+  }
+}
+
+/**
+ * The competitive-push comparison: side A (`DISTILLED_LEVEL`) carries `arm` -
+ * a seat that may bid past its ceiling to push an opponent up - and side B is
+ * the shipped `'off'` rule. Everything else on both sides is `SHIPPED_PARAMS`,
+ * so a margin is the price of the push and nothing else. Judge it on score
+ * margin *and* on both sides' set rates, not on make rate: a push that works
+ * is one the opponent fails to make.
+ */
+export function pushAbPolicies(arm: PushPolicy): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS, pushPolicy: 'off' },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, pushPolicy: arm },
   }
 }
 
