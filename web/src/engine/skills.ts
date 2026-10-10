@@ -287,6 +287,39 @@ export type SluffPolicy = 'shortest' | 'protect'
  */
 export type LooseKqPolicy = 'flat' | 'passOnly'
 
+/**
+ * Whether a seat contesting an opponent's bid may bid *past* its own ceiling
+ * to push the opponent up a rung, accepting the risk of being stuck with it.
+ *
+ * `chooseBid` has only ever raised while the next rung stays inside the seat's
+ * ceiling (330 once partner has bid), so an opponent is never made to pay for
+ * a rung the raiser would not itself want. Paul's framing is that the auction
+ * is competitive: each team wants the *other* to go set without going set
+ * itself, so a seat with some strength may creep a little higher, and show it
+ * when partner has passed, as long as it is not left holding a contract it
+ * cannot carry.
+ *
+ *   `'off'`      the shipped rule: raise only inside the ceiling.
+ *   `'slack20'`  the ceiling is lifted by a flat 20 (two rungs).
+ *   `'slack40'`  the ceiling is lifted by a flat 40 (four rungs).
+ *   `'quality'`  the lift scales with how steady the hand is - trump length
+ *                and Aces, the features that carried the mean total in the
+ *                2026-10-09 rollout fit - up to `PUSH_QUALITY_MAX_SLACK`. A
+ *                short-trump, Ace-light hand gets no lift.
+ *
+ * Every arm is switched off in the endgame: no push when either team is
+ * within reach of going out (`ENDGAME_SCORE_FLOOR`), because there a set or a
+ * make is worth a game and not a hand.
+ *
+ * `'quality'` ships (Paul, 2026-10-10). Paired A/B against `'off'`, 5000 pairs
+ * a seed: +21, +13 and +18 a deal on the first three seeds and +10 on average
+ * over three fresh ones, every interval above zero, make rate unchanged. The
+ * flat arms were mixed: `'slack20'` +4 to +14, `'slack40'` -2 to +4, with
+ * `'slack40'` losing make rate. `web/README.md` has the table and the sweep of
+ * the cap and the scale, which found a flat surface. `'off'` is the control.
+ */
+export type PushPolicy = 'off' | 'slack20' | 'slack40' | 'quality'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -298,6 +331,7 @@ export interface SkillParams {
   readonly partnerRead: PartnerRead
   readonly sluffPolicy: SluffPolicy
   readonly looseKqPolicy: LooseKqPolicy
+  readonly pushPolicy: PushPolicy
 }
 
 /**
@@ -316,6 +350,7 @@ export interface SkillParams {
  * | `partnerRead`       | `feedAhead` | `current`, `holdBack`, `likely`        |
  * | `sluffPolicy`       | `protect`   | `shortest`                             |
  * | `looseKqPolicy`     | `flat`      | `passOnly`                             |
+ * | `pushPolicy`        | `quality`   | `off`, `slack20`, `slack40`            |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -370,6 +405,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   partnerRead: 'feedAhead',
   sluffPolicy: 'protect',
   looseKqPolicy: 'flat',
+  pushPolicy: 'quality',
 }
 
 /**

@@ -124,6 +124,10 @@ EXCLUDED = {
         "TS-only auction rule (#180, measured in web/src/ab/). Python's "
         "choose_bid has no partner-passed floor; #213 found the divergence "
         "inert and kept it.",
+    ("bidding.ts", "PUSH_QUALITY_MAX_SLACK"):
+        "TS-only auction rule (pushPolicy, measured in web/src/ab/; see "
+        "web/README.md). Python's choose_bid has no competitive push; auction "
+        "strategy decided in TypeScript is TS-authoritative (#213).",
     ("misdeal.ts", "MISDEAL_NINE_THRESHOLD"):
         "TS-only: pinochle_engine.py does not implement the misdeal "
         "redeal, so there is nothing to pair it with.",

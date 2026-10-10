@@ -37,6 +37,7 @@ const PRE_SHIP: SkillParams = {
   partnerRead: 'current',
   sluffPolicy: 'shortest',
   looseKqPolicy: 'flat',
+  pushPolicy: 'off',
 }
 
 const LEVELS: SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']

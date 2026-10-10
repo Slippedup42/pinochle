@@ -37,6 +37,7 @@ import {
   THIRD_BIDDER_FLOOR,
   bestBaseBid,
   openingLevelFor,
+  pushSlackFor,
 } from '../engine/bidding'
 import { MIN_BID_INCREMENT, OPENING_BID } from '../engine/card'
 import { shouldBid } from '../engine/evaluator'
@@ -103,7 +104,7 @@ export function classifyBid(
   const oppTeam = (1 - myTeam) as TeamId
   const myScore = context.scores[myTeam]
   const oppScore = context.scores[oppTeam]
-  const { total: ceiling } = bestBaseBid(hand, myScore, oppScore)
+  const { total: ceiling, trump: bestTrump } = bestBaseBid(hand, myScore, oppScore)
   const partner = partnerOf(player)
   const partnerIsDealer = partner === context.dealer
   const partnerPassed = context.passedPlayers.includes(partner)
@@ -157,6 +158,9 @@ export function classifyBid(
   }
 
   const nextBid = currentBid + minIncrement
+  // `pushPolicy`: the ceiling both raise gates below read is lifted by this.
+  const raiseCeiling =
+    competitiveCeiling + pushSlackFor(params.pushPolicy, hand, bestTrump, myScore, oppScore, minIncrement)
   let pushFields = {}
   if (currentBid <= OPENING_BID) {
     const pushLevel = partnerPassed ? Math.max(nextBid, PARTNER_PASSED_FLOOR) : nextBid
@@ -166,11 +170,11 @@ export function classifyBid(
     if (verdict) return { ...base, ...pushFields, branch: 'push', decision: pushLevel }
   }
   if (partnerPassed && nextBid < PARTNER_PASSED_FLOOR) {
-    return competitiveCeiling >= PARTNER_PASSED_FLOOR
+    return raiseCeiling >= PARTNER_PASSED_FLOOR
       ? { ...base, ...pushFields, branch: 'partner-passed-floor', decision: PARTNER_PASSED_FLOOR }
       : { ...base, ...pushFields, branch: 'partner-passed-gated', decision: null }
   }
-  return nextBid <= competitiveCeiling
+  return nextBid <= raiseCeiling
     ? { ...base, ...pushFields, branch: 'ladder-raise', decision: nextBid }
     : { ...base, ...pushFields, branch: 'ladder-pass', decision: null }
 }

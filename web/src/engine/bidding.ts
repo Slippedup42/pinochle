@@ -52,6 +52,7 @@ import {
   SHIPPED_SKILL,
   SKILL_PARAMS,
   type SkillLevel,
+  type PushPolicy,
 } from './skills'
 import {
   AROUND_DOUBLE_MULTIPLIER,
@@ -392,6 +393,59 @@ export const PARTNER_RAISE_FLOOR = 340
  * it was a bare `330` inside `chooseBid`.
  */
 export const COMPETITIVE_CEILING_FLOOR = 330
+
+/**
+ * The most a `pushPolicy: 'quality'` seat lifts its ceiling by to push an
+ * opponent up a rung (see `PushPolicy`). The flat arms are `slack20` and
+ * `slack40`, and this is the same number as the larger of them so the two read
+ * as one dial: a perfectly steady hand gets what `slack40` gives everyone.
+ *
+ * Chosen from the 2026-10-09 rollout fit, not from a measurement of this rule:
+ * bidding 20 past the ceiling cost the bidder about 50 points of EV and 40
+ * cost about 115, while each rung the opponent is pushed to costs them 17 to 37
+ * points and rising. So 40 is roughly where the stuck cost overtakes what a
+ * single rung buys. The A/B is what says whether any of it pays.
+ */
+export const PUSH_QUALITY_MAX_SLACK = 40
+
+/**
+ * How steady a hand is, 0 to 1, for `pushPolicy: 'quality'`.
+ *
+ * The rollout fit (2,000 hands x 200 samples) put the mean total at about +25
+ * per trump card and +28 per Ace, and found outcome spread tracks lumpy base
+ * meld rather than either of those - so a long-trump, Ace-heavy hand is the
+ * one that still makes a bid it is a little short of valuing, and the one that
+ * is least likely to be left stuck. The normalisation is a guess at a scale:
+ * 5 trump and 3 Aces is 0.5, 7 and 4 is 1, 4 and 2 is 0.
+ */
+export function pushQuality(hand: readonly Card[], trump: Suit): number {
+  const trumpLength = hand.reduce((n, c) => n + (c.suit === trump ? 1 : 0), 0)
+  const aces = hand.reduce((n, c) => n + (c.rank === 'A' ? 1 : 0), 0)
+  return Math.max(0, Math.min(1, (trumpLength + aces - 6) / 4))
+}
+
+/**
+ * How far past its own ceiling a seat may bid to push an opponent up a rung,
+ * for the `PushPolicy` in force. Zero in the endgame, where either team is
+ * within a hand of the win. Shared by `chooseBid` and the gate-statistics
+ * mirror in `ab/gateStats.ts`, so the two cannot disagree about it.
+ */
+export function pushSlackFor(
+  policy: PushPolicy,
+  hand: readonly Card[],
+  trump: Suit,
+  myScore: number,
+  oppScore: number,
+  minIncrement: number,
+): number {
+  if (myScore >= ENDGAME_SCORE_FLOOR || oppScore >= ENDGAME_SCORE_FLOOR) return 0
+  if (policy === 'slack20') return 20
+  if (policy === 'slack40') return 40
+  if (policy === 'quality') {
+    return Math.round((PUSH_QUALITY_MAX_SLACK * pushQuality(hand, trump)) / minIncrement) * minIncrement
+  }
+  return 0
+}
 
 /** Remove up to `count` cards matching suit/rank from `pool` in place; returns how many were removed. */
 function claim(pool: Card[], suit: Suit, rank: Rank, count = 1): number {
@@ -897,7 +951,10 @@ function meldOnlyBid(
  *   - The opponents currently hold the bid: raise to current + minIncrement
  *     if that's within my ceiling (relaxed to at least
  *     COMPETITIVE_CEILING_FLOOR, 330, once my partner has bid, since a
- *     partner bid is a signal worth backing), else pass.
+ *     partner bid is a signal worth backing), else pass. `pushPolicy`
+ *     lifts that ceiling by up to PUSH_QUALITY_MAX_SLACK on a steady hand
+ *     (long trump, Aces), so a seat can make the other side pay a rung it
+ *     would not itself want to hold; never in the endgame.
  */
 export function chooseBid(
   player: PlayerIndex,
@@ -921,7 +978,7 @@ export function chooseBid(
   const oppScore = context.scores[opponentTeam]
 
   const looseKqPassOnly = SKILL_PARAMS[skill].looseKqPolicy === 'passOnly'
-  const { total: ceiling } = bestBaseBid(hand, myScore, oppScore, looseKqPassOnly)
+  const { total: ceiling, trump: bestTrump } = bestBaseBid(hand, myScore, oppScore, looseKqPassOnly)
 
   const partner = partnerOf(player)
   const partnerIsDealer = partner === context.dealer
@@ -1099,6 +1156,24 @@ export function chooseBid(
 
   const nextBid = currentBid + minIncrement
 
+  // Competitive push (`pushPolicy`): contesting an opponent's bid, a seat may
+  // go a little past its own ceiling - the point of the auction is also to make
+  // the *other* team pay for a rung, not only to win the contract. Off in the
+  // endgame, where either side is within a hand of the win and a make or a set
+  // is a game rather than a score. The slack lifts the ceiling that both
+  // raise-gates below read; the *level* bid still comes from the auction, so
+  // the 320 partner-passed floor stays a floor on the level only, and what a
+  // stronger hand relaxes is the ceiling test in front of it.
+  const pushSlack = pushSlackFor(
+    SKILL_PARAMS[skill].pushPolicy,
+    hand,
+    bestTrump,
+    myScore,
+    oppScore,
+    minIncrement,
+  )
+  const raiseCeiling = competitiveCeiling + pushSlack
+
   // Defensive push (#78): when opponent opened at the minimum (OPENING_BID —
   // 300 again since #257), respond unless the hand is truly hopeless. The gate
   // is `currentBid <= OPENING_BID`, so it follows the opening rung wherever it
@@ -1119,9 +1194,9 @@ export function chooseBid(
   // When partner passed, the bid must reach OPENER_THRESHOLD regardless of
   // ceiling — so PARTNER_PASSED_FLOOR (320), not the next rung of the ladder.
   if (partnerPassed && nextBid < PARTNER_PASSED_FLOOR) {
-    return competitiveCeiling >= PARTNER_PASSED_FLOOR ? PARTNER_PASSED_FLOOR : null
+    return raiseCeiling >= PARTNER_PASSED_FLOOR ? PARTNER_PASSED_FLOOR : null
   }
-  return nextBid <= competitiveCeiling ? nextBid : null
+  return nextBid <= raiseCeiling ? nextBid : null
 }
 
 /**

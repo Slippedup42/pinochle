@@ -10,6 +10,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts anchor --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts partner --arm feedAhead --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts sluff --pairs 2000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts push --arm quality --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts safe --pairs 400 --level expert
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts capacity --high expert --low easy
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
@@ -36,7 +37,7 @@
 // the rest of the engine, and paying for that with one cast is the cheaper
 // trade than a second tsconfig project.
 
-import type { PartnerRead, SkillLevel, SkillParams } from '../engine/skills'
+import type { PartnerRead, PushPolicy, SkillLevel, SkillParams } from '../engine/skills'
 import {
   AUTO_SET_AB_POLICIES,
   BID_AB_POLICIES,
@@ -45,6 +46,7 @@ import {
   OPENING_ANCHOR_AB_POLICIES,
   PLAY_AB_POLICIES,
   partnerReadAbPolicies,
+  pushAbPolicies,
   sluffAbPolicies,
   SAFE_COUNTER_CONTROL,
   STATIC_LEVEL,
@@ -78,6 +80,11 @@ const SELFTEST_ARMS: Record<string, { level: SkillLevel; policies: Record<string
   'hold-back': { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('holdBack') },
   likely: { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('likely') },
   protect: { level: DISTILLED_LEVEL, policies: sluffAbPolicies('protect') },
+  // The push arms, each doubled up against itself - the table where both
+  // teams push is the one whose set rates say what pushing does to the game.
+  slack20: { level: DISTILLED_LEVEL, policies: pushAbPolicies('slack20') },
+  slack40: { level: DISTILLED_LEVEL, policies: pushAbPolicies('slack40') },
+  quality: { level: DISTILLED_LEVEL, policies: pushAbPolicies('quality') },
   // #158's two arms. `counted` doubles up the expert capacity against itself;
   // `uncounted` doubles up the baseline, which is the control that says the
   // safe-counter change is the only thing separating the two sides of a `safe`
@@ -153,6 +160,26 @@ if (command === 'fold') {
     policies: sluffAbPolicies('protect'),
   })
   console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'push') {
+  // Competitive push: one arm (a seat that may bid past its ceiling to push an
+  // opponent up) against the shipped raise-inside-the-ceiling rule.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const armArg = args.includes('--arm') ? args[args.indexOf('--arm') + 1] : 'quality'
+  const arms: readonly PushPolicy[] = ['slack20', 'slack40', 'quality']
+  const arm = arms.find((a) => a === armArg)
+  if (arm === undefined) {
+    console.log(`unknown --arm '${armArg}'; expected one of ${arms.join(', ')}`)
+  } else {
+    const report = runAb({
+      nPairs: pairs,
+      seed,
+      labelA: arm,
+      labelB: 'off',
+      policies: pushAbPolicies(arm),
+    })
+    console.log(summarise(report, analyse(report, seed)))
+  }
 } else if (command === 'partner') {
   // Paul's follow rules with "likely" defined by position: one arm against the
   // shipped current-winner reading, everything else identical.
