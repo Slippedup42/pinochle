@@ -98,6 +98,7 @@ const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
   pushPolicy: 'off',
   raiseStep: 'jump',
   partnerSupport: 'floor',
+  thirdBidderFloor: 200,
 })
 
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
@@ -247,6 +248,14 @@ export function bidFeedbackAbPolicies(arms: {
       raiseStep: arms.raiseStep ?? 'jump',
       partnerSupport: arms.partnerSupport ?? 'floor',
     },
+  }
+}
+
+/** The third-seat positional-open floor, side A at `floor`, side B shipped. */
+export function thirdBidderFloorAbPolicies(floor: number): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, thirdBidderFloor: floor },
   }
 }
 

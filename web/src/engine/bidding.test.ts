@@ -1,5 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { SHIPPED_SKILL, SKILL_LEVELS, SKILL_PARAMS, type SkillLevel, type SkillParams } from './skills'
+import {
+  SHIPPED_PARAMS,
+  SHIPPED_SKILL,
+  SKILL_LEVELS,
+  SKILL_PARAMS,
+  type SkillLevel,
+  type SkillParams,
+} from './skills'
 import { Card, Deck, GAME_WIN_SCORE, OPENING_BID, Suit, SUITS } from './card'
 import {
   ACE_VALUE,
@@ -57,6 +64,11 @@ const RUN_RANKS = ['A', '10', 'K', 'Q', 'J'] as const
 const STATIC_LEVEL: SkillLevel = 'medium'
 const MELD_ONLY_LEVEL: SkillLevel = 'easy'
 
+/** The positional-open floor #255 measured and shipped until 2026-10-10. The
+ *  band tests below are about that 200-320 band, so they name it here and not
+ *  through `THIRD_BIDDER_FLOOR`, which now reads 320. */
+const PRE_RETUNE_THIRD_FLOOR = 200
+
 /** The rule before Paul's 2026-10-10 feedback: floors set the level, and a
  *  seat that has a partner bid lifts its ceiling to 330. Still an arm, so the
  *  tests that recorded it keep running against it by name. */
@@ -81,7 +93,15 @@ beforeAll(() => {
   // anchor names 330 on a hand worth a contract, which is tested on its own
   // below and would otherwise turn every one of those assertions into a test
   // of the anchor.
-  SKILL_PARAMS[STATIC_LEVEL] = { ...SKILL_PARAMS[STATIC_LEVEL], bidPolicy: 'static', openingAnchor: 'floor' }
+  // `thirdBidderFloor: 200` too: the positional-open tests below describe the
+  // 200-320 band #255 measured, so the static slot keeps that floor and the
+  // shipped 320 is tested on its own, further down.
+  SKILL_PARAMS[STATIC_LEVEL] = {
+    ...SKILL_PARAMS[STATIC_LEVEL],
+    bidPolicy: 'static',
+    openingAnchor: 'floor',
+    thirdBidderFloor: 200,
+  }
   SKILL_PARAMS[MELD_ONLY_LEVEL] = {
     ...SKILL_PARAMS[MELD_ONLY_LEVEL],
     handValuation: 'meld_only',
@@ -704,7 +724,7 @@ describe('chooseBid', () => {
       // such hand back down by 40. So the band is
       // derived from the current valuation here rather than taken on trust,
       // and this assertion is what will fail first if it moves again.
-      expect(ceilingOf(belowOpenerHand)).toBeGreaterThanOrEqual(THIRD_BIDDER_FLOOR)
+      expect(ceilingOf(belowOpenerHand)).toBeGreaterThanOrEqual(PRE_RETUNE_THIRD_FLOOR)
       expect(ceilingOf(belowOpenerHand)).toBeLessThan(OPENER_THRESHOLD)
 
       // Inside that band the third bidder opens and a first bidder — same
@@ -716,6 +736,24 @@ describe('chooseBid', () => {
       const first = baseContext({ dealer: 1, passesSoFar: 0, scores: { 0: 0, 1: 0 } })
       expect(chooseBid(0, belowOpenerHand, OPENING_BID - 10, 10, third, STATIC_LEVEL)).toBe(OPENING_BID)
       expect(chooseBid(0, belowOpenerHand, OPENING_BID - 10, 10, first, STATIC_LEVEL)).toBeNull()
+    })
+
+    it('the shipped 3rd bidder needs a ceiling of THIRD_BIDDER_FLOOR (320), not 200', () => {
+      // Paul, 2026-10-10: a lot of contracts were going for 300, and the third
+      // seat's positional open on a hand worth 200-319 was where they came
+      // from. Same hand, same position as the test above, on the shipped seat.
+      expect(SHIPPED_PARAMS.thirdBidderFloor).toBe(THIRD_BIDDER_FLOOR)
+      expect(THIRD_BIDDER_FLOOR).toBe(320)
+      const third = baseContext({ dealer: 1, passesSoFar: 2, scores: { 0: 0, 1: 0 } })
+      // The static opener, so what answers is the positional tier and not the
+      // evaluator (which opens a 260 hand on its own judgement).
+      withParams({ bidPolicy: 'static', openingAnchor: 'floor' }, () => {
+        expect(ceilingOf(belowOpenerHand)).toBeLessThan(THIRD_BIDDER_FLOOR)
+        expect(chooseBid(0, belowOpenerHand, OPENING_BID - 10, 10, third, SHIPPED_SKILL)).toBeNull()
+        // A hand that reaches it still opens.
+        expect(ceilingOf(strongHand)).toBeGreaterThanOrEqual(THIRD_BIDDER_FLOOR)
+        expect(chooseBid(0, strongHand, OPENING_BID - 10, 10, third, SHIPPED_SKILL)).toBe(OPENING_BID)
+      })
     })
 
     it('3rd bidder keeps its positional floor at every score', () => {
@@ -757,7 +795,7 @@ describe('chooseBid', () => {
         passedPlayers: [2, 3],
         scores: { 0: 0, 1: 0 },
       })
-      expect(ceilingOf(belowOpenerHand)).toBeGreaterThanOrEqual(THIRD_BIDDER_FLOOR)
+      expect(ceilingOf(belowOpenerHand)).toBeGreaterThanOrEqual(PRE_RETUNE_THIRD_FLOOR)
       expect(chooseBid(0, belowOpenerHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBe(OPENING_BID)
       // The floor is still a floor: a lone 9 lets it pass out as before.
       expect(chooseBid(0, weakHand, OPENING_BID - 10, 10, context, STATIC_LEVEL)).toBeNull()

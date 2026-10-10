@@ -146,7 +146,7 @@ export function classifyBid(
     const asked = { askedLevel: floorLevel, policyVerdict: opens, staticVerdict }
     if (opens) return { ...base, ...asked, branch: 'open', decision: openAt }
     if (context.passesSoFar === 2) {
-      return ceiling >= THIRD_BIDDER_FLOOR
+      return ceiling >= params.thirdBidderFloor
         ? { ...base, ...asked, branch: 'third-positional', decision: OPENING_BID }
         : { ...base, ...asked, branch: 'third-decline', decision: null }
     }

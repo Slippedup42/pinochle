@@ -47,6 +47,7 @@ import {
   OPENING_ANCHOR_AB_POLICIES,
   PLAY_AB_POLICIES,
   bidFeedbackAbPolicies,
+  thirdBidderFloorAbPolicies,
   partnerReadAbPolicies,
   pushAbPolicies,
   sluffAbPolicies,
@@ -182,6 +183,18 @@ if (command === 'fold') {
     })
     console.log(summarise(report, analyse(report, seed)))
   }
+} else if (command === 'third') {
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const floor = flag('floor', 260)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: `third@${floor}`,
+    labelB: 'third@200',
+    policies: thirdBidderFloorAbPolicies(floor),
+  })
+  console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'bidfeedback') {
   // Paul's 2026-10-10 bidding feedback against the shipped rule: `--step`
   // (raise exactly one rung at a time), `--support` (step in once partner has

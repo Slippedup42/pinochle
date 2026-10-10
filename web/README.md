@@ -1343,6 +1343,37 @@ that recorded the old rules (#206's among them) run against them by name.
 Openings are not raises and are untouched, so an opener still names its own
 level and a partner-passed seat still opens at the floor.
 
+#### Why so many contracts went for 300 (`thirdBidderFloor`)
+
+Paul, 2026-10-10, from live play: "I am seeing a lot of bids go for 300." The
+two rules of the same day (`raiseStep`, `partnerSupport`) are not the cause -
+the share of contracts at 300 or under is the same with and without them
+(37.4% against 37.5%). The gate statistics (`cli.ts gates`) put it on the third
+seat's positional open: the seat that speaks after two passes opens at 300 "to
+deny the last player a cheap contract", and on the shipped build that was 24%
+of all contracts, made 51% of the time and netting -65 for the bidder (-187 on
+ceilings of 200-259). Nobody can contest it: the seat's own partner has
+already passed, so only the dealer is left to act.
+
+The floor under that open (`THIRD_BIDDER_FLOOR`, 200) was chosen in #255 by an
+A/B on the *Python* engine, against an unfloored rule, before #277, #283 and
+#308 moved the valuation, and its own comment said a re-measurement was owed.
+Re-measured on the TypeScript engine against 200 (margin per deal, two seeds
+each, 4000-5000 pairs, mirrored seats):
+
+| floor | 240 | 260 | 280 | 300 | 320 | 340 | 360 | 400 | never |
+|---|---|---|---|---|---|---|---|---|---|
+| margin | +21, +10 | +20, +28 | +27, +25 | +32, +30 | +30, +31 | +24, +23 | +16, +17 | +12, +14 | +10, +16 |
+
+A broad peak at 300-320 with every interval above zero. At 320 the opener's
+contracts at 300 or under fall from 56% to 25% and its make rate rises from 68%
+to 72%. **320 ships** (Paul, 2026-10-10): it is his own table rule ("assume
+anyone bidding has 320 or they should not bid") and cannot be told apart from
+300. The reverse of #255's number is explained, not contradicted: #255 measured
+200 against *no* floor and 320 against 200 on a valuation that has since been
+rebuilt twice. Python keeps 200 - see the note in `pinochle_rules.md` - so the
+two engines now differ here on purpose.
+
 ## Claiming the rest (#208)
 
 Paul's rule: if one seat holds all the trump and nobody else has any, stop

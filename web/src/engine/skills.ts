@@ -375,6 +375,11 @@ export interface SkillParams {
   readonly pushPolicy: PushPolicy
   readonly raiseStep: RaiseStep
   readonly partnerSupport: PartnerSupport
+  /** Ceiling a third-seat bidder needs to open positionally; must equal
+   *  `THIRD_BIDDER_FLOOR` in `bidding.ts` (a test pins it, since this file
+   *  cannot import that one). 320 ships (Paul, 2026-10-10); 200 is the
+   *  pre-#358 control. */
+  readonly thirdBidderFloor: number
 }
 
 /**
@@ -453,6 +458,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   pushPolicy: 'quality',
   raiseStep: 'step',
   partnerSupport: 'support',
+  thirdBidderFloor: 320,
 }
 
 /**

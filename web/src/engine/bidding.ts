@@ -314,7 +314,36 @@ export const ENDGAME_RESCUE_CEILING = 200
  * of those shifts and the direction stands, but the exact figures are of the
  * valuation as it was that day and a re-measurement is owed.
  */
-export const THIRD_BIDDER_FLOOR = 200
+export const THIRD_BIDDER_FLOOR = 320
+
+/*
+ * **Re-measured and moved 200 -> 320 on 2026-10-10 (Paul).** The paragraph above
+ * is the record of #255 and is left as written, but its premise is gone: it was
+ * run on the Python engine, against an unfloored rule, and predates #277, #283
+ * and #308, which the same paragraph says owed a re-measurement. Paul reported
+ * "a lot of bids going for 300" in live play, and the gate statistics put the
+ * cause here: on the shipped build the third seat's positional open was 24% of
+ * all contracts, at exactly 300, made 51% of the time and netting -65 for the
+ * bidder (-187 on ceilings 200-259), and nobody can contest it - the seat's own
+ * partner has already passed, so only the dealer is left to act.
+ *
+ * Paired A/B on the TypeScript engine, mirrored seats, margin per deal against
+ * the floor at 200 (two seeds each, 4000-5000 pairs):
+ *
+ *   240: +21, +10    260: +20, +28    280: +27, +25    300: +32, +30
+ *   320: +30, +31    340: +24, +23    360: +16, +17    400: +12, +14
+ *   never open positionally: +10, +16
+ *
+ * A broad peak at 300-320, every interval above zero, and at 320 the share of
+ * the opener's contracts at 300 or under falls from 56% to 25% while the make
+ * rate rises from 68% to 72%. 320 is Paul's own table rule ("assume anyone
+ * bidding has 320 or they should not bid") and is statistically
+ * indistinguishable from 300. The constant is no longer linked to
+ * `OPENER_THRESHOLD` by design, only equal to it by measurement. Python keeps
+ * 200: it is a research engine whose auctions feed the rollout dataset, and
+ * moving it re-baselines that dataset and the evaluator (see
+ * `test_ported_constants.py`).
+ */
 
 /**
  * The bid a seat must commit to once its partner has passed (#93/#95).
@@ -1137,7 +1166,7 @@ export function chooseBid(
       // TypeScript side coming back to it — #118's bug class, caught by a
       // player rather than by the parity net, which does not cover
       // `chooseBid`'s tiers.
-      return ceiling >= THIRD_BIDDER_FLOOR ? OPENING_BID : null
+      return ceiling >= SKILL_PARAMS[skill].thirdBidderFloor ? OPENING_BID : null
     }
 
     // Normal opener threshold (4th bidder / dealer — partner has already

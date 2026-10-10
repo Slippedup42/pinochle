@@ -110,7 +110,6 @@ PAIRS = (
     ("bidding.ts", "ENDGAME_SCORE_FLOOR", "ENDGAME_SCORE_FLOOR", SHARED),
     ("bidding.ts", "ENDGAME_OPP_SCORE_CAP", "ENDGAME_OPP_SCORE_CAP", SHARED),
     ("bidding.ts", "ENDGAME_RESCUE_CEILING", "ENDGAME_RESCUE_CEILING", SHARED),
-    ("bidding.ts", "THIRD_BIDDER_FLOOR", "THIRD_BIDDER_FLOOR", SHARED),
     ("skills.ts", "MELD_ONLY_TRICK_ESTIMATE", "MELD_ONLY_TRICK_ESTIMATE", SHARED),
     ("skills.ts", "MELD_ONLY_BID_NOISE", "EASY_BID_NOISE", SHARED),
     # -- Auction strategy TypeScript owns (#180/#206/#213); Python keeps copies.
@@ -132,6 +131,13 @@ EXCLUDED = {
         "TS-only auction rule (partnerSupport, Paul's 2026-10-10 feedback; "
         "see web/README.md). Python's choose_bid has no relative partner gate; "
         "auction strategy decided in TypeScript is TS-authoritative (#213).",
+    ("bidding.ts", "THIRD_BIDDER_FLOOR"):
+        "Deliberately divergent since 2026-10-10: TypeScript ships 320, "
+        "Python keeps 200. Re-measured on the TS engine (+30 a deal at 320 "
+        "against 200, a broad peak at 300-320; web/README.md). Python is the "
+        "research engine whose auctions feed rollout_dataset.csv, so moving "
+        "it re-baselines the dataset and the evaluator; that is a separate "
+        "decision (see pinochle_rules.md).",
     ("misdeal.ts", "MISDEAL_NINE_THRESHOLD"):
         "TS-only: pinochle_engine.py does not implement the misdeal "
         "redeal, so there is nothing to pair it with.",

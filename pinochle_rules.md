@@ -371,7 +371,12 @@ The other bidding thresholds are AI strategy too, not rules — this file
 does not state them, and a human seat is bound by none of them — but
 they are not divergent: `OPENER_THRESHOLD`, `DEFENSIVE_PUSH_FLOOR`,
 `THIRD_BIDDER_FLOOR` and the endgame constants hold the same values in
-both engines today.
+both engines today, with one exception: since 2026-10-10 the TypeScript
+`THIRD_BIDDER_FLOOR` is 320 and Python's is still 200. The TS number was
+re-measured (+30 a deal, a broad peak at 300-320, `web/README.md`);
+Python is the research engine whose auctions feed the rollout dataset, so
+moving it re-baselines the dataset and the evaluator and is a separate
+decision.
 
 ### The AI is real strategy, not placeholders
 
