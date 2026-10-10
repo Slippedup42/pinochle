@@ -1306,6 +1306,43 @@ TypeScript-authoritative (`CLAUDE.md`, #213). `'off'` is the control, and the
 partner-passed floor (320) still names the *level* only: the push relaxes the
 ceiling test in front of it, so an opponent at 330 is raised to 340.
 
+#### One rung at a time, and stepping in over a partner (`raiseStep`, `partnerSupport`)
+
+Paul's play feedback, 2026-10-10, two rules about how a raise reads at the
+table:
+
+1. **Never more than 10 at a time.** A jump says "I have a good hand" before
+   the hand has had to say it with its own bids; a stronger hand should simply
+   keep climbing. `PARTNER_PASSED_FLOOR` (320) and `PARTNER_RAISE_FLOOR` (340)
+   had been *levels* as well as gates, so a seat over an opponent's 300 with
+   its partner out bid 320 and a seat over its partner's 310 bid 340. They stay
+   as gates (the ceiling a seat needs to enter) and no longer set the level.
+2. **Don't bid against your own partner unless you would bid on your next
+   turn.** Over a partner's 300 be willing to reach 330; over a 310, 340. The
+   old rule lifted a seat's ceiling to 330 once its partner had bid, so a weak
+   hand stepped in over an opponent on the strength of its partner's bid. The
+   new gate is relative: the seat's own ceiling must reach 30 above its
+   partner's last bid, which agrees with 330 and 340 at exactly the bids they
+   were written for.
+
+Both are arms (`raiseStep: 'step'`, `partnerSupport: 'support'`) against the
+shipped rule, 5000 pairs a seed, mirrored seats, margin per deal:
+
+| arm | seed 1 | seed 2 | seed 3 |
+|---|---|---|---|
+| `step` | +5 (+2 to +7) | +4 (+1 to +7) | +6 (+4 to +9) |
+| `support` | +0 (-2 to +3) | +0 (-3 to +3) | +3 (-0 to +5) |
+| both | +5 (+2 to +9) | +4 (+1 to +8) | +8 (+5 to +12) |
+
+Neither costs anything: make rate and set rate move by a few tenths of a
+point in the good direction, and average bid stays 322-323. `support` is a
+null on its own, so it ships on the ruling rather than on the number, the way
+`feedAhead` and `protect` did; `step` is a small real gain. **Both ship**
+(Paul, 2026-10-10). `'jump'` and `'floor'` are the controls, and the tests
+that recorded the old rules (#206's among them) run against them by name.
+Openings are not raises and are untouched, so an opener still names its own
+level and a partner-passed seat still opens at the floor.
+
 ## Claiming the rest (#208)
 
 Paul's rule: if one seat holds all the trump and nobody else has any, stop

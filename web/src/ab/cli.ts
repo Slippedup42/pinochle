@@ -11,6 +11,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts partner --arm feedAhead --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts sluff --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts push --arm quality --pairs 2000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts bidfeedback --step --support --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts safe --pairs 400 --level expert
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts capacity --high expert --low easy
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts selftest --pairs 100
@@ -37,7 +38,7 @@
 // the rest of the engine, and paying for that with one cast is the cheaper
 // trade than a second tsconfig project.
 
-import type { PartnerRead, PushPolicy, SkillLevel, SkillParams } from '../engine/skills'
+import type { PartnerRead, PartnerSupport, PushPolicy, RaiseStep, SkillLevel, SkillParams } from '../engine/skills'
 import {
   AUTO_SET_AB_POLICIES,
   BID_AB_POLICIES,
@@ -45,6 +46,7 @@ import {
   FOLD_AB_POLICIES,
   OPENING_ANCHOR_AB_POLICIES,
   PLAY_AB_POLICIES,
+  bidFeedbackAbPolicies,
   partnerReadAbPolicies,
   pushAbPolicies,
   sluffAbPolicies,
@@ -177,6 +179,27 @@ if (command === 'fold') {
       labelA: arm,
       labelB: 'off',
       policies: pushAbPolicies(arm),
+    })
+    console.log(summarise(report, analyse(report, seed)))
+  }
+} else if (command === 'bidfeedback') {
+  // Paul's 2026-10-10 bidding feedback against the shipped rule: `--step`
+  // (raise exactly one rung at a time), `--support` (step in once partner has
+  // bid only on a hand that reaches 30 over partner's bid), or both.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const raiseStep: RaiseStep | undefined = args.includes('--step') ? 'step' : undefined
+  const partnerSupport: PartnerSupport | undefined = args.includes('--support') ? 'support' : undefined
+  if (raiseStep === undefined && partnerSupport === undefined) {
+    console.log('pass --step, --support, or both')
+  } else {
+    const label = [raiseStep, partnerSupport].filter(Boolean).join('+')
+    const report = runAb({
+      nPairs: pairs,
+      seed,
+      labelA: label,
+      labelB: 'shipped',
+      policies: bidFeedbackAbPolicies({ raiseStep, partnerSupport }),
     })
     console.log(summarise(report, analyse(report, seed)))
   }

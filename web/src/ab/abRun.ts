@@ -52,7 +52,9 @@
 
 import {
   type PartnerRead,
+  type PartnerSupport,
   type PushPolicy,
+  type RaiseStep,
   SHIPPED_PARAMS,
   SHIPPED_SKILL,
   SKILL_PARAMS,
@@ -94,6 +96,8 @@ const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
   sluffPolicy: 'shortest',
   looseKqPolicy: 'flat',
   pushPolicy: 'off',
+  raiseStep: 'jump',
+  partnerSupport: 'floor',
 })
 
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
@@ -224,6 +228,25 @@ export function pushAbPolicies(arm: PushPolicy): Record<string, SkillParams> {
   return {
     [STATIC_LEVEL]: { ...SHIPPED_PARAMS, pushPolicy: 'off' },
     [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, pushPolicy: arm },
+  }
+}
+
+/**
+ * Paul's 2026-10-10 bidding feedback, as arms against the shipped rule. Side A
+ * (`DISTILLED_LEVEL`) carries the arm; side B is `SHIPPED_PARAMS`. Pass only
+ * the field under test, or both for the two together.
+ */
+export function bidFeedbackAbPolicies(arms: {
+  raiseStep?: RaiseStep
+  partnerSupport?: PartnerSupport
+}): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS, raiseStep: 'jump', partnerSupport: 'floor' },
+    [DISTILLED_LEVEL]: {
+      ...SHIPPED_PARAMS,
+      raiseStep: arms.raiseStep ?? 'jump',
+      partnerSupport: arms.partnerSupport ?? 'floor',
+    },
   }
 }
 

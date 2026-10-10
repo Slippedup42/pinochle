@@ -28,6 +28,7 @@ import {
   type AuctionContext,
   COMPETITIVE_CEILING_FLOOR,
   DEFENSIVE_PUSH_FLOOR,
+  PARTNER_SUPPORT_MARGIN,
   ENDGAME_OPP_SCORE_CAP,
   ENDGAME_RESCUE_CEILING,
   ENDGAME_SCORE_FLOOR,
@@ -62,6 +63,7 @@ export type Branch =
   | 'push' // defensive push fired
   | 'partner-passed-floor' // partner out, ladder below 320: jumps to PARTNER_PASSED_FLOOR
   | 'partner-passed-gated' // same, competitive ceiling < PARTNER_PASSED_FLOOR
+  | 'partner-support-gated' // partner has bid; ceiling < partner's bid + PARTNER_SUPPORT_MARGIN
   | 'ladder-raise'
   | 'ladder-pass'
 
@@ -109,7 +111,14 @@ export function classifyBid(
   const partnerIsDealer = partner === context.dealer
   const partnerPassed = context.passedPlayers.includes(partner)
   const partnerHasBid = context.bidHistory.some((b) => b.player === partner)
-  const competitiveCeiling = partnerHasBid ? Math.max(ceiling, COMPETITIVE_CEILING_FLOOR) : ceiling
+  const support = params.partnerSupport === 'support'
+  const step = params.raiseStep === 'step'
+  const partnerTopBid = Math.max(
+    0,
+    ...context.bidHistory.filter((b) => b.player === partner).map((b) => b.amount),
+  )
+  const competitiveCeiling =
+    partnerHasBid && !support ? Math.max(ceiling, COMPETITIVE_CEILING_FLOOR) : ceiling
   const base = { ceiling, competitiveCeiling, partnerPassed, partnerHasBid }
 
   if (myScore >= ENDGAME_SCORE_FLOOR && oppScore < ENDGAME_OPP_SCORE_CAP) {
@@ -150,9 +159,14 @@ export function classifyBid(
     const myOwnBids = context.bidHistory.filter((b) => b.player === player).map((b) => b.amount)
     if (partnerBidCount >= 2) return { ...base, branch: 'partner-carrying', decision: null }
     if (lastBidder === partner && myOwnBids.length > 0 && currentBid > myOwnBids[myOwnBids.length - 1]) {
-      return ceiling < PARTNER_RAISE_FLOOR
+      const raiseGate = support ? currentBid + PARTNER_SUPPORT_MARGIN : PARTNER_RAISE_FLOOR
+      return ceiling < raiseGate
         ? { ...base, branch: 'partner-raise-gated', decision: null }
-        : { ...base, branch: 'partner-raise', decision: Math.max(PARTNER_RAISE_FLOOR, currentBid + minIncrement) }
+        : {
+            ...base,
+            branch: 'partner-raise',
+            decision: step ? currentBid + minIncrement : Math.max(PARTNER_RAISE_FLOOR, currentBid + minIncrement),
+          }
     }
     return { ...base, branch: 'own-bid-stands', decision: null }
   }
@@ -167,11 +181,19 @@ export function classifyBid(
     const staticVerdict = ceiling >= DEFENSIVE_PUSH_FLOOR
     const verdict = ask(pushLevel, staticVerdict)
     pushFields = { askedLevel: pushLevel, policyVerdict: verdict, staticVerdict, pushConsidered: true }
-    if (verdict) return { ...base, ...pushFields, branch: 'push', decision: pushLevel }
+    if (verdict) return { ...base, ...pushFields, branch: 'push', decision: step ? nextBid : pushLevel }
+  }
+  if (support && partnerHasBid && raiseCeiling < partnerTopBid + PARTNER_SUPPORT_MARGIN) {
+    return { ...base, ...pushFields, branch: 'partner-support-gated', decision: null }
   }
   if (partnerPassed && nextBid < PARTNER_PASSED_FLOOR) {
     return raiseCeiling >= PARTNER_PASSED_FLOOR
-      ? { ...base, ...pushFields, branch: 'partner-passed-floor', decision: PARTNER_PASSED_FLOOR }
+      ? {
+          ...base,
+          ...pushFields,
+          branch: 'partner-passed-floor',
+          decision: step ? nextBid : PARTNER_PASSED_FLOOR,
+        }
       : { ...base, ...pushFields, branch: 'partner-passed-gated', decision: null }
   }
   return nextBid <= raiseCeiling

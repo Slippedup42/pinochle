@@ -395,6 +395,19 @@ export const PARTNER_RAISE_FLOOR = 340
 export const COMPETITIVE_CEILING_FLOOR = 330
 
 /**
+ * How far above its partner's last bid a seat's own ceiling must reach before
+ * it steps in, under `partnerSupport: 'support'`. A TS-only auction rule from
+ * Paul's play feedback of 2026-10-10: over a partner's 300 the seat should be
+ * willing to bid 330, over a 310 should be willing to bid 340, because a seat
+ * that bids once its partner has "says it has a better hand" and should have
+ * one. It generalises the two absolute numbers it replaces,
+ * `COMPETITIVE_CEILING_FLOOR` (330 = 300 + 30) and `PARTNER_RAISE_FLOOR`
+ * (340 = 310 + 30), which agree with it at exactly the bids they were written
+ * for.
+ */
+export const PARTNER_SUPPORT_MARGIN = 30
+
+/**
  * The most a `pushPolicy: 'quality'` seat lifts its ceiling by to push an
  * opponent up a rung (see `PushPolicy`). The flat arms are `slack20` and
  * `slack40`, and this is the same number as the larger of them so the two read
@@ -949,9 +962,13 @@ function meldOnlyBid(
  *     - Otherwise my own (or partner's) bid already stands - no need to
  *       raise myself.
  *   - The opponents currently hold the bid: raise to current + minIncrement
- *     if that's within my ceiling (relaxed to at least
- *     COMPETITIVE_CEILING_FLOOR, 330, once my partner has bid, since a
- *     partner bid is a signal worth backing), else pass. `pushPolicy`
+ *     if that's within my ceiling, else pass. Once my partner has bid, step
+ *     in only if my ceiling reaches PARTNER_SUPPORT_MARGIN (30) above
+ *     partner's last bid (`partnerSupport: 'support'`; the 'floor' arm
+ *     lifted the ceiling to COMPETITIVE_CEILING_FLOOR, 330, instead). Every
+ *     raise is exactly one rung (`raiseStep: 'step'`); PARTNER_PASSED_FLOOR
+ *     and PARTNER_RAISE_FLOOR stay as gates but no longer set the level.
+ *     `pushPolicy`
  *     lifts that ceiling by up to PUSH_QUALITY_MAX_SLACK on a steady hand
  *     (long trump, Aces), so a seat can make the other side pay a rung it
  *     would not itself want to hold; never in the endgame.
@@ -1144,15 +1161,32 @@ export function chooseBid(
       // gate decides *whether* (#206 left it exactly where it was); the floor
       // decides *what*, and it is the same number, because a raise that cannot
       // reach PARTNER_RAISE_FLOOR is not worth making at all.
-      if (ceiling < PARTNER_RAISE_FLOOR) return null
-      return Math.max(PARTNER_RAISE_FLOOR, currentBid + minIncrement)
+      //
+      // `partnerSupport: 'support'` makes the gate relative to the bid being
+      // raised (a seat must reach 30 above it) and `raiseStep: 'step'` makes
+      // the level one rung; the 'floor'/'jump' pair is the rule above.
+      const raiseGate =
+        SKILL_PARAMS[skill].partnerSupport === 'support'
+          ? currentBid + PARTNER_SUPPORT_MARGIN
+          : PARTNER_RAISE_FLOOR
+      if (ceiling < raiseGate) return null
+      return SKILL_PARAMS[skill].raiseStep === 'step'
+        ? currentBid + minIncrement
+        : Math.max(PARTNER_RAISE_FLOOR, currentBid + minIncrement)
     }
 
     return null // our own bid already stands, no need to raise ourselves
   }
 
   // Opponent currently holds the bid.
-  const competitiveCeiling = partnerHasBid ? Math.max(ceiling, COMPETITIVE_CEILING_FLOOR) : ceiling
+  const support = SKILL_PARAMS[skill].partnerSupport === 'support'
+  const step = SKILL_PARAMS[skill].raiseStep === 'step'
+  const partnerTopBid = Math.max(
+    0,
+    ...context.bidHistory.filter((b) => b.player === partner).map((b) => b.amount),
+  )
+  const competitiveCeiling =
+    partnerHasBid && !support ? Math.max(ceiling, COMPETITIVE_CEILING_FLOOR) : ceiling
 
   const nextBid = currentBid + minIncrement
 
@@ -1188,13 +1222,23 @@ export function chooseBid(
   // falls through to the ordinary raise ladder below.
   const pushLevel = partnerPassed ? Math.max(nextBid, PARTNER_PASSED_FLOOR) : nextBid
   if (currentBid <= OPENING_BID && worthContract(pushLevel, ceiling >= DEFENSIVE_PUSH_FLOOR)) {
-    return pushLevel
+    // `'step'` still *asks* about the level this seat would have to commit to
+    // (`pushLevel`, the floor when partner is out) but bids one rung.
+    return step ? nextBid : pushLevel
+  }
+
+  // Partner has bid and an opponent has the contract: step in only with a hand
+  // that would carry on (`partnerSupport`). Partner has their own next turn.
+  if (support && partnerHasBid && raiseCeiling < partnerTopBid + PARTNER_SUPPORT_MARGIN) {
+    return null
   }
 
   // When partner passed, the bid must reach OPENER_THRESHOLD regardless of
-  // ceiling — so PARTNER_PASSED_FLOOR (320), not the next rung of the ladder.
+  // ceiling — so PARTNER_PASSED_FLOOR (320) is the gate. Under `'jump'` it is
+  // also the level; under `'step'` the level is the next rung.
   if (partnerPassed && nextBid < PARTNER_PASSED_FLOOR) {
-    return raiseCeiling >= PARTNER_PASSED_FLOOR ? PARTNER_PASSED_FLOOR : null
+    if (raiseCeiling < PARTNER_PASSED_FLOOR) return null
+    return step ? nextBid : PARTNER_PASSED_FLOOR
   }
   return nextBid <= raiseCeiling ? nextBid : null
 }

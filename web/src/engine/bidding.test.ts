@@ -56,6 +56,22 @@ const RUN_RANKS = ['A', '10', 'K', 'Q', 'J'] as const
  */
 const STATIC_LEVEL: SkillLevel = 'medium'
 const MELD_ONLY_LEVEL: SkillLevel = 'easy'
+
+/** The rule before Paul's 2026-10-10 feedback: floors set the level, and a
+ *  seat that has a partner bid lifts its ceiling to 330. Still an arm, so the
+ *  tests that recorded it keep running against it by name. */
+const LEGACY_AUCTION: Partial<SkillParams> = { raiseStep: 'jump', partnerSupport: 'floor' }
+
+/** Runs `fn` with `overrides` laid over the shipped seat, then restores it. */
+function withParams<T>(overrides: Partial<SkillParams>, fn: () => T): T {
+  const saved = SKILL_PARAMS[SHIPPED_SKILL]
+  SKILL_PARAMS[SHIPPED_SKILL] = { ...saved, ...overrides }
+  try {
+    return fn()
+  } finally {
+    SKILL_PARAMS[SHIPPED_SKILL] = saved
+  }
+}
 const pristine: Partial<Record<SkillLevel, SkillParams>> = {}
 beforeAll(() => {
   pristine[STATIC_LEVEL] = SKILL_PARAMS[STATIC_LEVEL]
@@ -772,8 +788,23 @@ describe('chooseBid', () => {
       })
       // Was 330 — `currentBid + minIncrement` — while the branch above it
       // required a 340-worthy ceiling to get here at all. #206 makes the number
-      // the rule already demanded the number that reaches the table.
-      expect(chooseBid(0, strongHand, 320, 10, context)).toBe(PARTNER_RAISE_FLOOR)
+      // the rule already demanded the number that reaches the table. That is
+      // the `'jump'` arm; the shipped `'step'` rule goes back to one rung.
+      withParams(LEGACY_AUCTION, () => {
+        expect(chooseBid(0, strongHand, 320, 10, context)).toBe(PARTNER_RAISE_FLOOR)
+      })
+    })
+
+    it('raises one rung, not to a floor, when the ceiling is 30 over the partner bid', () => {
+      const context = baseContext({
+        everBid: true,
+        bidHistory: [
+          { player: 0, amount: 300 },
+          { player: 1, amount: 310 },
+          { player: 2, amount: 320 },
+        ],
+      })
+      expect(chooseBid(0, strongHand, 320, 10, context)).toBe(330)
     })
 
     it('backs off a partner raise over my own earlier bid when the ceiling does not support it', () => {
@@ -841,7 +872,25 @@ describe('chooseBid', () => {
           { player: 1, amount: 320 },
         ],
       })
-      expect(chooseBid(0, belowOpenerHand, 320, 10, withPartnerBid)).toBe(330)
+      // The `'floor'` arm: a partner bid lifts a hand worth less than 330 to it.
+      withParams(LEGACY_AUCTION, () => {
+        expect(chooseBid(0, belowOpenerHand, 320, 10, withPartnerBid)).toBe(330)
+      })
+    })
+
+    it('steps in over an opponent after partner has bid only with a ceiling 30 over partner', () => {
+      // Paul, 2026-10-10: over a partner's 300 be willing to reach 330. This
+      // hand is under the opener threshold, so it stays out and leaves partner
+      // to defend their own bid.
+      const withPartnerBid = baseContext({
+        everBid: true,
+        bidHistory: [
+          { player: 2, amount: 300 },
+          { player: 1, amount: 320 },
+        ],
+      })
+      expect(bestBaseBid(belowOpenerHand, 0, 0).total).toBeLessThan(330)
+      expect(chooseBid(0, belowOpenerHand, 320, 10, withPartnerBid)).toBeNull()
     })
   })
 })
@@ -961,7 +1010,7 @@ describe('endgame protection (#256)', () => {
       const history = [{ player: 0 as PlayerIndex, amount: OPENING_BID }, { player: 2 as PlayerIndex, amount: 320 }]
       const endgame = ctx({ dealer: 3, everBid: true, passesSoFar: 0, passedPlayers: [], bidHistory: history })
       expect(chooseBid(0, richHand, 320, 10, endgame)).toBeNull()
-      expect(chooseBid(0, richHand, 320, 10, { ...endgame, scores: { 0: 0, 1: 0 } })).toBe(PARTNER_RAISE_FLOOR)
+      expect(chooseBid(0, richHand, 320, 10, { ...endgame, scores: { 0: 0, 1: 0 } })).toBe(330)
     })
 
     it('applies to both seats of the team, not only the one holding the good hand', () => {
@@ -1311,8 +1360,14 @@ describe('raising over a bid our own team already holds (#206)', () => {
     // Every one of these used to answer `partnerBid + 10` — 270 over a 260 —
     // while requiring a 340-worthy hand to say it.
     for (const partnerBid of [260, 270, 280, 290, 300, 310, 320, 330]) {
+      withParams(LEGACY_AUCTION, () => {
+        expect(chooseBid(2, strongHand, partnerBid, 10, afterPartnerRaise(partnerBid), SHIPPED_SKILL)).toBe(
+          PARTNER_RAISE_FLOOR,
+        )
+      })
+      // Shipped: one rung, because a ceiling this far over the bid says it.
       expect(chooseBid(2, strongHand, partnerBid, 10, afterPartnerRaise(partnerBid), SHIPPED_SKILL)).toBe(
-        PARTNER_RAISE_FLOOR,
+        partnerBid + 10,
       )
     }
   })
@@ -1329,14 +1384,22 @@ describe('raising over a bid our own team already holds (#206)', () => {
     // hand under OPENER_THRESHOLD backing off proves nothing about the raise.
     // That is why the fixture was re-pointed at the band rather than the
     // assertion relaxed when the baseline moved again.
-    expect(bestBaseBid(modestHand, 0, 0).total).toBeGreaterThanOrEqual(OPENER_THRESHOLD)
-    expect(bestBaseBid(modestHand, 0, 0).total).toBeLessThan(PARTNER_RAISE_FLOOR)
+    const modestCeiling = bestBaseBid(modestHand, 0, 0).total
+    expect(modestCeiling).toBeGreaterThanOrEqual(OPENER_THRESHOLD)
+    expect(modestCeiling).toBeLessThan(PARTNER_RAISE_FLOOR)
     for (const partnerBid of [260, 300, 330]) {
-      expect(chooseBid(2, modestHand, partnerBid, 10, afterPartnerRaise(partnerBid), SHIPPED_SKILL)).toBeNull()
+      withParams(LEGACY_AUCTION, () => {
+        expect(chooseBid(2, modestHand, partnerBid, 10, afterPartnerRaise(partnerBid), SHIPPED_SKILL)).toBeNull()
+      })
+      // Shipped: the gate is 30 over the bid being raised, so a hand that
+      // reaches it raises one rung and a hand that does not stays out.
+      expect(chooseBid(2, modestHand, partnerBid, 10, afterPartnerRaise(partnerBid), SHIPPED_SKILL)).toBe(
+        modestCeiling >= partnerBid + 30 ? partnerBid + 10 : null,
+      )
     }
   })
 
-  it('never places a bid over its own partner below the floor, on any hand', () => {
+  it('never places a bid over its own partner other than one rung up, on any hand', () => {
     const realRandom = Math.random
     Math.random = seededRandom(0x2060_2026)
     try {
@@ -1353,7 +1416,7 @@ describe('raising over a bid our own team already holds (#206)', () => {
           for (const level of SKILL_LEVELS.filter((l) => l !== MELD_ONLY_LEVEL)) {
             const out = chooseBid(2, hands[2], partnerBid, 10, afterPartnerRaise(partnerBid), level)
             if (out === null) continue
-            expect(out).toBeGreaterThanOrEqual(PARTNER_RAISE_FLOOR)
+            expect(out).toBe(partnerBid + 10)
           }
         }
       }
@@ -1362,10 +1425,11 @@ describe('raising over a bid our own team already holds (#206)', () => {
     }
   })
 
-  it('pushes opponents rather than handing them a cheap contract once the partner has bid', () => {
-    // The other half of Paul's report: passing here would let the opponents buy
-    // it low after both seats have shown cards. `Math.max(ceiling, 330)` already
-    // covers it, and this pins that down — a ceiling-150 hand still pushes.
+  it('pushes opponents with a weak hand once the partner has bid, on the floor arm', () => {
+    // The other half of the #206 report: passing here would let the opponents
+    // buy it low after both seats have shown cards. `Math.max(ceiling, 330)`
+    // covered it - a ceiling-150 hand still pushes. Paul's 2026-10-10 feedback
+    // replaces that with the 'support' gate (next test); this arm is the record.
     const weakHand = [
       new Card(Suit.Hearts, 'K', 1),
       new Card(Suit.Hearts, 'Q', 1),
@@ -1385,7 +1449,61 @@ describe('raising over a bid our own team already holds (#206)', () => {
         scores: { 0: 0, 1: 0 },
         passedPlayers: [],
       }
-      expect(chooseBid(2, weakHand, oppBid, 10, context, SHIPPED_SKILL)).toBe(oppBid + 10)
+      withParams(LEGACY_AUCTION, () => {
+        expect(chooseBid(2, weakHand, oppBid, 10, context, SHIPPED_SKILL)).toBe(oppBid + 10)
+      })
+    }
+  })
+
+  it('leaves the contest to a partner who has bid when its own hand cannot back them', () => {
+    // Paul, 2026-10-10: a team mate should not bid against the table on a hand
+    // that would not carry on. The same weak hand now stays out.
+    const weakHand = [
+      new Card(Suit.Hearts, 'K', 1),
+      new Card(Suit.Hearts, 'Q', 1),
+      new Card(Suit.Spades, 'A', 1),
+    ]
+    for (const oppBid of [310, 320, 330]) {
+      const context: AuctionContext = {
+        everBid: true,
+        passesSoFar: 0,
+        bidHistory: [
+          { player: 0 as PlayerIndex, amount: 300 },
+          { player: 1 as PlayerIndex, amount: oppBid },
+        ],
+        dealer: 3,
+        scores: { 0: 0, 1: 0 },
+        passedPlayers: [],
+      }
+      expect(chooseBid(2, weakHand, oppBid, 10, context, SHIPPED_SKILL)).toBeNull()
+    }
+  })
+
+  it('never raises more than one rung over any standing bid, on any hand', () => {
+    const realRandom = Math.random
+    Math.random = seededRandom(0x1010_2026)
+    try {
+      for (let i = 0; i < 200; i++) {
+        const deck = new Deck()
+        deck.shuffle()
+        const hands = deck.deal()
+        for (const standing of [300, 310, 320, 340]) {
+          for (const partnerPassed of [false, true]) {
+            const context: AuctionContext = {
+              everBid: true,
+              passesSoFar: 0,
+              bidHistory: [{ player: 1 as PlayerIndex, amount: standing }],
+              dealer: 3,
+              scores: { 0: 0, 1: 0 },
+              passedPlayers: partnerPassed ? [2 as PlayerIndex] : [],
+            }
+            const out = chooseBid(0, hands[0], standing, 10, context, SHIPPED_SKILL)
+            if (out !== null) expect(out).toBe(standing + 10)
+          }
+        }
+      }
+    } finally {
+      Math.random = realRandom
     }
   })
 })
