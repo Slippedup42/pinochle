@@ -11,6 +11,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts partner --arm feedAhead --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts sluff --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts push --arm quality --pairs 2000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts ladder --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts bidfeedback --step --support --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts safe --pairs 400 --level expert
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts capacity --high expert --low easy
@@ -47,6 +48,7 @@ import {
   OPENING_ANCHOR_AB_POLICIES,
   PLAY_AB_POLICIES,
   bidFeedbackAbPolicies,
+  ladderAbPolicies,
   partnerReadAbPolicies,
   pushAbPolicies,
   sluffAbPolicies,
@@ -82,6 +84,8 @@ const SELFTEST_ARMS: Record<string, { level: SkillLevel; policies: Record<string
   'hold-back': { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('holdBack') },
   likely: { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('likely') },
   protect: { level: DISTILLED_LEVEL, policies: sluffAbPolicies('protect') },
+  // The rung-value ladder doubled up against itself.
+  'value-ladder': { level: DISTILLED_LEVEL, policies: ladderAbPolicies('value') },
   // The push arms, each doubled up against itself - the table where both
   // teams push is the one whose set rates say what pushing does to the game.
   slack20: { level: DISTILLED_LEVEL, policies: pushAbPolicies('slack20') },
@@ -182,6 +186,18 @@ if (command === 'fold') {
     })
     console.log(summarise(report, analyse(report, seed)))
   }
+} else if (command === 'ladder') {
+  // The rung-value ladder against the shipped ceiling ladder.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: 'value',
+    labelB: 'ceiling',
+    policies: ladderAbPolicies('value'),
+  })
+  console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'bidfeedback') {
   // Paul's 2026-10-10 bidding feedback against the shipped rule: `--step`
   // (raise exactly one rung at a time), `--support` (step in once partner has

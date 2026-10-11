@@ -57,7 +57,9 @@ afterEach(() => {
   SKILL_PARAMS[SHIPPED_SKILL] = restore
 })
 function seat(pushPolicy: SkillParams['pushPolicy']) {
-  SKILL_PARAMS[SHIPPED_SKILL] = { ...SHIPPED_PARAMS, pushPolicy }
+  // The push slack lifts the *ceiling* ladder; the rung-value ladder has no
+  // ceiling to lift and answers for itself (rungValue.test.ts).
+  SKILL_PARAMS[SHIPPED_SKILL] = { ...SHIPPED_PARAMS, pushPolicy, ladderPolicy: 'ceiling' }
 }
 
 describe('pushQuality', () => {

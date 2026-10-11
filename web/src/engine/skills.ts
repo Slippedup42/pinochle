@@ -361,6 +361,24 @@ export type RaiseStep = 'jump' | 'step'
  */
 export type PartnerSupport = 'floor' | 'support'
 
+/**
+ * What decides whether a seat raises an opponent's standing bid by a rung.
+ *
+ *   `'ceiling'`  the rule that has always run the raise ladder: the next rung
+ *                must sit inside the seat's own Max Bid ceiling (lifted by
+ *                `pushPolicy`). A number against a number - it has no idea
+ *                what the rung is worth, only what the hand adds up to.
+ *   `'value'`    the rung-value model (`rungValue.ts`, fitted by
+ *                `fit_rung_value.py`): raise when
+ *                `s * T(raise) + (1 - s) * D(raise + step) > D(current)` -
+ *                what being left holding the contract costs against what
+ *                each rung costs the other side. A seat that pushes does so
+ *                for a stated reason, which is what Paul asked for on
+ *                2026-10-10, and the 320/330/340 floors stop being the thing
+ *                that decides it.
+ */
+export type LadderPolicy = 'ceiling' | 'value'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -375,6 +393,7 @@ export interface SkillParams {
   readonly pushPolicy: PushPolicy
   readonly raiseStep: RaiseStep
   readonly partnerSupport: PartnerSupport
+  readonly ladderPolicy: LadderPolicy
 }
 
 /**
@@ -396,6 +415,7 @@ export interface SkillParams {
  * | `pushPolicy`        | `quality`   | `off`, `slack20`, `slack40`            |
  * | `raiseStep`         | `step`      | `jump`                                 |
  * | `partnerSupport`    | `support`   | `floor`                                |
+ * | `ladderPolicy`      | `value`     | `ceiling`                              |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -453,6 +473,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   pushPolicy: 'quality',
   raiseStep: 'step',
   partnerSupport: 'support',
+  ladderPolicy: 'value',
 }
 
 /**

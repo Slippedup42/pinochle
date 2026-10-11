@@ -52,6 +52,7 @@
 
 import {
   type PartnerRead,
+  type LadderPolicy,
   type PartnerSupport,
   type PushPolicy,
   type RaiseStep,
@@ -98,6 +99,7 @@ const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
   pushPolicy: 'off',
   raiseStep: 'jump',
   partnerSupport: 'floor',
+  ladderPolicy: 'ceiling',
 })
 
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
@@ -247,6 +249,14 @@ export function bidFeedbackAbPolicies(arms: {
       raiseStep: arms.raiseStep ?? 'jump',
       partnerSupport: arms.partnerSupport ?? 'floor',
     },
+  }
+}
+
+/** The raise-ladder rule: side A carries `arm`, side B is the shipped one. */
+export function ladderAbPolicies(arm: LadderPolicy): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS, ladderPolicy: 'ceiling' },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, ladderPolicy: arm },
   }
 }
 
