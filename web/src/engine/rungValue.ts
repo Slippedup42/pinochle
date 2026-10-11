@@ -29,7 +29,14 @@
 
 import { computeBaseBid, computeTrickPotential } from './bidding'
 import type { Card, Suit } from './card'
-import { RUNG_DEFEND, RUNG_LEVELS, RUNG_STOP, RUNG_TAKE } from './rungValueModel'
+import {
+  RUNG_DEFEND,
+  RUNG_LEVELS,
+  RUNG_STOP,
+  RUNG_TAKE,
+  THIRD_OPEN_COEF,
+  THIRD_OPEN_THETA,
+} from './rungValueModel'
 
 const FIRST_LEVEL = RUNG_LEVELS[0]
 const LAST_LEVEL = RUNG_LEVELS[RUNG_LEVELS.length - 1]
@@ -95,6 +102,27 @@ export function defendValue(x: readonly number[], level: number): number {
 /** s(r): the chance an opponent who bid `r - step` cannot answer a bid of `r`. */
 export function stopProbability(level: number): number {
   return atLevel(level, (l) => RUNG_STOP[l], lerp)
+}
+
+/**
+ * The third seat's open, as the same kind of comparison: the value of opening
+ * at 300 minus the value of passing and leaving the dealer holding the
+ * contract (at its own opening if it has the hand, at the forced 250 if it has
+ * not), as a linear score of the hand. Fitted by `fit_rung_value.py fit-third`;
+ * the method and its proxies are in that file's docstring.
+ */
+export function thirdSeatScore(hand: readonly Card[], trump: Suit): number {
+  return dot(THIRD_OPEN_COEF, rungFeatures(hand, trump))
+}
+
+/**
+ * Whether the third seat opens at 300. The threshold is set so the model opens
+ * as often as the 320 floor does, which is where a ceiling floor measured
+ * best; the model's contribution is *which* hands, ranked by what they are
+ * worth against the dealer's alternative rather than by one number.
+ */
+export function thirdSeatOpens(hand: readonly Card[], trump: Suit): boolean {
+  return thirdSeatScore(hand, trump) >= THIRD_OPEN_THETA
 }
 
 export interface RungDecision {

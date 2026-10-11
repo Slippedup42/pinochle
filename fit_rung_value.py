@@ -49,7 +49,21 @@ off the opponent ceiling distribution.
 Usage:
     python fit_rung_value.py generate --hands 1000 --samples 200 --seed 101 --out data_101.jsonl
     python fit_rung_value.py fit data_*.jsonl            # writes the JSON and the TS
+    python fit_rung_value.py generate-third --hands 500 --samples 150 --seed 201 --out third_201.jsonl
+    python fit_rung_value.py fit-third third_*.jsonl     # adds the third-seat open to the JSON and TS
     python fit_rung_value.py check                       # TS matches the JSON
+
+The third-seat open (`fit-third`) uses the same tables' idea on a different
+decision. The third seat to speak - two passes in, nobody having bid - can
+open at 300 or pass. Passing leaves the dealer holding the contract: it opens
+at the 330 anchor if its ceiling reaches 320, and is stuck at the forced 250
+otherwise. Opening leaves us holding 300 unless the dealer pushes over it, in
+which case the dealer holds 310. Per sampled deal (our partner and the second
+seat conditioned on having passed - a ceiling under 320) both playouts of the
+same cards are run, and the value of opening minus the value of passing is
+regressed on the same seven hand features. A hand opens when that difference
+reaches a threshold set so the open rate equals the 320 floor's (its measured
+peak, `web/README.md`).
 """
 
 import argparse
@@ -136,6 +150,54 @@ def generate(hands, samples, seed, out_path):
             }) + "\n")
 
 
+# -- third-seat data ----------------------------------------------------------
+
+THIRD_PASS_CEILING = 320     # a first or second seat at or over this would have opened
+THIRD_DEALER_OPEN_CEILING = 320
+THIRD_DEALER_OPEN_LEVEL = 330   # the opening anchor
+THIRD_FORCED_LEVEL = 250
+THIRD_OPEN_LEVEL = 300
+THIRD_PUSH_LEVEL = 310
+THIRD_DEALER_PUSH_CEILING = 260  # a dealer this strong answers a 300 with a 310
+
+
+def generate_third(hands, deals, seed, out_path):
+    from pinochle_rules_engine import best_base_bid, compute_base_bid, compute_trick_potential
+    from pinochle_rollout import _build_rollout_players, rollout_deal, sample_bid_time_deal
+    rng = random.Random(seed)
+    with open(out_path, "w") as f:
+        for _ in range(hands):
+            hand = _random_hand(rng)
+            trump, ceiling, _ = best_base_bid(hand)
+            base, _, _ = compute_base_bid(hand, trump)
+            trick, _ = compute_trick_potential(hand, trump)
+            samples = []
+            tries = 0
+            while len(samples) < deals and tries < deals * 40:
+                tries += 1
+                dealt = sample_bid_time_deal(hand, rng=rng)
+                if (best_base_bid(dealt["partner"])[1] >= THIRD_PASS_CEILING
+                        or best_base_bid(dealt["opp_right"])[1] >= THIRD_PASS_CEILING):
+                    continue  # that seat would have opened; this auction did not happen
+                dealer_trump, dealer_ceiling, _ = best_base_bid(dealt["opp_left"])
+                seats = ["me", "opp_left", "partner", "opp_right"]
+                cards = [hand, dealt["opp_left"], dealt["partner"], dealt["opp_right"]]
+                ours = _build_rollout_players(seats, cards)
+                a = rollout_deal(ours, trump, 0, ours[0], passing="both")
+                theirs = _build_rollout_players(seats, cards)
+                b = rollout_deal(theirs, dealer_trump, 0, theirs[1], passing="both")
+                samples.append([dealer_ceiling, a["bidding_total"], a["defending_total"],
+                                b["bidding_total"], b["defending_total"]])
+            f.write(json.dumps({
+                "hand": " ".join(map(repr, hand)),
+                "trump": trump.value,
+                "ceiling": ceiling,
+                "base": base,
+                "trick": trick,
+                "deals": samples,
+            }) + "\n")
+
+
 # -- fitting -----------------------------------------------------------------
 
 def _features(row):
@@ -193,6 +255,47 @@ def fit(paths):
     return model
 
 
+def fit_third(paths):
+    """Open-minus-pass value as a linear score of the hand, and the threshold."""
+    import numpy as np
+    rows = []
+    for path in paths:
+        with open(path) as f:
+            rows.extend(json.loads(line) for line in f if line.strip())
+    X = np.array([_features(r) for r in rows])
+    ceilings = np.array([r["ceiling"] for r in rows])
+
+    def difference(row):
+        d = np.array(row["deals"], float)
+        dealer_ceiling, bt_me, dt_me, bt_d, dt_d = d.T
+        held = np.where(bt_me >= THIRD_OPEN_LEVEL, bt_me, -THIRD_OPEN_LEVEL) - dt_me
+        pushed = dt_d - np.where(bt_d >= THIRD_PUSH_LEVEL, bt_d, -THIRD_PUSH_LEVEL)
+        value_open = np.where(dealer_ceiling >= THIRD_DEALER_PUSH_CEILING, pushed, held)
+        level = np.where(dealer_ceiling >= THIRD_DEALER_OPEN_CEILING,
+                         THIRD_DEALER_OPEN_LEVEL, THIRD_FORCED_LEVEL)
+        value_pass = dt_d - np.where(bt_d >= level, bt_d, -level)
+        return float((value_open - value_pass).mean())
+
+    y = np.array([difference(r) for r in rows])
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    score = X @ beta
+    share = float((ceilings >= OPENER_FLOOR_FOR_THETA).mean())
+    theta = float(np.quantile(score, 1.0 - share))
+    r2 = 1.0 - float(((y - score) ** 2).sum() / ((y - y.mean()) ** 2).sum())
+    return {
+        "hands": len(rows),
+        "coef": [round(float(v), 4) for v in beta],
+        "theta": round(theta, 3),
+        "open_share": round(share, 4),
+        "r2": round(r2, 3),
+    }
+
+
+# The open rate the threshold is matched to: hands whose ceiling reaches the
+# 320 floor, which measured best (`web/README.md`).
+OPENER_FLOOR_FOR_THETA = 320
+
+
 # -- export ------------------------------------------------------------------
 
 TS_HEADER = """\
@@ -224,6 +327,15 @@ def build_ts(model):
         stop.append(f"  {level}: {model['stop'][str(level)]!r},")
     stop.append("}")
 
+    third = model.get("third_open")
+    third_ts = ""
+    if third:
+        third_ts = (
+            "\n"
+            + f"export const THIRD_OPEN_HANDS = {third['hands']}\n"
+            + f"export const THIRD_OPEN_COEF: readonly number[] = {json.dumps(third['coef'])}\n"
+            + f"export const THIRD_OPEN_THETA = {third['theta']!r}\n"
+        )
     return (
         TS_HEADER
         + f"export const RUNG_FEATURES = {json.dumps(model['features'])} as const\n"
@@ -232,6 +344,7 @@ def build_ts(model):
         + table("RUNG_TAKE", model["take"]) + "\n\n"
         + table("RUNG_DEFEND", model["defend"]) + "\n\n"
         + "\n".join(stop) + "\n"
+        + third_ts
     )
 
 
@@ -261,16 +374,41 @@ def main(argv=None):
     g.add_argument("--out", required=True)
     f = sub.add_parser("fit")
     f.add_argument("data", nargs="+")
+    g3 = sub.add_parser("generate-third")
+    g3.add_argument("--hands", type=int, default=500)
+    g3.add_argument("--samples", type=int, default=150)
+    g3.add_argument("--seed", type=int, default=1)
+    g3.add_argument("--out", required=True)
+    f3 = sub.add_parser("fit-third")
+    f3.add_argument("data", nargs="+")
     sub.add_parser("check")
     args = parser.parse_args(argv)
 
     if args.command == "generate":
         sys.path.insert(0, REPO_ROOT)
         generate(args.hands, args.samples, args.seed, args.out)
+    elif args.command == "generate-third":
+        sys.path.insert(0, REPO_ROOT)
+        generate_third(args.hands, args.samples, args.seed, args.out)
     elif args.command == "fit":
         paths = [p for pattern in args.data for p in glob.glob(pattern)]
-        write_outputs(fit(paths))
+        model = fit(paths)
+        if os.path.exists(MODEL_PATH):
+            with open(MODEL_PATH) as handle:
+                previous = json.load(handle)
+            if "third_open" in previous:
+                model["third_open"] = previous["third_open"]
+        write_outputs(model)
         print(f"fitted on {len(paths)} files; wrote {MODEL_PATH} and {TS_PATH}")
+    elif args.command == "fit-third":
+        paths = [p for pattern in args.data for p in glob.glob(pattern)]
+        with open(MODEL_PATH) as handle:
+            model = json.load(handle)
+        model["third_open"] = fit_third(paths)
+        write_outputs(model)
+        t = model["third_open"]
+        print(f"third-seat open fitted on {t['hands']} hands: R2 {t['r2']}, theta {t['theta']}, "
+              f"open share {t['open_share']}")
     else:
         ok = check()
         print("rungValueModel.ts matches rung_value_model.json" if ok else "DRIFTED")

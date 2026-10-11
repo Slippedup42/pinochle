@@ -54,6 +54,7 @@ import {
   type PartnerRead,
   type LadderPolicy,
   type PartnerSupport,
+  type ThirdSeatPolicy,
   type PushPolicy,
   type RaiseStep,
   SHIPPED_PARAMS,
@@ -100,6 +101,7 @@ const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
   raiseStep: 'jump',
   partnerSupport: 'floor',
   ladderPolicy: 'ceiling',
+  thirdSeatPolicy: 'floor',
 })
 
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
@@ -249,6 +251,14 @@ export function bidFeedbackAbPolicies(arms: {
       raiseStep: arms.raiseStep ?? 'jump',
       partnerSupport: arms.partnerSupport ?? 'floor',
     },
+  }
+}
+
+/** The third-seat open: side A carries `arm`, side B is the shipped rule. */
+export function thirdSeatAbPolicies(arm: ThirdSeatPolicy): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS, thirdSeatPolicy: 'floor' },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, thirdSeatPolicy: arm },
   }
 }
 
