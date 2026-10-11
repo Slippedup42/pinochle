@@ -68,6 +68,7 @@ import {
   scoreMelds,
 } from './melds'
 import { partnerOf, type TeamId, teamOf } from './round'
+import { rungDecision } from './rungValue'
 import type { PlayerIndex } from './trick'
 
 // -- Base Bid — the hand-strength number bidding decisions are built on, and
@@ -1231,6 +1232,15 @@ export function chooseBid(
   // that would carry on (`partnerSupport`). Partner has their own next turn.
   if (support && partnerHasBid && raiseCeiling < partnerTopBid + PARTNER_SUPPORT_MARGIN) {
     return null
+  }
+
+  // `ladderPolicy: 'value'`: the rung is taken when raising is worth more than
+  // letting the opponent keep what they have - see `rungValue.ts`. The partner-
+  // passed gate stays in front of it: the model's partner is a random hand,
+  // and one that has already passed is not.
+  if (SKILL_PARAMS[skill].ladderPolicy === 'value') {
+    if (partnerPassed && ceiling < PARTNER_PASSED_FLOOR) return null
+    return rungDecision(hand, bestTrump, currentBid, minIncrement).raise ? nextBid : null
   }
 
   // When partner passed, the bid must reach OPENER_THRESHOLD regardless of

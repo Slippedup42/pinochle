@@ -60,7 +60,11 @@ const MELD_ONLY_LEVEL: SkillLevel = 'easy'
 /** The rule before Paul's 2026-10-10 feedback: floors set the level, and a
  *  seat that has a partner bid lifts its ceiling to 330. Still an arm, so the
  *  tests that recorded it keep running against it by name. */
-const LEGACY_AUCTION: Partial<SkillParams> = { raiseStep: 'jump', partnerSupport: 'floor' }
+const LEGACY_AUCTION: Partial<SkillParams> = {
+  raiseStep: 'jump',
+  partnerSupport: 'floor',
+  ladderPolicy: 'ceiling',
+}
 
 /** Runs `fn` with `overrides` laid over the shipped seat, then restores it. */
 function withParams<T>(overrides: Partial<SkillParams>, fn: () => T): T {
@@ -81,7 +85,14 @@ beforeAll(() => {
   // anchor names 330 on a hand worth a contract, which is tested on its own
   // below and would otherwise turn every one of those assertions into a test
   // of the anchor.
-  SKILL_PARAMS[STATIC_LEVEL] = { ...SKILL_PARAMS[STATIC_LEVEL], bidPolicy: 'static', openingAnchor: 'floor' }
+  // `ladderPolicy: 'ceiling'`: the static slot is the pre-model baseline, and
+  // these tests are about the ceilings and floors it ladders on.
+  SKILL_PARAMS[STATIC_LEVEL] = {
+    ...SKILL_PARAMS[STATIC_LEVEL],
+    bidPolicy: 'static',
+    openingAnchor: 'floor',
+    ladderPolicy: 'ceiling',
+  }
   SKILL_PARAMS[MELD_ONLY_LEVEL] = {
     ...SKILL_PARAMS[MELD_ONLY_LEVEL],
     handValuation: 'meld_only',
@@ -853,7 +864,12 @@ describe('chooseBid', () => {
       // which is what let this assertion sit on the shipped seat unnoticed.
       const context = baseContext({ everBid: true, bidHistory: [opener] })
       expect(chooseBid(0, belowOpenerHand, OPENING_BID, 10, context, STATIC_LEVEL)).toBe(OPENING_BID + 10)
-      expect(chooseBid(0, belowOpenerHand, OPENING_BID, 10, context)).toBeNull()
+      // The evaluator declines the push; the shipped ladder (the rung-value
+      // model) then decides for itself, and a 260 hand raising one rung over a
+      // 300 is worth more than letting it stand.
+      withParams({ ladderPolicy: 'ceiling' }, () => {
+        expect(chooseBid(0, belowOpenerHand, OPENING_BID, 10, context)).toBeNull()
+      })
 
       // weakHand has ceiling 100 (a Dix at its best trump, no aces) < DEFENSIVE_PUSH_FLOOR (200) — truly hopeless
       const hopelessContext = baseContext({ everBid: true, bidHistory: [opener] })
@@ -863,7 +879,9 @@ describe('chooseBid', () => {
 
     it('relaxes the ceiling to at least 330 once my partner has bid', () => {
       const withoutPartnerBid = baseContext({ everBid: true, bidHistory: [{ player: 1, amount: 320 }] })
-      expect(chooseBid(0, belowOpenerHand, 320, 10, withoutPartnerBid)).toBeNull()
+      withParams({ ladderPolicy: 'ceiling' }, () => {
+        expect(chooseBid(0, belowOpenerHand, 320, 10, withoutPartnerBid)).toBeNull()
+      })
 
       const withPartnerBid = baseContext({
         everBid: true,

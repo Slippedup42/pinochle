@@ -41,6 +41,7 @@ import {
   pushSlackFor,
 } from '../engine/bidding'
 import { MIN_BID_INCREMENT, OPENING_BID } from '../engine/card'
+import { rungDecision } from '../engine/rungValue'
 import { shouldBid } from '../engine/evaluator'
 import { partnerOf, type TeamId, teamOf } from '../engine/round'
 import { SHIPPED_SKILL, SKILL_PARAMS, type SkillLevel } from '../engine/skills'
@@ -185,6 +186,14 @@ export function classifyBid(
   }
   if (support && partnerHasBid && raiseCeiling < partnerTopBid + PARTNER_SUPPORT_MARGIN) {
     return { ...base, ...pushFields, branch: 'partner-support-gated', decision: null }
+  }
+  if (params.ladderPolicy === 'value') {
+    if (partnerPassed && ceiling < PARTNER_PASSED_FLOOR) {
+      return { ...base, ...pushFields, branch: 'partner-passed-gated', decision: null }
+    }
+    return rungDecision(hand, bestTrump, currentBid, minIncrement).raise
+      ? { ...base, ...pushFields, branch: 'ladder-raise', decision: nextBid }
+      : { ...base, ...pushFields, branch: 'ladder-pass', decision: null }
   }
   if (partnerPassed && nextBid < PARTNER_PASSED_FLOOR) {
     return raiseCeiling >= PARTNER_PASSED_FLOOR

@@ -1343,6 +1343,58 @@ that recorded the old rules (#206's among them) run against them by name.
 Openings are not raises and are untouched, so an opener still names its own
 level and a partner-passed seat still opens at the floor.
 
+#### The rung-value ladder (`ladderPolicy`)
+
+Paul, 2026-10-10: the opponents should understand *why* they push above 320,
+not have the number hardcoded. The raise ladder was a number against a number
+(bid the next rung while it sits under the hand's ceiling, plus floors at 320,
+330 and 340). Asking the distilled evaluator at every rung was the obvious
+reasoned alternative and lost by -33 to -39 a deal: it answers "does taking
+this contract beat defending it *at the same level*", so it drops out of
+auctions and hands the opponent a cheap contract; it has no notion of what a
+raise does to the other side.
+
+`rungValue.ts` is that notion. Two value functions, in score-differential
+points, over seven hand features (Base Bid, trick potential, trump length,
+Aces, trump Aces, nines): `T(x, b)`, holding the contract at `b`, and
+`D(x, b)`, defending an opponent's at `b`; and `s(r)`, the chance an opponent
+who bid `r - 10` cannot answer `r`. A raise to `r` over a bid `c = r - 10` is
+worth taking when
+
+    s(r) * T(x, r) + (1 - s(r)) * D(x, r + 10)  >  D(x, c)
+
+what being left holding the contract costs against what each rung costs the
+other side. The tables come from 8000 random hands x 200 rollouts a side
+(`fit_rung_value.py`, real pass and trick-play logic, bid = 0 so every deal
+re-scores at any level); `T` fits at R² 0.8 on held-out hands and `D` at
+0.2-0.4, which is mostly the opponent's hand, not ours.
+
+What it says that the ceiling could not: the break-even for holding a contract
+saturates. Mean outcome flattens near 410, so a hand with a 450 ceiling is not
+worth 450 and a hand with a 275 ceiling is worth pushing to about 330. The
+ceiling ladder over-bids strong hands and under-pushes weak ones.
+
+Paired A/B against the ceiling ladder, 5000 pairs a seed, mirrored seats:
+
+| seed | margin per deal | made | set | bids over 380 |
+|---|---|---|---|---|
+| 1 | +32 (+23 to +39) | 68.3% vs 66.7% | 31.7% vs 33.3% | 4.6% vs 13.1% |
+| 2 | +40 (+32 to +49) | 68.1% vs 65.9% | 31.9% vs 34.1% | 4.5% vs 13.5% |
+| 3 | +41 (+32 to +49) | 68.4% vs 66.3% | 31.6% vs 33.7% | 4.4% vs 13.4% |
+
+The largest single gain this harness has recorded. It wins about as many
+contracts, makes more of them and is set less, and the gain comes from holding
+strong hands back from 390+ and pushing mid hands up, so contracts in 330-380
+rise from 33% to 43% of the winner's wins.
+
+Limits, stated so they are not rediscovered: the model's partner is a random
+hand, so the partner-passed gate (a ceiling of 320) stays in front of it; its
+`s` is read off the AI's own ceiling distribution, so how a human opponent
+answers a push is not measured; it prices points, not game-win probability, so
+endgame protection and the 750 guard stay as they were; and it does not touch
+the third seat's positional open, which is where most contracts at 300 come
+from. Refit with `python fit_rung_value.py generate ...` then `fit`.
+
 ## Claiming the rest (#208)
 
 Paul's rule: if one seat holds all the trump and nobody else has any, stop
