@@ -100,6 +100,8 @@ const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
   raiseStep: 'jump',
   partnerSupport: 'floor',
   ladderPolicy: 'ceiling',
+  thirdBidderFloor: 200,
+  thirdSeatPolicy: 'floor',
 })
 
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
@@ -257,6 +259,21 @@ export function ladderAbPolicies(arm: LadderPolicy): Record<string, SkillParams>
   return {
     [STATIC_LEVEL]: { ...SHIPPED_PARAMS, ladderPolicy: 'ceiling' },
     [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, ladderPolicy: arm },
+  }
+}
+
+export function thirdSeatModelAbPolicies(arm: 'inf' | 'p260'): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, thirdSeatPolicy: arm },
+  }
+}
+
+/** The third-seat positional-open floor, side A at `floor`, side B shipped. */
+export function thirdBidderFloorAbPolicies(floor: number): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, thirdBidderFloor: floor },
   }
 }
 

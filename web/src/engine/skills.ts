@@ -394,6 +394,10 @@ export interface SkillParams {
   readonly raiseStep: RaiseStep
   readonly partnerSupport: PartnerSupport
   readonly ladderPolicy: LadderPolicy
+  /** Ceiling a third-seat bidder needs to open positionally (see
+   *  `THIRD_BIDDER_FLOOR`). 200 ships; the other values are A/B arms. */
+  readonly thirdBidderFloor: number
+  readonly thirdSeatPolicy: 'floor' | 'inf' | 'p260'
 }
 
 /**
@@ -474,6 +478,8 @@ export const SHIPPED_PARAMS: SkillParams = {
   raiseStep: 'step',
   partnerSupport: 'support',
   ladderPolicy: 'value',
+  thirdBidderFloor: 200,
+  thirdSeatPolicy: 'floor',
 }
 
 /**

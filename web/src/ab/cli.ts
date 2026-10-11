@@ -48,6 +48,8 @@ import {
   OPENING_ANCHOR_AB_POLICIES,
   PLAY_AB_POLICIES,
   bidFeedbackAbPolicies,
+  thirdBidderFloorAbPolicies,
+  thirdSeatModelAbPolicies,
   ladderAbPolicies,
   partnerReadAbPolicies,
   pushAbPolicies,
@@ -196,6 +198,30 @@ if (command === 'fold') {
     labelA: 'value',
     labelB: 'ceiling',
     policies: ladderAbPolicies('value'),
+  })
+  console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'thirdmodel') {
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const arm = args.includes('--arm') && args[args.indexOf('--arm') + 1] === 'p260' ? 'p260' : 'inf'
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: `third-model-${arm}`,
+    labelB: 'third@200',
+    policies: thirdSeatModelAbPolicies(arm),
+  })
+  console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'third') {
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const floor = flag('floor', 260)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: `third@${floor}`,
+    labelB: 'third@200',
+    policies: thirdBidderFloorAbPolicies(floor),
   })
   console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'bidfeedback') {

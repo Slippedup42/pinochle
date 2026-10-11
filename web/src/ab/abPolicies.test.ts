@@ -41,6 +41,8 @@ const PRE_SHIP: SkillParams = {
   raiseStep: 'jump',
   partnerSupport: 'floor',
   ladderPolicy: 'ceiling',
+  thirdBidderFloor: 200,
+  thirdSeatPolicy: 'floor',
 }
 
 const LEVELS: SkillLevel[] = ['easy', 'medium', 'hard', 'proficient', 'expert']
