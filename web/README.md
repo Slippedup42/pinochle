@@ -1395,6 +1395,44 @@ endgame protection and the 750 guard stay as they were; and it does not touch
 the third seat's positional open, which is where most contracts at 300 come
 from. Refit with `python fit_rung_value.py generate ...` then `fit`.
 
+#### The third seat's open as a value comparison (`thirdSeatPolicy`)
+
+Paul, 2026-10-11: "a lot of bids going for 300". The cause was not the raise
+ladder. On the shipped build the third seat's positional open (two passes in,
+nobody having bid, open at 300 to deny the dealer a cheap contract) was 24% of
+all contracts, made 51% of the time and netting -65 for the bidder (-187 on
+ceilings of 200-259). It is uncontested by construction: that seat's partner has
+already passed, so only the dealer is left to act. Its floor, `THIRD_BIDDER_FLOOR`
+(200), was measured in #255 on the Python engine, before the valuation was
+rebuilt.
+
+The seat now answers it the way the ladder does: open when the hand is worth
+more held at 300 than passing and leaving the dealer the contract, at its own
+opening if it has the hand and at the forced 250 if it has not. Both playouts of
+the same cards are run per sampled deal (partner and the second seat conditioned
+on having passed), the difference is regressed on the same seven hand features,
+and the threshold is set so the seat opens as often as a 320 floor does, which
+is where a fixed floor measured best. `fit_rung_value.py fit-third` carries the
+method; R2 is 0.52.
+
+Fixed floors, margin per deal against 200 on the current engine (two seeds,
+4000 pairs): 260 +24/+28, 300 +30/+36, 320 +29/+34, 340 +23/+30, 360 +20/+22.
+The model, three seeds at 5000 pairs: **+36 (+28 to +45), +39 (+31 to +48),
++37 (+28 to +46)**, made 72.4% against 67.8%, set 27.6% against 32.2%. It beats
+the best fixed floor by a few points, inside the noise, and ranks hands by trump
+length and Aces as well as the ceiling.
+
+**The price, which is the whole story of "300s":** weak hands stop opening, so
+the auction passes out far more often and the dealer is left with the forced
+250, which it makes about 74% of the time. Winning bids at 250 go from 8% of
+contracts to 37%, bids at 300 from 29% to 11%, and the mean contract from 325 to
+309; 330-380 (36%) and 390+ (11.5%) do not move. Raising the forced bid only
+moves the number those uncontested contracts sit at: about half of all hands have
+nobody who wants to contest them. The AI plays better; the table gets fewer
+300s and more 250s. **Shipped on Paul's call, 2026-10-11.** `'floor'` is the
+control, and a rules change to what the dealer's forced contract is worth is the
+lever that would change the shape of the auction itself.
+
 ## Claiming the rest (#208)
 
 Paul's rule: if one seat holds all the trump and nobody else has any, stop

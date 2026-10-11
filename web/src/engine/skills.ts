@@ -379,6 +379,31 @@ export type PartnerSupport = 'floor' | 'support'
  */
 export type LadderPolicy = 'ceiling' | 'value'
 
+/**
+ * What decides whether the third seat to speak - two passes in, nobody having
+ * bid - opens at 300 to deny the dealer a cheap contract.
+ *
+ *   `'floor'`  the rule #255 shipped: open on any hand whose Max Bid ceiling
+ *              reaches `THIRD_BIDDER_FLOOR` (200). Measured against nothing
+ *              before the valuation was rebuilt, and uncontested by
+ *              construction: this seat's partner has already passed, so only
+ *              the dealer is left to act. On the shipped build it was a
+ *              quarter of all contracts, made half the time.
+ *   `'model'`  open when the hand is worth more held at 300 than passing and
+ *              leaving the dealer the contract - at its own opening if it has
+ *              the hand, at the forced 250 if it has not
+ *              (`thirdSeatOpens` in `rungValue.ts`, fitted by
+ *              `fit_rung_value.py fit-third`). Ranks hands by trump length and
+ *              Aces as well as the ceiling.
+ *
+ * Measured on identical deals, mirrored seats, 4000 pairs a seed, against
+ * `'floor'`: +35 / +41 / +35 a deal (a fixed floor of 320 gave +29 / +34 /
+ * +35). It makes weak hands stop opening, so far more auctions end at the
+ * forced 250 - the dealer's cheap contract - and the mean contract falls from
+ * 325 to 309. That is the price, and it is Paul's to weigh (`web/README.md`).
+ */
+export type ThirdSeatPolicy = 'floor' | 'model'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -394,6 +419,7 @@ export interface SkillParams {
   readonly raiseStep: RaiseStep
   readonly partnerSupport: PartnerSupport
   readonly ladderPolicy: LadderPolicy
+  readonly thirdSeatPolicy: ThirdSeatPolicy
 }
 
 /**
@@ -416,6 +442,7 @@ export interface SkillParams {
  * | `raiseStep`         | `step`      | `jump`                                 |
  * | `partnerSupport`    | `support`   | `floor`                                |
  * | `ladderPolicy`      | `value`     | `ceiling`                              |
+ * | `thirdSeatPolicy`   | `model`     | `floor`                                |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -474,6 +501,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   raiseStep: 'step',
   partnerSupport: 'support',
   ladderPolicy: 'value',
+  thirdSeatPolicy: 'model',
 }
 
 /**

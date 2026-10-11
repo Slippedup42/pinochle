@@ -12,6 +12,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts sluff --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts push --arm quality --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts ladder --pairs 2000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts thirdseat --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts bidfeedback --step --support --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts safe --pairs 400 --level expert
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts capacity --high expert --low easy
@@ -49,6 +50,7 @@ import {
   PLAY_AB_POLICIES,
   bidFeedbackAbPolicies,
   ladderAbPolicies,
+  thirdSeatAbPolicies,
   partnerReadAbPolicies,
   pushAbPolicies,
   sluffAbPolicies,
@@ -186,6 +188,18 @@ if (command === 'fold') {
     })
     console.log(summarise(report, analyse(report, seed)))
   }
+} else if (command === 'thirdseat') {
+  // The third seat's open as a value comparison against the ceiling floor.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: 'model',
+    labelB: 'floor',
+    policies: thirdSeatAbPolicies('model'),
+  })
+  console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'ladder') {
   // The rung-value ladder against the shipped ceiling ladder.
   const pairs = flag('pairs', 400)

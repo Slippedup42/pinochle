@@ -41,7 +41,7 @@ import {
   pushSlackFor,
 } from '../engine/bidding'
 import { MIN_BID_INCREMENT, OPENING_BID } from '../engine/card'
-import { rungDecision } from '../engine/rungValue'
+import { rungDecision, thirdSeatOpens } from '../engine/rungValue'
 import { shouldBid } from '../engine/evaluator'
 import { partnerOf, type TeamId, teamOf } from '../engine/round'
 import { SHIPPED_SKILL, SKILL_PARAMS, type SkillLevel } from '../engine/skills'
@@ -147,7 +147,7 @@ export function classifyBid(
     const asked = { askedLevel: floorLevel, policyVerdict: opens, staticVerdict }
     if (opens) return { ...base, ...asked, branch: 'open', decision: openAt }
     if (context.passesSoFar === 2) {
-      return ceiling >= THIRD_BIDDER_FLOOR
+      return (params.thirdSeatPolicy === 'model' ? thirdSeatOpens(hand, bestTrump) : ceiling >= THIRD_BIDDER_FLOOR)
         ? { ...base, ...asked, branch: 'third-positional', decision: OPENING_BID }
         : { ...base, ...asked, branch: 'third-decline', decision: null }
     }

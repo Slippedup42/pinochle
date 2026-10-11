@@ -67,3 +67,7 @@ export const RUNG_STOP: Readonly<Record<number, number>> = {
   430: 0.1437,
   440: 0.1359,
 }
+
+export const THIRD_OPEN_HANDS = 6000
+export const THIRD_OPEN_COEF: readonly number[] = [-210.4039, 0.2109, -0.244, 35.7219, 16.4366, -14.8858, 2.4565]
+export const THIRD_OPEN_THETA = -25.572

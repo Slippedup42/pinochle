@@ -8,8 +8,17 @@ import { describe, expect, it } from 'vitest'
 import { bestBaseBid, chooseBid, type AuctionContext } from './bidding'
 import { Card, Deck, Suit } from './card'
 import { RUN_RANKS } from './melds'
-import { defendValue, rungDecision, rungFeatures, stopProbability, takeValue } from './rungValue'
+import {
+  defendValue,
+  rungDecision,
+  rungFeatures,
+  stopProbability,
+  takeValue,
+  thirdSeatOpens,
+  thirdSeatScore,
+} from './rungValue'
 import { RUNG_FEATURES, RUNG_LEVELS } from './rungValueModel'
+import { SHIPPED_SKILL, SKILL_PARAMS } from './skills'
 import type { PlayerIndex } from './trick'
 
 const H = Suit.Hearts
@@ -114,6 +123,38 @@ describe('rungDecision', () => {
     expect(d.raiseValue).toBeCloseTo(s * takeValue(x, 350) + (1 - s) * defendValue(x, 360), 9)
     expect(d.passValue).toBeCloseTo(defendValue(x, 340), 9)
     expect(d.raise).toBe(d.raiseValue > d.passValue)
+  })
+})
+
+describe('the third seat open', () => {
+  it('opens on a strong hand and passes a hopeless one', () => {
+    expect(thirdSeatOpens(STRONG, H)).toBe(true)
+    expect(thirdSeatOpens(WEAK, H)).toBe(false)
+  })
+
+  it('scores a strong hand above a weak one', () => {
+    expect(thirdSeatScore(STRONG, H)).toBeGreaterThan(thirdSeatScore(WEAK, H))
+  })
+
+  it('is what the shipped third seat answers, and the floor is the control', () => {
+    const third: AuctionContext = {
+      everBid: false,
+      passesSoFar: 2,
+      bidHistory: [],
+      dealer: 1,
+      scores: { 0: 0, 1: 0 },
+      passedPlayers: [2, 3],
+    }
+    // The static opener, so the positional tier is what answers and not the
+    // evaluator, which opens on its own judgement before the tier is reached.
+    const saved = SKILL_PARAMS[SHIPPED_SKILL]
+    try {
+      SKILL_PARAMS[SHIPPED_SKILL] = { ...saved, bidPolicy: 'static', openingAnchor: 'floor' }
+      expect(chooseBid(0, STRONG, 290, 10, third)).toBeGreaterThanOrEqual(300)
+      expect(chooseBid(0, WEAK, 290, 10, third)).toBeNull()
+    } finally {
+      SKILL_PARAMS[SHIPPED_SKILL] = saved
+    }
   })
 })
 

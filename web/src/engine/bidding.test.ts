@@ -92,6 +92,7 @@ beforeAll(() => {
     bidPolicy: 'static',
     openingAnchor: 'floor',
     ladderPolicy: 'ceiling',
+    thirdSeatPolicy: 'floor',
   }
   SKILL_PARAMS[MELD_ONLY_LEVEL] = {
     ...SKILL_PARAMS[MELD_ONLY_LEVEL],

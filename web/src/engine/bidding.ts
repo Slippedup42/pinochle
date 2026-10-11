@@ -68,7 +68,7 @@ import {
   scoreMelds,
 } from './melds'
 import { partnerOf, type TeamId, teamOf } from './round'
-import { rungDecision } from './rungValue'
+import { rungDecision, thirdSeatOpens } from './rungValue'
 import type { PlayerIndex } from './trick'
 
 // -- Base Bid — the hand-strength number bidding decisions are built on, and
@@ -1138,7 +1138,14 @@ export function chooseBid(
       // TypeScript side coming back to it — #118's bug class, caught by a
       // player rather than by the parity net, which does not cover
       // `chooseBid`'s tiers.
-      return ceiling >= THIRD_BIDDER_FLOOR ? OPENING_BID : null
+      // `thirdSeatPolicy`: 'model' compares the value of holding 300 with the
+      // value of leaving the dealer the contract; 'floor' is #255's ceiling
+      // test and the A/B control.
+      const opensThird =
+        SKILL_PARAMS[skill].thirdSeatPolicy === 'model'
+          ? thirdSeatOpens(hand, bestTrump)
+          : ceiling >= THIRD_BIDDER_FLOOR
+      return opensThird ? OPENING_BID : null
     }
 
     // Normal opener threshold (4th bidder / dealer — partner has already

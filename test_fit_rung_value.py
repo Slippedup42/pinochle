@@ -52,3 +52,13 @@ def test_stop_probabilities_are_probabilities():
 
 def test_the_generated_file_is_where_the_consumer_imports_it_from():
     assert os.path.exists(fit_rung_value.TS_PATH)
+
+
+def test_the_third_seat_open_is_in_the_model_and_the_generated_file():
+    model = _model()
+    third = model["third_open"]
+    assert len(third["coef"]) == len(model["features"])
+    assert 0.0 < third["open_share"] < 1.0
+    with open(fit_rung_value.TS_PATH) as f:
+        text = f.read()
+    assert "THIRD_OPEN_COEF" in text and "THIRD_OPEN_THETA" in text
