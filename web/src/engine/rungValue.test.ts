@@ -136,7 +136,7 @@ describe('the third seat open', () => {
     expect(thirdSeatScore(STRONG, H)).toBeGreaterThan(thirdSeatScore(WEAK, H))
   })
 
-  it('is what the shipped third seat answers, and the floor is the control', () => {
+  it('the model arm passes a hand the floor still opens', () => {
     const third: AuctionContext = {
       everBid: false,
       passesSoFar: 2,
@@ -149,9 +149,14 @@ describe('the third seat open', () => {
     // evaluator, which opens on its own judgement before the tier is reached.
     const saved = SKILL_PARAMS[SHIPPED_SKILL]
     try {
-      SKILL_PARAMS[SHIPPED_SKILL] = { ...saved, bidPolicy: 'static', openingAnchor: 'floor' }
+      SKILL_PARAMS[SHIPPED_SKILL] = { ...saved, bidPolicy: 'static', openingAnchor: 'floor', thirdSeatPolicy: 'model' }
       expect(chooseBid(0, STRONG, 290, 10, third)).toBeGreaterThanOrEqual(300)
       expect(chooseBid(0, WEAK, 290, 10, third)).toBeNull()
+      // 2026-10-13: the floor ships again. It opens the same weak hand at 300,
+      // which is the light open the AIs that act before a human no longer make
+      // anywhere else, and the reason the model was rolled back.
+      SKILL_PARAMS[SHIPPED_SKILL] = { ...saved, bidPolicy: 'static', openingAnchor: 'floor', thirdSeatPolicy: 'floor' }
+      expect(chooseBid(0, WEAK, 290, 10, third)).toBe(300)
     } finally {
       SKILL_PARAMS[SHIPPED_SKILL] = saved
     }
