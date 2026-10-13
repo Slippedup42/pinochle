@@ -400,7 +400,13 @@ export type LadderPolicy = 'ceiling' | 'value'
  * `'floor'`: +35 / +41 / +35 a deal (a fixed floor of 320 gave +29 / +34 /
  * +35). It makes weak hands stop opening, so far more auctions end at the
  * forced 250 - the dealer's cheap contract - and the mean contract falls from
- * 325 to 309. That is the price, and it is Paul's to weigh (`web/README.md`).
+ * 325 to 309.
+ *
+ * **Shipped 2026-10-11, rolled back 2026-10-13.** The margin is real and it is
+ * a measure of how strong the AI is, not of how the table plays: with the third
+ * seat passing mid hands, the AIs that act before a human only open on a hand
+ * that reaches 320 and the human takes the contract at 300 almost every time
+ * (`web/README.md`). `'floor'` ships again and `'model'` stays as an arm.
  */
 export type ThirdSeatPolicy = 'floor' | 'model'
 
@@ -442,7 +448,7 @@ export interface SkillParams {
  * | `raiseStep`         | `step`      | `jump`                                 |
  * | `partnerSupport`    | `support`   | `floor`                                |
  * | `ladderPolicy`      | `value`     | `ceiling`                              |
- * | `thirdSeatPolicy`   | `model`     | `floor`                                |
+ * | `thirdSeatPolicy`   | `floor`     | `model`                                |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -501,7 +507,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   raiseStep: 'step',
   partnerSupport: 'support',
   ladderPolicy: 'value',
-  thirdSeatPolicy: 'model',
+  thirdSeatPolicy: 'floor',
 }
 
 /**

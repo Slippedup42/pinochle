@@ -372,14 +372,12 @@ does not state them, and a human seat is bound by none of them — but
 they are not divergent: `OPENER_THRESHOLD`, `DEFENSIVE_PUSH_FLOOR`,
 `THIRD_BIDDER_FLOOR` and the endgame constants hold the same values in
 both engines today, with one exception in behaviour rather than in a
-constant: the TypeScript third seat no longer uses `THIRD_BIDDER_FLOOR`
-at all. Since 2026-10-11 it opens when a fitted value comparison says
-holding 300 beats leaving the dealer the contract
-(`thirdSeatPolicy: 'model'`, `rungValue.ts`; +36 to +39 a deal,
-`web/README.md`). The constant stays at 200 in both engines as the A/B
-control, and Python's `choose_bid` still uses it; porting the model would
-re-baseline the rollout dataset and the evaluator and is a separate
-decision.
+constant: the TypeScript third seat has an alternative to
+`THIRD_BIDDER_FLOOR`, a fitted value comparison (`thirdSeatPolicy:
+'model'`, `rungValue.ts`; +36 to +39 a deal, `web/README.md`). It shipped
+on 2026-10-11 and was rolled back on 2026-10-13 because it made the table
+passive to play against, so the floor of 200 is what runs in both
+engines again and the model is an arm only.
 
 ### The AI is real strategy, not placeholders
 

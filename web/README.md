@@ -1429,9 +1429,21 @@ contracts to 37%, bids at 300 from 29% to 11%, and the mean contract from 325 to
 309; 330-380 (36%) and 390+ (11.5%) do not move. Raising the forced bid only
 moves the number those uncontested contracts sit at: about half of all hands have
 nobody who wants to contest them. The AI plays better; the table gets fewer
-300s and more 250s. **Shipped on Paul's call, 2026-10-11.** `'floor'` is the
-control, and a rules change to what the dealer's forced contract is worth is the
-lever that would change the shape of the auction itself.
+300s and more 250s.
+
+**Shipped 2026-10-11 and rolled back 2026-10-13 (Paul).** Played, it was worse:
+"I got the bid almost every time at 300, the computer only bids above 300 if
+they have a guarantee." That is the mechanism, and the margin hid it. The first
+and second seat open only on a hand that reaches 320 (Paul's own table rule),
+so the third seat's light open was the one place a mid hand still bid. With it
+gone, the AIs that act before a human are all strong-hand-only and the human
+takes 300 uncontested. A proxy that opens 300 on any hand and meets a bid up to
+320 wins 33% of auctions at exactly 300 with the model against 25% with the
+floor, and the AIs raise a human's 300 91% of the time *once they get a turn*,
+so the passivity is in the seats that act first. `'floor'` ships again and
+`'model'` stays as an arm. The lesson is recorded here because it is a lesson
+about the harness: paired margin per deal measures strength against the same
+AI, and a change can win it by making the table worse to play.
 
 ## Claiming the rest (#208)
 
