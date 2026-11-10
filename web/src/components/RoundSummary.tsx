@@ -32,6 +32,17 @@ export function RoundSummary({ data, ledger, onContinue }: RoundSummaryProps) {
   // scoreRound() only ever produces a negative net score for the bidding
   // team, and only when they fell short of their bid ("going set").
   const wentSet = roundScoreByTeam[bidWinnerTeam] < 0
+  // A team that took no trick loses its meld (pinochle_rules.md "Contract
+  // Check"). Without a line saying so the table would read 100 meld + 0
+  // tricks = 0, which looks like a bug. Derived from the numbers rather than
+  // passed in: a team that was not set and still scored less than meld +
+  // tricks can only have lost its meld this way.
+  const meldLostBy = TEAM_IDS.filter(
+    (team) =>
+      roundScoreByTeam[team] >= 0 &&
+      meldPointsByTeam[team] > 0 &&
+      roundScoreByTeam[team] < meldPointsByTeam[team] + trickPointsByTeam[team],
+  )
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black/60 p-4">
@@ -43,6 +54,11 @@ export function RoundSummary({ data, ledger, onContinue }: RoundSummaryProps) {
           {teamNames[bidWinnerTeam]} bid {bid} and{' '}
           {wentSet ? 'went set' : 'made their contract'}.
         </p>
+        {meldLostBy.map((team) => (
+          <p key={team} className="mt-1 text-sm text-neutral-600">
+            {teamNames[team]} took no tricks, so their meld doesn't count.
+          </p>
+        ))}
 
         <table className="mt-4 w-full text-sm">
           <thead>

@@ -834,7 +834,7 @@ def run_simultaneous_pass(bid_winner, partner, trump_suit):
 
 
 def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_offset=0,
-                 forced_lead_card=None):
+                 forced_lead_card=None, tricks_won=None):
     """
     Plays `num_tricks` tricks starting with players[leader_index] on lead,
     via each player's real choose_card (-> choose_lead_card/
@@ -856,6 +856,14 @@ def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_
     THIS specific candidate card") can force one hypothetical lead through
     the real rollout machinery without duplicating play_tricks' trick-loop
     logic just to inject a single card.
+
+    `tricks_won`, if given, is a dict this call adds to: one per trick won,
+    keyed by team. Round passes it because scoring needs to know whether a
+    team took any trick at all (a team that takes none loses its meld,
+    pinochle_rules.md "Contract Check"), and a 0-point trick still counts -
+    which trick points cannot tell apart from no trick. An out-parameter
+    rather than a second return value so the rollout callers, which only
+    want points, are untouched.
 
     Returns {team: trick_points} for just the tricks played here.
     """
@@ -890,6 +898,8 @@ def play_tricks(players, trump, leader_index, tracker, num_tricks=12, trick_num_
         if trick_num_offset + i == 11:
             points += 10  # last trick bonus
         trick_points[winner.team] += points
+        if tricks_won is not None:
+            tricks_won[winner.team] = tricks_won.get(winner.team, 0) + 1
         leader_index = players.index(winner)
 
     return trick_points
@@ -954,6 +964,10 @@ class Team:
         self.score = 0
         self.meld_points = 0
         self.trick_points = 0
+        # Tricks won this round. Scoring reads it for the "take a trick to
+        # save your meld" rule - trick_points alone cannot, because a trick
+        # of Queens, Jacks and 9s is worth 0 and still saves the meld.
+        self.tricks_taken = 0
         # Per-round bookkeeping, stamped by Round.run() (see below) right
         # after the bid winner/trump are determined and before passing -
         # existing tiers (Player/EasyPlayer) never read these, but
@@ -1199,6 +1213,7 @@ class Round:
         round_scores = {}
         for team in self.teams:
             team.trick_points = 0
+            team.tricks_taken = 0
             if team is bidding_team:
                 round_scores[team] = -self.current_bid
             else:
@@ -1208,10 +1223,15 @@ class Round:
     def _trick_taking_loop(self):
         """Runs 12 tricks, returns {team: trick_points}."""
         leader_index = self.players.index(self.bid_winner)
-        trick_points = play_tricks(self.players, self.trump_suit, leader_index, self.tracker)
+        tricks_won = {}
+        trick_points = play_tricks(
+            self.players, self.trump_suit, leader_index, self.tracker,
+            tricks_won=tricks_won,
+        )
 
         for team in self.teams:
             team.trick_points = trick_points[team]
+            team.tricks_taken = tricks_won.get(team, 0)
 
         return trick_points
 
@@ -1220,11 +1240,18 @@ class Round:
         Apply contract check: if bid_winner's team total < bid, they
         score -bid; defenders keep their own meld + trick points
         regardless.
+
+        A team that took no trick scores no meld (pinochle_rules.md
+        "Contract Check"), read from `team.tricks_taken`, which
+        `_trick_taking_loop` sets. In practice only the defenders can lose
+        anything to it - a bidding team with no trick totals 0 and is set
+        regardless.
         """
         round_scores = {}
         bidding_team = self.bid_winner.team
         for team in self.teams:
-            total = team.meld_points + trick_points[team]
+            meld = team.meld_points if team.tricks_taken > 0 else 0
+            total = meld + trick_points[team]
             if team is bidding_team and total < self.current_bid:
                 round_scores[team] = -self.current_bid
             else:

@@ -318,6 +318,7 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
       const roundScore = scoreRound({
         meldPointsByTeam: { ...meldPoints, [bidWinnerTeam]: 0 } as Record<TeamId, number>,
         trickPointsByTeam: { 0: 0, 1: 0 },
+        trickWinners: null,
         bidWinnerTeam,
         bid,
       })
@@ -359,7 +360,7 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
     // post-pass, post-meld hand the melds were scored from.
     const trumpMemories = newTrumpMemories(state.hands, trumpSuit, (seat) => memoryLevel ?? seatSkills[seat])
     let cardsPlayed = 0
-    const { trickPointsByTeam } = playTrickTakingPhase(
+    const { trickPointsByTeam, trickWinners } = playTrickTakingPhase(
       state.hands,
       trumpSuit,
       bidWinner,
@@ -400,7 +401,7 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
       },
     )
 
-    const roundScore = scoreRound({ meldPointsByTeam: meldPoints, trickPointsByTeam, bidWinnerTeam, bid })
+    const roundScore = scoreRound({ meldPointsByTeam: meldPoints, trickPointsByTeam, trickWinners, bidWinnerTeam, bid })
     if (stats !== undefined) {
       const side = stats[bidWinnerTeam]
       side.contracts++

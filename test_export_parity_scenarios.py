@@ -171,16 +171,18 @@ def test_every_recorded_play_was_legal_and_every_trick_resolves_as_recorded():
 
 def test_the_recorded_round_score_follows_the_contract_rule():
     """
-    `Round._score_round`, restated over the recorded totals: the bidding team
-    takes -bid if meld + tricks falls short, the defenders always keep their own.
-    Stated here rather than imported because it is the rule the TS `scoreRound`
-    is being held to, and a helper both sides call would make the two agree by
-    construction.
+    `Round._score_round`, restated over the recorded totals: a team that took no
+    trick scores no meld, the bidding team takes -bid if meld + tricks falls
+    short, and the defenders keep their own. Stated here rather than imported
+    because it is the rule the TS `scoreRound` is being held to, and a helper
+    both sides call would make the two agree by construction.
     """
     for scenario in SCENARIOS:
         bidding_team = team_of(scenario["bid_winner"])
+        winners = [team_of(trick["winner"]) for trick in scenario["tricks"]]
         for team in (0, 1):
-            total = scenario["meld_by_team"][team] + scenario["trick_points_by_team"][team]
+            meld = scenario["meld_by_team"][team] if team in winners else 0
+            total = meld + scenario["trick_points_by_team"][team]
             expected = -scenario["bid"] if team == bidding_team and total < scenario["bid"] else total
             assert scenario["round_score_by_team"][team] == expected, (scenario["id"], team)
 
