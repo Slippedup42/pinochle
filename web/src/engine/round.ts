@@ -269,21 +269,31 @@ export function playTrickTakingPhase(
 export interface RoundScoreInput {
   meldPointsByTeam: Record<TeamId, number>
   trickPointsByTeam: Record<TeamId, number>
+  /** Winner of each trick played, for the "take a trick to save your meld"
+   * rule. Trick points cannot stand in for it: a trick of Queens, Jacks and
+   * 9s is worth 0 and still saves the meld. `null` means the hand ended
+   * before the first lead (a concede or auto-SET) — no trick was played, so
+   * nobody's meld is lost for want of one. Required rather than optional so
+   * a caller cannot forget it and silently skip the rule. */
+  trickWinners: readonly PlayerIndex[] | null
   bidWinnerTeam: TeamId
   bid: number
 }
 
 /**
- * Contract check, per pinochle_rules.md Phase 5: if the bidding team's
- * meld + trick total is less than their bid, they score -bid for the
- * round ("going set"). The defending team always scores their own
- * meld + trick points, regardless of what happens to the bidding team.
+ * Contract check, per pinochle_rules.md Phase 5. A team that took no trick
+ * scores no meld. Then, if the bidding team's meld + trick total is less
+ * than their bid, they score -bid for the round ("going set"). The defending
+ * team scores their own meld + trick points, regardless of what happens to
+ * the bidding team — so in practice the trick rule only ever costs the
+ * defenders, since a bidding team with no trick is set anyway.
  */
 export function scoreRound(input: RoundScoreInput): Record<TeamId, number> {
-  const { meldPointsByTeam, trickPointsByTeam, bidWinnerTeam, bid } = input
+  const { meldPointsByTeam, trickPointsByTeam, trickWinners, bidWinnerTeam, bid } = input
   const scores: Record<TeamId, number> = { 0: 0, 1: 0 }
   for (const team of [0, 1] as const) {
-    const total = meldPointsByTeam[team] + trickPointsByTeam[team]
+    const savedMeld = trickWinners === null || trickWinners.some((seat) => teamOf(seat) === team)
+    const total = (savedMeld ? meldPointsByTeam[team] : 0) + trickPointsByTeam[team]
     scores[team] = team === bidWinnerTeam && total < bid ? -bid : total
   }
   return scores

@@ -74,6 +74,28 @@ describe('RoundSummary', () => {
     expect(screen.getByText('-340')).not.toBeNull()
   })
 
+  it('says so when a team lost its meld for taking no tricks', () => {
+    // pinochle_rules.md's worked example: both meld 100, Team A sweeps.
+    render(
+      <RoundSummary
+        data={{
+          ...madeContractData,
+          meldPointsByTeam: { 0: 100, 1: 100 },
+          trickPointsByTeam: { 0: 250, 1: 0 },
+          roundScoreByTeam: { 0: 350, 1: 0 },
+          bid: 300,
+        }}
+      />,
+    )
+    expect(screen.getByText("Team B took no tricks, so their meld doesn't count.")).toBeTruthy()
+    expect(screen.queryByText(/Team A took no tricks/)).toBeNull()
+  })
+
+  it('does not mention lost meld on an ordinary hand', () => {
+    render(<RoundSummary data={madeContractData} />)
+    expect(screen.queryByText(/took no tricks/)).toBeNull()
+  })
+
   it('omits the continue button when onContinue is not supplied', () => {
     render(<RoundSummary data={madeContractData} />)
     expect(screen.queryByRole('button')).toBeNull()

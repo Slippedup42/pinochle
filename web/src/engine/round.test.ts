@@ -155,10 +155,56 @@ describe('playTrickTakingPhase', () => {
 })
 
 describe('scoreRound', () => {
+  // Seats 0 and 1 are on different teams, so each team took at least one.
+  const BOTH_TEAMS_TOOK_TRICKS: PlayerIndex[] = [0, 1, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1]
+  const TEAM_0_SWEPT: PlayerIndex[] = [0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2]
+
+  it("wipes out the meld of a team that took no trick", () => {
+    // pinochle_rules.md's worked example: both meld 100, bidders sweep.
+    const scores = scoreRound({
+      meldPointsByTeam: { 0: 100, 1: 100 },
+      trickPointsByTeam: { 0: 250, 1: 0 },
+      trickWinners: TEAM_0_SWEPT,
+      bidWinnerTeam: 0,
+      bid: 300,
+    })
+    expect(scores[0]).toBe(350)
+    expect(scores[1]).toBe(0)
+  })
+
+  it('lets a single pointless trick save the meld', () => {
+    // Team 1 won the 3rd trick but it held no counters: 0 points, meld stands.
+    const winners: PlayerIndex[] = [...TEAM_0_SWEPT]
+    winners[2] = 1
+    const scores = scoreRound({
+      meldPointsByTeam: { 0: 100, 1: 100 },
+      trickPointsByTeam: { 0: 250, 1: 0 },
+      trickWinners: winners,
+      bidWinnerTeam: 0,
+      bid: 300,
+    })
+    expect(scores[1]).toBe(100)
+  })
+
+  it('keeps every meld when the hand ended before the first lead', () => {
+    // A concede or auto-SET: no trick was played, so null, and the defenders
+    // keep their meld. The caller zeroes the bidders' meld itself.
+    const scores = scoreRound({
+      meldPointsByTeam: { 0: 0, 1: 100 },
+      trickPointsByTeam: { 0: 0, 1: 0 },
+      trickWinners: null,
+      bidWinnerTeam: 0,
+      bid: 300,
+    })
+    expect(scores[0]).toBe(-300)
+    expect(scores[1]).toBe(100)
+  })
+
   it("scores the bidding team -bid when their total falls short (going set)", () => {
     const scores = scoreRound({
       meldPointsByTeam: { 0: 20, 1: 40 },
       trickPointsByTeam: { 0: 100, 1: 150 },
+      trickWinners: BOTH_TEAMS_TOOK_TRICKS,
       bidWinnerTeam: 0,
       bid: 300,
     })
@@ -172,6 +218,7 @@ describe('scoreRound', () => {
     const scores = scoreRound({
       meldPointsByTeam: { 0: 150, 1: 10 },
       trickPointsByTeam: { 0: 160, 1: 90 },
+      trickWinners: BOTH_TEAMS_TOOK_TRICKS,
       bidWinnerTeam: 0,
       bid: 300,
     })
@@ -184,6 +231,7 @@ describe('scoreRound', () => {
     const scores = scoreRound({
       meldPointsByTeam: { 0: 0, 1: 60 },
       trickPointsByTeam: { 0: 90, 1: 100 },
+      trickWinners: BOTH_TEAMS_TOOK_TRICKS,
       bidWinnerTeam: 1,
       bid: 400,
     })

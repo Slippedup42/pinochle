@@ -213,6 +213,9 @@ export function gameFlowReducer(state: GameFlowState, action: GameFlowAction): G
       const roundScoreByTeam = scoreRound({
         meldPointsByTeam: adjustedMeld,
         trickPointsByTeam: action.result.conceded ? { 0: 0, 1: 0 } as Record<TeamId, number> : action.result.trickPointsByTeam,
+        // No trick is played on a concede, so nobody's meld is lost for want
+        // of one; `null` says so. A claim already appended its tricks.
+        trickWinners: action.result.conceded ? null : action.result.trickWinners,
         bidWinnerTeam,
         bid,
       })

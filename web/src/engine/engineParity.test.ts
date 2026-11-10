@@ -378,6 +378,7 @@ describe('round scoring', () => {
           0: scenario.trickPointsByTeam[0],
           1: scenario.trickPointsByTeam[1],
         },
+        trickWinners: scenario.tricks.map((t) => t.winner),
         bidWinnerTeam: teamOf(scenario.bidWinner),
         bid: scenario.bid,
       })
@@ -399,7 +400,7 @@ describe('round scoring', () => {
       const hands = handsAfterPass(scenario)
       const sequence = playSequence(scenario)
       let index = 0
-      const { trickPointsByTeam } = playTrickTakingPhase(
+      const { trickPointsByTeam, trickWinners } = playTrickTakingPhase(
         hands,
         scenario.trump,
         scenario.bidWinner,
@@ -408,6 +409,7 @@ describe('round scoring', () => {
       const scores = scoreRound({
         meldPointsByTeam: meldPointsByTeam(hands, scenario.trump),
         trickPointsByTeam,
+        trickWinners,
         bidWinnerTeam: teamOf(scenario.bidWinner),
         bid: scenario.bid,
       })

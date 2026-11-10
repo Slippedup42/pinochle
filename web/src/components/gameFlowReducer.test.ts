@@ -12,6 +12,11 @@ function emptyHands(): Hands {
 }
 
 /** One already-played hand, for the ledger tests (#198). */
+// Both teams won at least one trick, so nobody's meld is lost to the
+// "take a trick to save your meld" rule — these tests are about the
+// running score, not that rule (round.test.ts covers it).
+const BOTH_TEAMS_TOOK_TRICKS: PlayerIndex[] = [0, 1, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1]
+
 const ledgerEntry: HandLedgerEntry = {
   hand: 1,
   bidWinnerTeam: 0,
@@ -156,7 +161,7 @@ describe('gameFlowReducer', () => {
 
     it('computes meld + trick points into a round summary and updates cumulative scores', () => {
       const state = stateAfterAuction()
-      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 100, 1: 150 }, trickWinners: [] }
+      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 100, 1: 150 }, trickWinners: BOTH_TEAMS_TOOK_TRICKS }
       const next = gameFlowReducer(state, { type: 'TRICK_COMPLETE', result: trickResult })
 
       expect(next.phase).toBe('round-summary')
@@ -176,7 +181,7 @@ describe('gameFlowReducer', () => {
     it('adds this round on top of prior cumulative scores', () => {
       const state = stateAfterAuction({}, { 0: 400, 1: 200 })
       // Now the bidding team clears their bid: 150 meld + 200 trick = 350 >= 300.
-      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 200, 1: 50 }, trickWinners: [] }
+      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 200, 1: 50 }, trickWinners: BOTH_TEAMS_TOOK_TRICKS }
       const next = gameFlowReducer(state, { type: 'TRICK_COMPLETE', result: trickResult })
       expect(next.roundSummary?.roundScoreByTeam).toEqual({ 0: 350, 1: 50 })
       expect(next.scoresByTeam).toEqual({ 0: 750, 1: 250 })
@@ -184,13 +189,13 @@ describe('gameFlowReducer', () => {
 
     it('is ignored outside trick-play', () => {
       const state = initGameFlowState(3)
-      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 0, 1: 0 }, trickWinners: [] }
+      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 0, 1: 0 }, trickWinners: BOTH_TEAMS_TOOK_TRICKS }
       expect(gameFlowReducer(state, { type: 'TRICK_COMPLETE', result: trickResult })).toBe(state)
     })
 
     it('appends the hand to the game ledger, numbered and carrying the bid (#198)', () => {
       const state = stateAfterAuction()
-      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 100, 1: 150 }, trickWinners: [] }
+      const trickResult: TrickPlayResult = { trickPointsByTeam: { 0: 100, 1: 150 }, trickWinners: BOTH_TEAMS_TOOK_TRICKS }
       const next = gameFlowReducer(state, { type: 'TRICK_COMPLETE', result: trickResult })
 
       expect(next.handLedger).toHaveLength(1)
@@ -210,12 +215,12 @@ describe('gameFlowReducer', () => {
     it('numbers each hand after the last and keeps the earlier ones (#198)', () => {
       const first = gameFlowReducer(stateAfterAuction(), {
         type: 'TRICK_COMPLETE',
-        result: { trickPointsByTeam: { 0: 100, 1: 150 }, trickWinners: [] },
+        result: { trickPointsByTeam: { 0: 100, 1: 150 }, trickWinners: BOTH_TEAMS_TOOK_TRICKS },
       })
       // Second hand, played from the scores and ledger the first one left.
       const second = gameFlowReducer(
         { ...stateAfterAuction({}, first.scoresByTeam), handLedger: first.handLedger },
-        { type: 'TRICK_COMPLETE', result: { trickPointsByTeam: { 0: 200, 1: 50 }, trickWinners: [] } },
+        { type: 'TRICK_COMPLETE', result: { trickPointsByTeam: { 0: 200, 1: 50 }, trickWinners: BOTH_TEAMS_TOOK_TRICKS } },
       )
 
       expect(second.handLedger.map((e) => e.hand)).toEqual([1, 2])

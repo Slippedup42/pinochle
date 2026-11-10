@@ -279,13 +279,28 @@ through, deliberately does not apply it.
 ### Contract Check
 
 - Add each team's `meld_points + trick_points` for the round.
+- **A team must take a trick to save its meld.** A team that takes none of
+  the 12 tricks scores **0** meld, so its round total is 0 meld + 0 trick
+  points = **0**. One trick is enough, even a trick with no counters in it
+  (all Queens, Jacks and 9s): the test is tricks taken, not trick points.
 - If the bidding team's total is **less than** their bid, they score
   **−bid** for the round (they "go set").
-- The defending team always scores their own meld + trick points,
-  regardless of what happens to the bidding team.
+- The defending team scores their own meld + trick points (subject to the
+  trick rule above), regardless of what happens to the bidding team.
 - A hand that ended before the first lead — a concede or an auto-SET — is
   scored by the rule in "Ending a Hand Early" instead: the bidding team
   forfeits its meld and takes −bid, and the defenders score meld alone.
+  No trick was played, so the defenders' meld is not lost for want of one.
+
+Worked through: both teams meld 100, and the bidding team, on a bid of 300,
+takes all 12 tricks. The bidders score 100 + 250 = 350 and make. The
+defenders took no trick, so their 100 meld is lost and they score 0.
+
+The rule only ever bites the defenders. A bidding team that takes no trick
+totals at most 0, which is short of every bid, so it is set either way. The
+AI does not model it: the rollouts, the evaluator and the win-probability
+table were measured without it, and a 12-trick sweep is rare enough that
+this is an accepted approximation rather than a re-measurement.
 
 ## Game Win / Loss
 
@@ -308,8 +323,10 @@ it is and is not a constant waiting to be tidied upward.
 
 The consequence is that a **Double Run** (1500) beats the whole game on its
 own, and that is known and accepted rather than an oversight. It needs no
-contract to cash: the defending team always scores their own meld, so the
-hand wins from either seat, before a card is led. It happened in 2 of the
+contract to cash: the defending team scores their own meld, so the hand wins
+from either seat. From the defending seat it does need one trick, since a
+team that takes none loses its meld (Contract Check) — a bidding team that
+sweeps all 12 tricks wipes it out. It happened in 2 of the
 2000 games — **0.10%** — which reads as a story about a hand rather than a
 hole in the balance.
 

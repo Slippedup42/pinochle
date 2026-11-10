@@ -369,6 +369,7 @@ class InteractiveRound(Round):
             self._tt_trick_num = 0
             self._tt_leader_index = self.players.index(self.bid_winner)
             self._tt_points = {team: 0 for team in self.teams}
+            self._tt_tricks = {team: 0 for team in self.teams}
             self._tt_trick = None
             self._tt_seat_offset = 0
 
@@ -397,12 +398,15 @@ class InteractiveRound(Round):
             if self._tt_trick_num == 11:
                 points += 10
             self._tt_points[winner.team] += points
+            self._tt_tricks[winner.team] += 1
             self._tt_leader_index = self.players.index(winner)
             self._tt_trick = None
             self._tt_trick_num += 1
 
         for team in self.teams:
             team.trick_points = self._tt_points[team]
+            # Read by Round._score_round: a team with no trick loses its meld.
+            team.tricks_taken = self._tt_tricks[team]
         return self._tt_points
 
 
