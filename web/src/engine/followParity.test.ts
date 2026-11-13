@@ -31,6 +31,13 @@
 //      disagree ONLY at a position where #158's tier can fire. Anything else
 //      is drift.
 //
+// A SECOND DELIBERATE DIVERGENCE, excluded the same way: Paul's house follow
+// rules (`followRules: 'house'`, skills.ts's `FollowRules`), measured in
+// TypeScript at +51 / +55 / +56 a deal and shipped 2026-11-12. Python's
+// `choose_follow_card` has no counterpart, so both replays below pin
+// `followRules: 'current'` — they hold the cascade underneath the house rules
+// to Python, and `houseFollow.test.ts` holds the house rules themselves.
+//
 // `TrumpMemory` is not passed: the shipped game gives each seat a capacity-10
 // memory, which only #158's tier consults. Without one, trump questions read
 // the exact tracker — the reading Python has.
@@ -168,7 +175,7 @@ describe('the follow parity fixture itself', () => {
 })
 
 describe('chooseFollowCard plays what Python plays (safe counters off — Python’s rule)', () => {
-  withParams({ ...SHIPPED_PARAMS, safeCounterPolicy: 'off' })
+  withParams({ ...SHIPPED_PARAMS, safeCounterPolicy: 'off', followRules: 'current' })
 
   it('agrees at every recorded position', () => {
     const disagreements = FOLLOW_PARITY_SCENARIOS.filter((s) => follow(s) !== s.chosen).map(
@@ -179,7 +186,7 @@ describe('chooseFollowCard plays what Python plays (safe counters off — Python
 })
 
 describe('the shipped chooseFollowCard leaves Python only where #158 says it does', () => {
-  withParams(SHIPPED_PARAMS)
+  withParams({ ...SHIPPED_PARAMS, followRules: 'current' })
 
   it('agrees at every position #158’s tier cannot reach', () => {
     const drift = FOLLOW_PARITY_SCENARIOS.filter((s) => !safeCounterCanFire(s) && follow(s) !== s.chosen).map(

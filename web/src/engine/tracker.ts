@@ -38,14 +38,33 @@ import type { TrumpMemory } from './trumpMemory'
 /** Tracks cards played so far this round, across all 4 hands. */
 export class PlayTracker {
   private readonly played = new Map<string, number>()
+  /** For each suit led this hand, every other suit a seat played into it. */
+  private readonly offSuit = new Map<Suit, Set<Suit>>()
 
   private static key(suit: Suit, rank: Rank): string {
     return `${suit}:${rank}`
   }
 
-  record(card: Card): void {
+  /**
+   * @param ledSuit - The suit led in the trick this card is played into, or
+   *   omitted when the card is itself the lead. Only `wasRuffed` reads it; the
+   *   counts are the same either way, so a caller that omits it loses nothing
+   *   but the "has this suit been trumped" question, which then answers no.
+   */
+  record(card: Card, ledSuit?: Suit): void {
     const key = PlayTracker.key(card.suit, card.rank)
     this.played.set(key, (this.played.get(key) ?? 0) + 1)
+    if (ledSuit !== undefined && card.suit !== ledSuit) {
+      const seen = this.offSuit.get(ledSuit) ?? new Set<Suit>()
+      seen.add(card.suit)
+      this.offSuit.set(ledSuit, seen)
+    }
+  }
+
+  /** Whether some seat has trumped a lead of `suit` this hand — after which
+   *  an Ace of that suit is no longer a sure trick winner (house follow rule 4, `FollowRules`). */
+  wasRuffed(suit: Suit, trump: Suit): boolean {
+    return this.offSuit.get(suit)?.has(trump) ?? false
   }
 
   playedCount(suit: Suit, rank: Rank): number {
@@ -447,6 +466,38 @@ function chooseForcedBeat(
 }
 
 /**
+ * House rules 1 and 2 (`FollowRules` in skills.ts): an opponent led a side
+ * suit, this seat can follow it, and partner is not already winning. Returns
+ * `undefined` when neither rule applies, and the cascade decides.
+ *
+ *   1. The lead is an Ace: play the lowest card. Nothing of this suit beats it.
+ *   2. Partner is still to play and an Ace of the suit is still out (neither in
+ *      this hand nor played): play the lowest counter that is not an Ace (K,
+ *      then 10), betting partner holds that Ace. No such counter legal: the
+ *      lowest card.
+ *
+ * "Still out" reads the exact `PlayTracker`, not trump memory: the suit here
+ * is never trump, and side suits are counted exactly at every level.
+ */
+function houseLeadSuitCard(
+  legalMoves: readonly Card[],
+  hand: readonly Card[],
+  trickPlays: readonly TrickPlay[],
+  myTeamPlayers: readonly PlayerIndex[],
+  tracker: PlayTracker | undefined,
+): Card | undefined {
+  const lead = trickPlays[0].card
+  if (lead.rank === 'A') return minByRank(legalMoves)
+
+  const partnerStillToPlay = !trickPlays.some((p) => myTeamPlayers.includes(p.player))
+  const acesAccounted = handCount(hand, lead.suit, 'A') + (tracker?.playedCount(lead.suit, 'A') ?? 0)
+  if (!partnerStillToPlay || acesAccounted >= 2) return undefined
+
+  const counters = legalMoves.filter((c) => c.rank === 'K' || c.rank === '10')
+  return counters.length > 0 ? minByRank(counters) : minByRank(legalMoves)
+}
+
+/**
  * Who's currently winning the trick-in-progress: highest trump if any
  * trump has been played, else highest card of the lead suit. Ties go to
  * whichever copy was played first (`reduce` only replaces the running
@@ -562,6 +613,7 @@ export function chooseFollowCard(
 
   const counted = SKILL_PARAMS[skill].safeCounterPolicy === 'counted'
   const memory = counted ? trumpMemory : undefined
+  const house = SKILL_PARAMS[skill].followRules === 'house'
   /** Seats still to follow this one, 0-3. Zero means nothing is outstanding. */
   const seatsStillToPlay = 3 - trickPlays.length
 
@@ -626,6 +678,10 @@ export function chooseFollowCard(
     // protecting counters. #312 had split this by who led and given a
     // partner-led reclaim its own never-a-counter rule; that was TypeScript
     // alone and unmeasured, and it is gone (see the docblock).
+    if (house && !ledByTeam && !partnerWinning) {
+      const card = houseLeadSuitCard(legalMoves, hand, trickPlays, myTeamPlayers, tracker)
+      if (card !== undefined) return card
+    }
     if (feedAhead) return feedPartner(legalMoves)
     if (forcedBeat) {
       return chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
@@ -654,6 +710,20 @@ export function chooseFollowCard(
       legalMoves.every((c) => c.beats(winner.card, trump))
     if (forcedOvertrump) {
       return chooseForcedBeat(legalMoves, hand, trump, tracker, memory, seatsStillToPlay, counted)
+    }
+
+    // House rule 3 (`FollowRules`): void in a side-suit lead. Spend a King or
+    // 10 of trump while a higher trump is still out — it would only be caught
+    // later — otherwise the lowest trump, so the Ace goes only when nothing
+    // else is legal. When an opponent's trump is already winning and this seat
+    // cannot beat it, a counter would be a gift, so the lowest trump.
+    if (house && leadSuit !== undefined && leadSuit !== trump) {
+      const opponentTrumpWinning = winner !== undefined && winner.card.suit === trump && !partnerWinning
+      if (opponentTrumpWinning) return minByRank(legalMoves)
+      const catchable = legalMoves.filter(
+        (c) => (c.rank === 'K' || c.rank === '10') && !isBoss(c, hand, trump, tracker, memory),
+      )
+      return catchable.length > 0 ? minByRank(catchable) : minByRank(legalMoves)
     }
 
     // Discretionary trumping-in — Python's rule, whichever side led. Trump
@@ -685,6 +755,21 @@ export function chooseFollowCard(
   // only the A/B control. #312 shipped the filter
   // unmeasured; the `sluff` A/B is what it should have been, and `'protect'`
   // ships on its numbers plus Paul's ruling (see `SluffPolicy`).
+  // House rule 4 (`FollowRules`). Partner winning, or partner still to play
+  // so it is not clear who takes it: the lowest counter, K then 10, and an Ace
+  // only in a suit someone has already trumped this hand — elsewhere the Ace
+  // is saved as a trick winner. An opponent going to take it (partner has
+  // played and is not winning) falls through to the lowest card below.
+  if (house) {
+    const partnerPlayed = trickPlays.some((p) => myTeamPlayers.includes(p.player))
+    if (partnerWinning || !partnerPlayed) {
+      const counters = legalMoves.filter(
+        (c) => c.rank === 'K' || c.rank === '10' || (c.rank === 'A' && (tracker?.wasRuffed(c.suit, trump) ?? false)),
+      )
+      if (counters.length > 0) return minByRank(counters)
+    }
+  }
+
   const nonPointLegal = legalMoves.filter((c) => !POINT_RANKS.has(c.rank))
   const sluffPool =
     SKILL_PARAMS[skill].sluffPolicy === 'protect' && nonPointLegal.length > 0 ? nonPointLegal : legalMoves

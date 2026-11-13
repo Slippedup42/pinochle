@@ -4,8 +4,12 @@ import { Card, Suit } from './card'
 import { SHIPPED_PARAMS, SKILL_LEVELS, SKILL_PARAMS } from './skills'
 
 /**
- * Every level is pinned to `partnerRead: 'current'` for this file, and
- * restored after it. The forced-beat and feed-partner tests below put this
+ * Every level is pinned to `partnerRead: 'current'` and `followRules:
+ * 'current'` for this file, and restored after it. The house follow rules
+ * (`FollowRules`) sit in front of every tier these tests are named for, and
+ * have their own file, `houseFollow.test.ts`.
+ *
+ * On `partnerRead`: The forced-beat and feed-partner tests below put this
  * seat second after an opponent's lead with a beatable card on the table -
  * which is precisely the position the shipped `'feedAhead'` read acts on, so
  * under it seven of them would be asserting the King fed rather than the tier
@@ -17,7 +21,7 @@ const pristinePartnerRead: Partial<Record<SkillLevel, SkillParams>> = {}
 beforeAll(() => {
   for (const level of SKILL_LEVELS) {
     pristinePartnerRead[level] = SKILL_PARAMS[level]
-    SKILL_PARAMS[level] = { ...SKILL_PARAMS[level], partnerRead: 'current' }
+    SKILL_PARAMS[level] = { ...SKILL_PARAMS[level], partnerRead: 'current', followRules: 'current' }
   }
 })
 afterAll(() => {

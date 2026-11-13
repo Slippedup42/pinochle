@@ -161,8 +161,8 @@ export function TrickPlayFlow({
   // A card hits the table once and everyone sees it — the exact tracker and all
   // four trump memories, the human's card included. Stable (`[]`), because it
   // reaches only through refs and is handed to a `useMemo`'d table state.
-  const notePlayed = useCallback((card: Card) => {
-    trackerRef.current.record(card)
+  const notePlayed = useCallback((card: Card, ledSuit: Suit | undefined) => {
+    trackerRef.current.record(card, ledSuit)
     for (const seat of [0, 1, 2, 3] as PlayerIndex[]) trumpMemoriesRef.current[seat].see(card)
   }, [])
 
@@ -269,7 +269,7 @@ export function TrickPlayFlow({
               SHIPPED_SKILL,
               trumpMemoriesRef.current[player],
             )
-      notePlayed(card)
+      notePlayed(card, state.currentTrick[0]?.card.suit)
       dispatch({ type: 'PLAY_CARD', player, card })
     }, AI_PLAY_DELAY_MS)
     return () => clearTimeout(timer)
@@ -347,7 +347,7 @@ export function TrickPlayFlow({
       ? {
           legalCards: legalMovesForHuman,
           onPlay: (card: Card) => {
-            notePlayed(card)
+            notePlayed(card, state.currentTrick[0]?.card.suit)
             dispatch({ type: 'PLAY_CARD', player: humanPlayer, card })
           },
         }
