@@ -410,6 +410,37 @@ export type LadderPolicy = 'ceiling' | 'value'
  */
 export type ThirdSeatPolicy = 'floor' | 'model'
 
+/**
+ * Paul's house rules for following, from players' complaints that the AI was
+ * not playing the best card (2026-11-12). `'current'` is the cascade
+ * `chooseFollowCard` documents, and the A/B control. `'house'` changes four
+ * spots, all in `chooseFollowCard`:
+ *
+ *   1. **Opponent leads an Ace, you can follow:** play your lowest card.
+ *   2. **Opponent leads anything else, partner still to play, and an Ace of
+ *      that suit is still out:** play your lowest counter (K, then 10),
+ *      betting partner holds the Ace and takes it. No counter legal: lowest
+ *      card.
+ *   3. **Void in a side-suit lead, trumping in freely:** spend a King or 10 of
+ *      trump while a higher trump is still out (it would be caught later),
+ *      otherwise the lowest trump. Never the Ace here unless nothing else is
+ *      legal. A forced overtrump is unchanged.
+ *   4. **Sluff:** if an opponent is going to take the trick, the lowest card.
+ *      If partner is winning, or partner is still to play and it is not
+ *      clear, the lowest counter (K, then 10), and an Ace only in a suit that
+ *      has already been trumped this hand — otherwise the Ace is saved as a
+ *      trick winner.
+ *
+ * **Shipped 2026-11-12.** The `follow` A/B (house against current, 2000
+ * paired deals a seed) measured +51 / +55 / +56 a deal on seeds 1-3, every 95%
+ * CI clear of zero (lowest bound +43), with a clean `selftest --policy house`.
+ * The make rate rises about two points (66% to 68%) at an unchanged average
+ * bid. `'current'` stays as the A/B control. TypeScript only: Python's
+ * `choose_follow_card` has no counterpart, and `followParity.test.ts` pins
+ * `'current'` to keep holding the cascade underneath to Python.
+ */
+export type FollowRules = 'current' | 'house'
+
 export interface SkillParams {
   readonly handValuation: HandValuation
   readonly bidPolicy: BidPolicy
@@ -426,6 +457,7 @@ export interface SkillParams {
   readonly partnerSupport: PartnerSupport
   readonly ladderPolicy: LadderPolicy
   readonly thirdSeatPolicy: ThirdSeatPolicy
+  readonly followRules: FollowRules
 }
 
 /**
@@ -449,6 +481,7 @@ export interface SkillParams {
  * | `partnerSupport`    | `support`   | `floor`                                |
  * | `ladderPolicy`      | `value`     | `ceiling`                              |
  * | `thirdSeatPolicy`   | `floor`     | `model`                                |
+ * | `followRules`       | `house`     | `current`                              |
  *
  * Read as prose: distilled bidding that opens at the 330 anchor, cascade card
  * play, `model` folding, `forced` auto-SET, `counted` safe counters, and —
@@ -508,6 +541,7 @@ export const SHIPPED_PARAMS: SkillParams = {
   partnerSupport: 'support',
   ladderPolicy: 'value',
   thirdSeatPolicy: 'floor',
+  followRules: 'house',
 }
 
 /**

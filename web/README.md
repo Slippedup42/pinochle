@@ -1445,6 +1445,42 @@ so the passivity is in the seats that act first. `'floor'` ships again and
 about the harness: paired margin per deal measures strength against the same
 AI, and a change can win it by making the table worse to play.
 
+### Paul's house follow rules (`followRules`, 2026-11-12)
+
+Players complained that the AI was not playing the best card when following.
+Paul wrote down how the table plays it, and `chooseFollowCard` now does that
+in front of the cascade (`FollowRules` in `skills.ts` has the full text):
+
+1. An opponent leads an Ace and you can follow: play your lowest card.
+2. An opponent leads anything else, partner is still to play, and an Ace of
+   the suit is still out: throw your lowest counter (K, then 10), betting
+   partner holds the Ace.
+3. Void in a side-suit lead and trumping in: spend a King or 10 of trump while
+   a higher trump is still out, otherwise the lowest trump. Never the Ace
+   unless nothing else is legal, and never a counter into an opponent's trump
+   that is already winning.
+4. Sluff: lowest card if an opponent is going to take it. If partner is
+   winning, or still to play and it is unclear, the lowest counter, with an
+   Ace thrown only in a suit someone has already trumped this hand.
+
+Rule 4 needed one new fact: `PlayTracker.record` takes the suit led, so
+`wasRuffed` can say whether a suit has been trumped.
+
+`cli.ts follow`, house against current, 2000 paired deals per seed:
+
+| seed | margin per deal | 95% CI     | made (house / current) |
+| ---  | ---             | ---        | ---                    |
+| 1    | +51             | +43 to +59 | 68.1% / 66.3%          |
+| 2    | +55             | +47 to +63 | 67.6% / 65.7%          |
+| 3    | +56             | +48 to +66 | 67.5% / 65.5%          |
+
+`selftest --policy house` is clean, and the average bid does not move. This is
+an order of magnitude more than feed-ahead (+5) or the protecting sluff
+(+2 to +5). It ships. Unlike the opening-anchor lesson above, these rules come
+from how the table plays, so the stronger AI should not be one that feels
+wrong. Python's follower has no counterpart: `followParity.test.ts` pins
+`'current'` so it keeps holding the cascade underneath to Python.
+
 ## Claiming the rest (#208)
 
 Paul's rule: if one seat holds all the trump and nobody else has any, stop

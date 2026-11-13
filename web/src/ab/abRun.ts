@@ -102,6 +102,7 @@ const PRE_SHIP_PARAMS: Readonly<SkillParams> = Object.freeze({
   partnerSupport: 'floor',
   ladderPolicy: 'ceiling',
   thirdSeatPolicy: 'floor',
+  followRules: 'current',
 })
 
 /** Bidding A/B (#115): distilled vs static, both folding as the product does
@@ -206,6 +207,18 @@ export function partnerReadAbPolicies(arm: PartnerRead): Record<string, SkillPar
   return {
     [STATIC_LEVEL]: { ...SHIPPED_PARAMS, partnerRead: 'current' },
     [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, partnerRead: arm },
+  }
+}
+
+/**
+ * Paul's house follow rules (`FollowRules`): side A (`DISTILLED_LEVEL`) plays
+ * `'house'`, side B the shipped `'current'` cascade, everything else
+ * `SHIPPED_PARAMS`.
+ */
+export function followAbPolicies(): Record<string, SkillParams> {
+  return {
+    [STATIC_LEVEL]: { ...SHIPPED_PARAMS, followRules: 'current' },
+    [DISTILLED_LEVEL]: { ...SHIPPED_PARAMS, followRules: 'house' },
   }
 }
 

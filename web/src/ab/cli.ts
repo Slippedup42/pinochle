@@ -10,6 +10,7 @@
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts anchor --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts partner --arm feedAhead --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts sluff --pairs 2000
+//   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts follow --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts push --arm quality --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts ladder --pairs 2000
 //   node node_modules/jiti/lib/jiti-cli.mjs src/ab/cli.ts thirdseat --pairs 2000
@@ -54,6 +55,7 @@ import {
   partnerReadAbPolicies,
   pushAbPolicies,
   sluffAbPolicies,
+  followAbPolicies,
   SAFE_COUNTER_CONTROL,
   STATIC_LEVEL,
   analyse,
@@ -86,6 +88,7 @@ const SELFTEST_ARMS: Record<string, { level: SkillLevel; policies: Record<string
   'hold-back': { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('holdBack') },
   likely: { level: DISTILLED_LEVEL, policies: partnerReadAbPolicies('likely') },
   protect: { level: DISTILLED_LEVEL, policies: sluffAbPolicies('protect') },
+  house: { level: DISTILLED_LEVEL, policies: followAbPolicies() },
   // The rung-value ladder doubled up against itself.
   'value-ladder': { level: DISTILLED_LEVEL, policies: ladderAbPolicies('value') },
   // The push arms, each doubled up against itself - the table where both
@@ -166,6 +169,18 @@ if (command === 'fold') {
     labelA: 'protect',
     labelB: 'shortest',
     policies: sluffAbPolicies('protect'),
+  })
+  console.log(summarise(report, analyse(report, seed)))
+} else if (command === 'follow') {
+  // Paul's house follow rules against the shipped cascade.
+  const pairs = flag('pairs', 400)
+  const seed = flag('seed', 1)
+  const report = runAb({
+    nPairs: pairs,
+    seed,
+    labelA: 'house',
+    labelB: 'current',
+    policies: followAbPolicies(),
   })
   console.log(summarise(report, analyse(report, seed)))
 } else if (command === 'push') {

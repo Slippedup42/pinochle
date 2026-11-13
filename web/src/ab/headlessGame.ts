@@ -390,7 +390,7 @@ export function playHeadlessGame(options: HeadlessGameOptions): GameResult {
                 skill,
                 trumpMemories[player],
               )
-        tracker.record(card)
+        tracker.record(card, trick.plays[0]?.card.suit)
         // Everyone at the table sees the card, including whoever played it —
         // it has left their hand by then, so this cannot double-count against
         // the hand tally `isBoss` keeps separately.
